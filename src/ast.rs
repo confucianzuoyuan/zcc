@@ -18,6 +18,13 @@ pub enum Expr {
 
 pub type ExprWithPos = position::WithPos<Expr>;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt {
+    Expr(ExprWithPos),
+}
+
+pub type StmtWithPos = position::WithPos<Stmt>;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operator {
     Divide,

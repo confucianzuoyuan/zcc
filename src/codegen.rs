@@ -86,3 +86,9 @@ pub fn gen_expr(node: ast::ExprWithPos) {
         }
     }
 }
+
+pub fn gen_stmt(node: ast::StmtWithPos) {
+    match node.node {
+        ast::Stmt::Expr(e) => gen_expr(e),
+    }
+}

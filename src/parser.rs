@@ -240,6 +240,22 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         self.equality_expr()
     }
 
+    /// expr-stmt = expr ";"
+    fn expr_stmt(&mut self) -> Result<ast::StmtWithPos> {
+        let expr = self.expr()?;
+        use token::Tok::Semicolon;
+        eat!(self, Semicolon);
+        let stmt = ast::StmtWithPos {
+            node: ast::Stmt::Expr(expr.clone()),
+            pos: expr.pos,
+        };
+        Ok(stmt)
+    }
+
+    fn stmt(&mut self) -> Result<ast::StmtWithPos> {
+        self.expr_stmt()
+    }
+
     fn peek(&mut self) -> std::result::Result<&token::Token, &error::Error> {
         if self.lookahead.is_none() {
             self.lookahead = Some(self.lexer.token());
@@ -269,14 +285,20 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         })
     }
 
-    pub fn parse(&mut self) -> Result<ast::ExprWithPos> {
-        let main_expression = self.expr()?;
+    pub fn parse(&mut self) -> Result<Vec<ast::StmtWithPos>> {
+        let mut stmts = vec![];
+        loop {
+            if self.peek_token()? == &token::Tok::EndOfFile {
+                break;
+            }
+            stmts.push(self.stmt()?);
+        }
         match self.token() {
             Ok(token::Token {
                 token: token::Tok::EndOfFile,
                 ..
             })
-            | Err(error::Error::Eof) => Ok(main_expression),
+            | Err(error::Error::Eof) => Ok(stmts),
             _ => Err(self.unexpected_token("end of file")?),
         }
     }

@@ -48,18 +48,18 @@ impl<R: Read> Lexer<R> {
         let mut buffer = String::new();
         buffer.push(self.current_char()?);
         self.advance()?;
-        match self.current_char() {
-            Ok(_) => (),
-            Err(_) => return Ok(buffer),
-        };
+        // match self.current_char() {
+        //     Ok(_) => (),
+        //     Err(_) => return Ok(buffer),
+        // };
         let mut ch = self.current_char()?;
         while pred(ch) {
             buffer.push(ch);
             self.advance()?;
-            match self.current_char() {
-                Ok(_) => (),
-                Err(_) => break,
-            };
+            // match self.current_char() {
+            //     Ok(_) => (),
+            //     Err(_) => break,
+            // };
             ch = self.current_char()?;
         }
         Ok(buffer)
@@ -174,6 +174,7 @@ impl<R: Read> Lexer<R> {
                 b'>' => self.greater_or_greater_euqal(),
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_double_equal(),
+                b';' => self.simple_token(token::Tok::Semicolon),
                 _ => {
                     let mut pos = self.current_pos();
                     pos.length = 1;

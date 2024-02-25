@@ -36,7 +36,9 @@ fn main() {
         println!("  .globl main");
         println!("main:");
 
-        codegen::gen_expr(node);
+        for n in node {
+            codegen::gen_stmt(n);
+        }
         println!("  ret");
 
         unsafe {
