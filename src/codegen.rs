@@ -26,11 +26,18 @@ fn pop(arg: String) {
 
 pub fn gen_expr(node: ast::ExprWithPos) {
     match node.node {
+        // 数值类型直接写入rax寄存器
         ast::Expr::Int { value } => println!("  mov ${}, %rax", value),
+        // gen_expr最终的求值结果在rax寄存器中
         ast::Expr::Unary { oper: _, expr } => {
             gen_expr(*expr);
             println!(" neg %rax");
         }
+        // 将right的求值结果先写入rax寄存器
+        // 再将rax中的值压栈
+        // 然后将left的求值结果写入rax
+        // 然后将栈中的值(也就是right的求值结果)弹入rdi寄存器
+        // 然后对rdi(right的值)和rax(left的值)做二元计算
         ast::Expr::Binary { left, oper, right } => {
             gen_expr(*right);
             push();
