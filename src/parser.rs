@@ -76,7 +76,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
             let right = Box::new(self.multiplicative_expr()?);
             let pos = expr.pos.grow(right.pos);
             expr = position::WithPos::new(
-                ast::Expr::Oper {
+                ast::Expr::Binary {
                     left: Box::new(expr),
                     oper,
                     right,
@@ -89,7 +89,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
 
     /// mul = primary ("*" primary | "/" primary)*
     fn multiplicative_expr(&mut self) -> Result<ast::ExprWithPos> {
-        let mut expr = self.primary_expr()?;
+        let mut expr = self.unary_expr()?;
         loop {
             let oper = match self.peek_token() {
                 Ok(&token::Tok::Star) => {
@@ -102,10 +102,10 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 }
                 _ => break,
             };
-            let right = Box::new(self.primary_expr()?);
+            let right = Box::new(self.unary_expr()?);
             let pos = expr.pos.grow(right.pos);
             expr = position::WithPos::new(
-                ast::Expr::Oper {
+                ast::Expr::Binary {
                     left: Box::new(expr),
                     oper,
                     right,
@@ -114,6 +114,32 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
             );
         }
         Ok(expr)
+    }
+
+    /// unary = ("+" | "-") unary
+    ///       | primary
+    fn unary_expr(&mut self) -> Result<ast::ExprWithPos> {
+        match self.peek()?.token {
+            token::Tok::Plus => {
+                use token::Tok::Plus;
+                eat!(self, Plus);
+                self.unary_expr()
+            }
+            token::Tok::Minus => {
+                use token::Tok::Minus;
+                let pos = eat!(self, Minus);
+                let expr = self.unary_expr()?;
+                let pos = pos.grow(expr.pos);
+                Ok(position::WithPos::new(
+                    ast::Expr::Unary {
+                        oper: position::WithPos::new(ast::Operator::Minus, pos),
+                        expr: Box::new(expr),
+                    },
+                    pos,
+                ))
+            }
+            _ => self.primary_expr()
+        }
     }
 
     // primary = "(" expr ")" | num

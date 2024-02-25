@@ -5,10 +5,14 @@ pub enum Expr {
     Int {
         value: i64,
     },
-    Oper {
+    Binary {
         left: Box<ExprWithPos>,
         oper: OperatorWithPos,
         right: Box<ExprWithPos>,
+    },
+    Unary {
+        oper: OperatorWithPos,
+        expr: Box<ExprWithPos>,
     },
 }
 

@@ -21,23 +21,26 @@ fn main() {
 
     let lexer = lexer::Lexer::new(args[1].as_bytes(), 0);
 
-    let mut binding = symbol::Symbols::new(Rc::new(symbol::Strings::new()));
-    let mut parser = parser::Parser::new(lexer, &mut binding);
+    let mut symbols = symbol::Symbols::new(Rc::new(symbol::Strings::new()));
+    let mut parser = parser::Parser::new(lexer, &mut symbols);
 
     let ast = parser.parse();
 
-    match ast {
-        Ok(node) => {
-            println!("  .globl main");
-            println!("main:");
-
-            codegen::gen_expr(node);
-            println!("  ret");
-
-            unsafe {
-                assert!(codegen::DEPTH == 0);
-            }
+    if let Err(error) = ast {
+        let terminal = terminal::Terminal::new();
+        if let Err(error) = error.show(&symbols, &terminal) {
+            eprintln!("Error printing errors: {}", error);
         }
-        Err(_) => panic!("compiler error"),
+    } else {
+        let node = ast.unwrap();
+        println!("  .globl main");
+        println!("main:");
+
+        codegen::gen_expr(node);
+        println!("  ret");
+
+        unsafe {
+            assert!(codegen::DEPTH == 0);
+        }
     }
 }

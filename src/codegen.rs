@@ -27,7 +27,11 @@ fn pop(arg: String) {
 pub fn gen_expr(node: ast::ExprWithPos) {
     match node.node {
         ast::Expr::Int { value } => println!("  mov ${}, %rax", value),
-        ast::Expr::Oper { left, oper, right } => {
+        ast::Expr::Unary { oper: _, expr } => {
+            gen_expr(*expr);
+            println!(" neg %rax");
+        }
+        ast::Expr::Binary { left, oper, right } => {
             gen_expr(*right);
             push();
             gen_expr(*left);
