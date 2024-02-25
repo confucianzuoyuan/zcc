@@ -1,13 +1,17 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
-use std::io::BufReader;
+use std::{io::BufReader, rc::Rc};
 
-mod lexer;
-mod token;
-mod position;
-mod terminal;
+mod ast;
+mod codegen;
 mod error;
+mod lexer;
+mod parser;
+mod position;
+mod symbol;
+mod terminal;
+mod token;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -15,27 +19,25 @@ fn main() {
         panic!("{}: invalid number of arguments\n", args[0]);
     }
 
-    let mut lexer = lexer::Lexer::new(args[1].as_bytes(), 0);
+    let lexer = lexer::Lexer::new(args[1].as_bytes(), 0);
 
-    println!("  .globl main");
-    println!("main:");
+    let mut binding = symbol::Symbols::new(Rc::new(symbol::Strings::new()));
+    let mut parser = parser::Parser::new(lexer, &mut binding);
 
-    println!("  mov ${}, %rax", lexer.token().as_ref().unwrap().token);
+    let ast = parser.parse();
 
-    loop {
-        let tok = lexer.token();
-        let tok = &tok.as_ref().unwrap().token;
-        if *tok == token::Tok::EndOfFile {
-            break;
+    match ast {
+        Ok(node) => {
+            println!("  .globl main");
+            println!("main:");
+
+            codegen::gen_expr(node);
+            println!("  ret");
+
+            unsafe {
+                assert!(codegen::DEPTH == 0);
+            }
         }
-        if *tok == token::Tok::Plus {
-            println!("  add ${}, %rax", lexer.token().as_ref().unwrap().token);
-            continue;
-        }
-        if *tok == token::Tok::Minus {
-            println!("  sub ${}, %rax", lexer.token().as_ref().unwrap().token);
-            continue;
-        }
+        Err(_) => panic!("compiler error"),
     }
-    println!("  ret");
 }

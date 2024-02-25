@@ -1,51 +1,18 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
-use crate::terminal;
-
-pub type Symbol = i64;
-
-#[derive(Debug)]
-pub struct Strings {
-    next_symbol: RefCell<Symbol>,
-    strings: RefCell<HashMap<Symbol, String>>,
-}
-
-impl Strings {
-    pub fn new() -> Self {
-        Self {
-            next_symbol: RefCell::new(0),
-            strings: RefCell::new(HashMap::new()),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Symbols {
-    strings: Rc<Strings>,
-}
-
-impl Symbols {
-    pub fn new(strings: Rc<Strings>) -> Self {
-        let symbols = Self { strings };
-        symbols
-    }
-
-    pub fn name(&self, symbol: Symbol) -> String {
-        self.strings.strings.borrow()[&symbol].to_string()
-    }
-}
+use crate::{symbol, terminal};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Pos {
     pub byte: u64,
     pub column: u32,
-    pub file: Symbol,
+    pub file: symbol::Symbol,
     pub length: usize,
     pub line: u32,
 }
 
 impl Pos {
-    pub fn new(line: u32, column: u32, byte: u64, file: Symbol, length: usize) -> Self {
+    pub fn new(line: u32, column: u32, byte: u64, file: symbol::Symbol, length: usize) -> Self {
         Pos {
             byte,
             column,
@@ -69,7 +36,7 @@ impl Pos {
         }
     }
 
-    pub fn show(&self, symbols: &Symbols, terminal: &terminal::Terminal) {
+    pub fn show(&self, symbols: &symbol::Symbols, terminal: &terminal::Terminal) {
         let filename = symbols.name(self.file);
         eprintln!(
             "   {}{}-->{}{} {}:{}:{}",
@@ -87,5 +54,30 @@ impl Pos {
 impl Display for Pos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}:", self.line, self.column)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WithPos<T> {
+    pub node: T,
+    pub pos: Pos,
+}
+
+impl<T> WithPos<T> {
+    pub fn new(node: T, pos: Pos) -> Self {
+        Self { node, pos }
+    }
+
+    pub fn dummy(node: T) -> Self {
+        Self {
+            node,
+            pos: Pos::dummy(),
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for WithPos<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node
     }
 }

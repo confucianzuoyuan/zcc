@@ -6,6 +6,10 @@ use crate::position;
 pub enum Tok {
     Plus,
     Minus,
+    Star,
+    Slash,
+    OpenParen,
+    CloseParen,
     Number(i64),
     EndOfFile,
 }
@@ -22,6 +26,10 @@ impl Display for Tok {
             let string = match *self {
                 Tok::Plus => "+",
                 Tok::Minus => "-",
+                Tok::Slash => "/",
+                Tok::Star => "*",
+                Tok::OpenParen => "(",
+                Tok::CloseParen => ")",
                 Tok::Number(num) => return num.to_string(),
                 Tok::EndOfFile => "<eof>",
             };

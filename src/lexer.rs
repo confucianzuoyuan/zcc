@@ -1,4 +1,4 @@
-use crate::{error, position, token};
+use crate::{error, position, symbol, token};
 
 use std::io::{Bytes, Read};
 use std::iter::Peekable;
@@ -12,7 +12,7 @@ pub struct Lexer<R: Read> {
 }
 
 impl<R: Read> Lexer<R> {
-    pub fn new(reader: R, filename: position::Symbol) -> Self {
+    pub fn new(reader: R, filename: symbol::Symbol) -> Self {
         Lexer {
             bytes_iter: reader.bytes().peekable(),
             pos: position::Pos::new(1, 1, 0, filename, 0),
@@ -57,9 +57,10 @@ impl<R: Read> Lexer<R> {
             buffer.push(ch);
             self.advance()?;
             match self.current_char() {
-                Ok(c) => ch = c,
+                Ok(_) => (),
                 Err(_) => break,
-            }
+            };
+            ch = self.current_char()?;
         }
         Ok(buffer)
     }
@@ -110,6 +111,10 @@ impl<R: Read> Lexer<R> {
                 }
                 b'+' => self.simple_token(token::Tok::Plus),
                 b'-' => self.simple_token(token::Tok::Minus),
+                b'*' => self.simple_token(token::Tok::Star),
+                b'/' => self.simple_token(token::Tok::Slash),
+                b'(' => self.simple_token(token::Tok::OpenParen),
+                b')' => self.simple_token(token::Tok::CloseParen),
                 _ => {
                     let mut pos = self.current_pos();
                     pos.length = 1;

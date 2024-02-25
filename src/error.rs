@@ -1,4 +1,4 @@
-use crate::position;
+use crate::{position, token};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -6,7 +6,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     Eof,
     Msg(String),
-    UnknownToken { pos: position::Pos, start: char },
+    UnknownToken {
+        pos: position::Pos,
+        start: char,
+    },
+    UnexpectedToken {
+        expected: String,
+        pos: position::Pos,
+        unexpected: token::Tok,
+    },
 }
 
 impl From<std::io::Error> for Error {

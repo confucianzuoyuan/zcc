@@ -1,5 +1,5 @@
 zcc:
-	cargo build
+	cargo build --release
 
 test: zcc
 	bash test.sh
