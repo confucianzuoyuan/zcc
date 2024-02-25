@@ -138,7 +138,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                     pos,
                 ))
             }
-            _ => self.primary_expr()
+            _ => self.primary_expr(),
         }
     }
 
@@ -149,6 +149,75 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
             token::Tok::OpenParen => self.seq_exp(),
             _ => Err(self.unexpected_token("integer literal, (")?),
         }
+    }
+
+    /// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+    fn relational_expr(&mut self) -> Result<ast::ExprWithPos> {
+        let mut expr = self.additive_expr()?;
+        loop {
+            let oper = match self.peek_token() {
+                Ok(&token::Tok::LesserThan) => {
+                    use token::Tok::LesserThan;
+                    position::WithPos::new(ast::Operator::LesserThan, eat!(self, LesserThan))
+                }
+                Ok(&token::Tok::LesserOrEqual) => {
+                    use token::Tok::LesserOrEqual;
+                    position::WithPos::new(ast::Operator::LesserOrEqual, eat!(self, LesserOrEqual))
+                }
+                Ok(&token::Tok::GreaterThan) => {
+                    use token::Tok::GreaterThan;
+                    position::WithPos::new(ast::Operator::GreaterThan, eat!(self, GreaterThan))
+                }
+                Ok(&token::Tok::GreaterOrEqual) => {
+                    use token::Tok::GreaterOrEqual;
+                    position::WithPos::new(
+                        ast::Operator::GreaterOrEqual,
+                        eat!(self, GreaterOrEqual),
+                    )
+                }
+                _ => break,
+            };
+            let right = Box::new(self.additive_expr()?);
+            let pos = expr.pos.grow(right.pos);
+            expr = position::WithPos::new(
+                ast::Expr::Binary {
+                    left: Box::new(expr),
+                    oper,
+                    right,
+                },
+                pos,
+            );
+        }
+        Ok(expr)
+    }
+
+    /// equality = relational ("==" relational | "!=" relational)*
+    fn equality_expr(&mut self) -> Result<ast::ExprWithPos> {
+        let mut expr = self.relational_expr()?;
+        loop {
+            let oper = match self.peek_token() {
+                Ok(&token::Tok::DoubleEqual) => {
+                    use token::Tok::DoubleEqual;
+                    position::WithPos::new(ast::Operator::Equal, eat!(self, DoubleEqual))
+                }
+                Ok(&token::Tok::BangEqual) => {
+                    use token::Tok::BangEqual;
+                    position::WithPos::new(ast::Operator::NotEqual, eat!(self, BangEqual))
+                }
+                _ => break,
+            };
+            let right = Box::new(self.relational_expr()?);
+            let pos = expr.pos.grow(right.pos);
+            expr = position::WithPos::new(
+                ast::Expr::Binary {
+                    left: Box::new(expr),
+                    oper,
+                    right,
+                },
+                pos,
+            );
+        }
+        Ok(expr)
     }
 
     fn seq_exp(&mut self) -> Result<ast::ExprWithPos> {
@@ -168,7 +237,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     }
 
     fn expr(&mut self) -> Result<ast::ExprWithPos> {
-        self.additive_expr()
+        self.equality_expr()
     }
 
     fn peek(&mut self) -> std::result::Result<&token::Token, &error::Error> {

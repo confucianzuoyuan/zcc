@@ -101,6 +101,61 @@ impl<R: Read> Lexer<R> {
         Ok(token::Token { pos, token })
     }
 
+    fn two_char_token(
+        &mut self,
+        tokens: Vec<(char, token::Tok)>,
+        default: token::Tok,
+    ) -> Result<token::Token> {
+        self.save_start();
+        self.advance()?;
+        let token = match self.bytes_iter.peek() {
+            Some(&Ok(byte)) => {
+                let mut token = None;
+                let next_char = byte as char;
+                for (ch, tok) in tokens {
+                    if ch == next_char {
+                        token = Some(tok);
+                    }
+                }
+                token
+            }
+            _ => None,
+        };
+        let (token, len) = if let Some(token) = token {
+            self.advance()?;
+            (token, 2)
+        } else {
+            (default, 1)
+        };
+        self.make_token(token, len)
+    }
+
+    /// "<" or "<="
+    fn lesser_or_lesser_euqal(&mut self) -> Result<token::Token> {
+        self.two_char_token(
+            vec![('=', token::Tok::LesserOrEqual)],
+            token::Tok::LesserThan,
+        )
+    }
+
+    /// ">" or ">="
+    fn greater_or_greater_euqal(&mut self) -> Result<token::Token> {
+        self.two_char_token(
+            vec![('=', token::Tok::GreaterOrEqual)],
+            token::Tok::GreaterThan,
+        )
+    }
+
+    /// "==" or "="
+    fn equal_or_double_equal(&mut self) -> Result<token::Token> {
+        self.two_char_token(vec![('=', token::Tok::DoubleEqual)], token::Tok::Equal)
+    }
+
+    /// "!=" or "!"
+    fn bang_or_bang_equal(&mut self) -> Result<token::Token> {
+        self.two_char_token(vec![('=', token::Tok::BangEqual)], token::Tok::Bang)
+    }
+
     pub fn token(&mut self) -> Result<token::Token> {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
@@ -115,6 +170,10 @@ impl<R: Read> Lexer<R> {
                 b'/' => self.simple_token(token::Tok::Slash),
                 b'(' => self.simple_token(token::Tok::OpenParen),
                 b')' => self.simple_token(token::Tok::CloseParen),
+                b'<' => self.lesser_or_lesser_euqal(),
+                b'>' => self.greater_or_greater_euqal(),
+                b'!' => self.bang_or_bang_equal(),
+                b'=' => self.equal_or_double_equal(),
                 _ => {
                     let mut pos = self.current_pos();
                     pos.length = 1;

@@ -52,6 +52,36 @@ pub fn gen_expr(node: ast::ExprWithPos) {
                     println!("  cqo");
                     println!("  idiv %rdi");
                 }
+                ast::Operator::Equal => {
+                    println!("  cmp %rdi, %rax");
+                    println!("  sete %al");
+                    println!("  movzb %al, %rax");
+                }
+                ast::Operator::NotEqual => {
+                    println!("  cmp %rdi, %rax");
+                    println!("  setne %al");
+                    println!("  movzb %al, %rax");
+                }
+                ast::Operator::LesserThan => {
+                    println!("  cmp %rdi, %rax");
+                    println!("  setl %al");
+                    println!("  movzb %al, %rax");
+                }
+                ast::Operator::LesserOrEqual => {
+                    println!("  cmp %rdi, %rax");
+                    println!("  setle %al");
+                    println!("  movzb %al, %rax");
+                }
+                ast::Operator::GreaterThan => {
+                    println!("  cmp %rdi, %rax");
+                    println!("  setg %al");
+                    println!("  movzb %al, %rax");
+                }
+                ast::Operator::GreaterOrEqual => {
+                    println!("  cmp %rdi, %rax");
+                    println!("  setge %al");
+                    println!("  movzb %al, %rax");
+                }
             }
         }
     }

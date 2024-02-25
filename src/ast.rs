@@ -24,6 +24,12 @@ pub enum Operator {
     Minus,
     Plus,
     Times,
+    LesserThan,
+    LesserOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
+    Equal,
+    NotEqual,
 }
 
 pub type OperatorWithPos = position::WithPos<Operator>;
