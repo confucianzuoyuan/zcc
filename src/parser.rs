@@ -1,4 +1,35 @@
+use std::{collections::HashMap, sync::Mutex};
+
 use crate::{ast, error, lexer, position, symbol, token};
+use lazy_static::lazy_static;
+
+lazy_static! {
+    pub static ref VAR_OFFSET_TABLE: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
+}
+
+pub fn get_vars() -> Vec<String> {
+    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
+    let mut result = vec![];
+    for k in _map.keys() {
+        result.push(k.clone());
+    }
+    result
+}
+
+pub fn add_var_offset(name: String, offset: i64) {
+    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
+    _map.insert(name, offset);
+}
+
+pub fn get_var_offset(name: String) -> i64 {
+    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
+    *_map.get(&name).unwrap()
+}
+
+fn is_var_exist(name: String) -> bool {
+    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
+    _map.get(&name).is_some()
+}
 
 /// 接收多参数在Rust中实现的方式就是使用宏
 macro_rules! eat {
@@ -147,6 +178,18 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         match self.peek()?.token {
             token::Tok::Number(_) => self.int_lit(),
             token::Tok::OpenParen => self.seq_exp(),
+            token::Tok::Ident(_) => {
+                let name;
+                use token::Tok::Ident;
+                let pos = eat!(self, Ident, name);
+                if is_var_exist(name.clone()) == false {
+                    add_var_offset(name.clone(), 0);
+                }
+                Ok(ast::ExprWithPos::new(
+                    ast::Expr::Var(ast::VarObj { name, offset: 0 }),
+                    pos,
+                ))
+            }
             _ => Err(self.unexpected_token("integer literal, (")?),
         }
     }
@@ -237,7 +280,26 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     }
 
     fn expr(&mut self) -> Result<ast::ExprWithPos> {
-        self.equality_expr()
+        self.assign_expr()
+    }
+
+    /// assign = equality ("=" assign)?
+    fn assign_expr(&mut self) -> Result<ast::ExprWithPos> {
+        let lvalue = self.equality_expr()?;
+        match self.peek()?.token {
+            token::Tok::Equal => {
+                use token::Tok::Equal;
+                eat!(self, Equal);
+                Ok(position::WithPos::new(
+                    ast::Expr::Assign {
+                        lvalue: Box::new(lvalue.clone()),
+                        rvalue: Box::new(self.assign_expr()?),
+                    },
+                    lvalue.pos,
+                ))
+            }
+            _ => Ok(lvalue),
+        }
     }
 
     /// expr-stmt = expr ";"
@@ -285,7 +347,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         })
     }
 
-    pub fn parse(&mut self) -> Result<Vec<ast::StmtWithPos>> {
+    pub fn parse(&mut self) -> Result<ast::Function> {
         let mut stmts = vec![];
         loop {
             if self.peek_token()? == &token::Tok::EndOfFile {
@@ -298,7 +360,10 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 token: token::Tok::EndOfFile,
                 ..
             })
-            | Err(error::Error::Eof) => Ok(stmts),
+            | Err(error::Error::Eof) => Ok(ast::Function {
+                body: stmts,
+                stack_size: 0,
+            }),
             _ => Err(self.unexpected_token("end of file")?),
         }
     }

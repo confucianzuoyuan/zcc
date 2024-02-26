@@ -156,9 +156,19 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', token::Tok::BangEqual)], token::Tok::Bang)
     }
 
+    fn identifier(&mut self) -> Result<token::Token> {
+        let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_')?;
+        let len = ident.len();
+        let token = match ident.as_str() {
+            _ => token::Tok::Ident(ident),
+        };
+        self.make_token(token, len)
+    }
+
     pub fn token(&mut self) -> Result<token::Token> {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
+                b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
                 b'0'..=b'9' => self.integer(),
                 b' ' | b'\n' | b'\t' => {
                     self.advance()?;

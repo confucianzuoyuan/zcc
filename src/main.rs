@@ -33,16 +33,6 @@ fn main() {
         }
     } else {
         let node = ast.unwrap();
-        println!("  .globl main");
-        println!("main:");
-
-        for n in node {
-            codegen::gen_stmt(n);
-        }
-        println!("  ret");
-
-        unsafe {
-            assert!(codegen::DEPTH == 0);
-        }
+        codegen::codegen(node);
     }
 }
