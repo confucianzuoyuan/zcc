@@ -130,6 +130,10 @@ fn assign_lvar_offsets(prog: &mut ast::Function) {
 pub fn gen_stmt(node: ast::StmtWithPos) {
     match node.node {
         ast::Stmt::Expr(e) => gen_expr(e),
+        ast::Stmt::Return(e) => {
+            gen_expr(e);
+            println!("  jmp .L.return");
+        }
     }
 }
 
@@ -150,6 +154,8 @@ pub fn codegen(mut prog: ast::Function) {
             assert!(DEPTH == 0);
         }
     }
+
+    println!(".L.return:");
 
     // Epilogue
     println!("  mov %rbp, %rsp");

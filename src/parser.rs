@@ -314,8 +314,23 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         Ok(stmt)
     }
 
+    /// stmt = "return" expr ";"
+    ///      | expr-stmt
     fn stmt(&mut self) -> Result<ast::StmtWithPos> {
-        self.expr_stmt()
+        match self.peek()?.token {
+            token::Tok::Return => {
+                use token::Tok::{Return, Semicolon};
+                eat!(self, Return);
+                let e = self.expr()?;
+                eat!(self, Semicolon);
+                let stmt = ast::StmtWithPos {
+                    node: ast::Stmt::Return(e.clone()),
+                    pos: e.pos,
+                };
+                Ok(stmt)
+            }
+            _ => self.expr_stmt(),
+        }
     }
 
     fn peek(&mut self) -> std::result::Result<&token::Token, &error::Error> {

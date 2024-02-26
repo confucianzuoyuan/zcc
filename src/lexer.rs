@@ -160,6 +160,7 @@ impl<R: Read> Lexer<R> {
         let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_')?;
         let len = ident.len();
         let token = match ident.as_str() {
+            "return" => token::Tok::Return,
             _ => token::Tok::Ident(ident),
         };
         self.make_token(token, len)

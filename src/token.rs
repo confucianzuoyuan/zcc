@@ -21,6 +21,7 @@ pub enum Tok {
     Semicolon,
     Number(i64),
     Ident(String),
+    Return,
     EndOfFile,
 }
 
@@ -49,6 +50,7 @@ impl Display for Tok {
                 Tok::OpenParen => "(",
                 Tok::CloseParen => ")",
                 Tok::Semicolon => ";",
+                Tok::Return => "return",
                 Tok::Number(num) => return num.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::EndOfFile => "<eof>",

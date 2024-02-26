@@ -26,6 +26,7 @@ pub type ExprWithPos = position::WithPos<Expr>;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Expr(ExprWithPos),
+    Return(ExprWithPos),
 }
 
 pub type StmtWithPos = position::WithPos<Stmt>;
