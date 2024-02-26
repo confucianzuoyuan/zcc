@@ -186,6 +186,8 @@ impl<R: Read> Lexer<R> {
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_double_equal(),
                 b';' => self.simple_token(token::Tok::Semicolon),
+                b'{' => self.simple_token(token::Tok::OpenBrace),
+                b'}' => self.simple_token(token::Tok::CloseBrace),
                 _ => {
                     let mut pos = self.current_pos();
                     pos.length = 1;

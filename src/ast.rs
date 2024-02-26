@@ -27,6 +27,7 @@ pub type ExprWithPos = position::WithPos<Expr>;
 pub enum Stmt {
     Expr(ExprWithPos),
     Return(ExprWithPos),
+    Block(Vec<StmtWithPos>),
 }
 
 pub type StmtWithPos = position::WithPos<Stmt>;
@@ -55,15 +56,6 @@ pub struct VarObj {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
-    pub body: Vec<StmtWithPos>,
+    pub body: Box<StmtWithPos>,
     pub stack_size: i64,
-}
-
-impl Function {
-    pub fn new() -> Self {
-        Self {
-            body: vec![],
-            stack_size: 0,
-        }
-    }
 }

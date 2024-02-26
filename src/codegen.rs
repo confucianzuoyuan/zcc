@@ -38,7 +38,7 @@ fn gen_addr(node: ast::ExprWithPos) {
         ast::Expr::Var(v) => {
             let offset = parser::get_var_offset(v.name);
             println!("  lea {}(%rbp), %rax", offset);
-        },
+        }
         _ => panic!("not an lvalue"),
     }
 }
@@ -134,6 +134,11 @@ pub fn gen_stmt(node: ast::StmtWithPos) {
             gen_expr(e);
             println!("  jmp .L.return");
         }
+        ast::Stmt::Block(block) => {
+            for stmt in block {
+                gen_stmt(stmt);
+            }
+        }
     }
 }
 
@@ -148,11 +153,9 @@ pub fn codegen(mut prog: ast::Function) {
     println!("  mov %rsp, %rbp");
     println!("  sub ${}, %rsp", prog.stack_size);
 
-    for n in prog.body {
-        gen_stmt(n);
-        unsafe {
-            assert!(DEPTH == 0);
-        }
+    gen_stmt(*prog.body);
+    unsafe {
+        assert!(DEPTH == 0);
     }
 
     println!(".L.return:");

@@ -314,7 +314,28 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         Ok(stmt)
     }
 
+    /// compount-stmt = stmt* "}"
+    fn compount_stmt(&mut self) -> Result<ast::StmtWithPos> {
+        use token::Tok::OpenBrace;
+        eat!(self, OpenBrace);
+        let mut block = vec![];
+        loop {
+            if self.peek()?.token == token::Tok::CloseBrace {
+                break;
+            }
+            block.push(self.stmt()?);
+        }
+        use token::Tok::CloseBrace;
+        let pos = eat!(self, CloseBrace);
+        let stmt = ast::StmtWithPos {
+            node: ast::Stmt::Block(block),
+            pos: pos,
+        };
+        Ok(stmt)
+    }
+
     /// stmt = "return" expr ";"
+    ///      | "{" compount-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<ast::StmtWithPos> {
         match self.peek()?.token {
@@ -329,6 +350,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 };
                 Ok(stmt)
             }
+            token::Tok::OpenBrace => self.compount_stmt(),
             _ => self.expr_stmt(),
         }
     }
@@ -363,20 +385,14 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     }
 
     pub fn parse(&mut self) -> Result<ast::Function> {
-        let mut stmts = vec![];
-        loop {
-            if self.peek_token()? == &token::Tok::EndOfFile {
-                break;
-            }
-            stmts.push(self.stmt()?);
-        }
+        let body = self.stmt()?;
         match self.token() {
             Ok(token::Token {
                 token: token::Tok::EndOfFile,
                 ..
             })
             | Err(error::Error::Eof) => Ok(ast::Function {
-                body: stmts,
+                body: Box::new(body),
                 stack_size: 0,
             }),
             _ => Err(self.unexpected_token("end of file")?),
