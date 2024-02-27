@@ -302,16 +302,30 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         }
     }
 
-    /// expr-stmt = expr ";"
+    /// expr-stmt = expr? ";"
     fn expr_stmt(&mut self) -> Result<ast::StmtWithPos> {
-        let expr = self.expr()?;
-        use token::Tok::Semicolon;
-        eat!(self, Semicolon);
-        let stmt = ast::StmtWithPos {
-            node: ast::Stmt::Expr(expr.clone()),
-            pos: expr.pos,
-        };
-        Ok(stmt)
+        match self.peek()?.token {
+            token::Tok::Semicolon => {
+                let pos = self.peek()?.pos;
+                use token::Tok::Semicolon;
+                eat!(self, Semicolon);
+                let stmt = ast::StmtWithPos {
+                    node: ast::Stmt::Null,
+                    pos,
+                };
+                Ok(stmt)
+            }
+            _ => {
+                let expr = self.expr()?;
+                use token::Tok::Semicolon;
+                eat!(self, Semicolon);
+                let stmt = ast::StmtWithPos {
+                    node: ast::Stmt::Expr(expr.clone()),
+                    pos: expr.pos,
+                };
+                Ok(stmt)
+            }
+        }
     }
 
     /// compount-stmt = stmt* "}"

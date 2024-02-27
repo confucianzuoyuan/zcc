@@ -139,6 +139,7 @@ pub fn gen_stmt(node: ast::StmtWithPos) {
                 gen_stmt(stmt);
             }
         }
+        ast::Stmt::Null => (),
     }
 }
 

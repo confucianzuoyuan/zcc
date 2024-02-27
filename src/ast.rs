@@ -28,6 +28,7 @@ pub enum Stmt {
     Expr(ExprWithPos),
     Return(ExprWithPos),
     Block(Vec<StmtWithPos>),
+    Null,
 }
 
 pub type StmtWithPos = position::WithPos<Stmt>;
