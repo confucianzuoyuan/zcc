@@ -19,6 +19,8 @@ pub enum Expr {
         rvalue: Box<ExprWithPos>,
     },
     Var(VarObj),
+    Addr(Box<ExprWithPos>),
+    Deref(Box<ExprWithPos>),
 }
 
 pub type ExprWithPos = position::WithPos<Expr>;

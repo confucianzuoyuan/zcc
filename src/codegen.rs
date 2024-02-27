@@ -46,7 +46,10 @@ fn gen_addr(node: ast::ExprWithPos) {
             let offset = parser::get_var_offset(v.name);
             println!("  lea {}(%rbp), %rax", offset);
         }
-        _ => panic!("not an lvalue"),
+        ast::Expr::Deref(e) => {
+            gen_expr(*e);
+        }
+        _ => panic!("not an lvalue: {:?}", node),
     }
 }
 
@@ -120,6 +123,13 @@ pub fn gen_expr(node: ast::ExprWithPos) {
         ast::Expr::Var(_) => {
             gen_addr(node);
             println!("  mov (%rax), %rax");
+        }
+        ast::Expr::Deref(e) => {
+            gen_expr(*e);
+            println!("  mov (%rax), %rax");
+        }
+        ast::Expr::Addr(e) => {
+            gen_addr(*e);
         }
     }
 }

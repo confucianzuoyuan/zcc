@@ -7,18 +7,24 @@ lazy_static! {
     pub static ref VAR_OFFSET_TABLE: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
 }
 
+pub static mut VAR_VEC: Vec<String> = vec![];
+
 pub fn get_vars() -> Vec<String> {
-    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
     let mut result = vec![];
-    for k in _map.keys() {
-        result.push(k.clone());
+    unsafe {
+        for k in &VAR_VEC {
+            result.push(k.clone());
+        }
     }
     result
 }
 
 pub fn add_var_offset(name: String, offset: i64) {
     let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
-    _map.insert(name, offset);
+    _map.insert(name.clone(), offset);
+    unsafe {
+        VAR_VEC.insert(0, name);
+    }
 }
 
 pub fn get_var_offset(name: String) -> i64 {
@@ -147,7 +153,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         Ok(expr)
     }
 
-    /// unary = ("+" | "-") unary
+    /// unary = ("+" | "-" | "*" | "&") unary
     ///       | primary
     fn unary_expr(&mut self) -> Result<ast::ExprWithPos> {
         match self.peek()?.token {
@@ -166,6 +172,21 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                         oper: position::WithPos::new(ast::Operator::Minus, pos),
                         expr: Box::new(expr),
                     },
+                    pos,
+                ))
+            }
+            token::Tok::Ampersand => {
+                use token::Tok::Ampersand;
+                let pos = eat!(self, Ampersand);
+                let expr = self.unary_expr()?;
+                Ok(position::WithPos::new(ast::Expr::Addr(Box::new(expr)), pos))
+            }
+            token::Tok::Star => {
+                use token::Tok::Star;
+                let pos = eat!(self, Star);
+                let expr = self.unary_expr()?;
+                Ok(position::WithPos::new(
+                    ast::Expr::Deref(Box::new(expr)),
                     pos,
                 ))
             }
@@ -437,7 +458,10 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 eat!(self, CloseParen);
                 let then = self.stmt()?;
                 let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::While { cond: Box::new(cond), then: Box::new(then) },
+                    node: ast::Stmt::While {
+                        cond: Box::new(cond),
+                        then: Box::new(then),
+                    },
                     pos,
                 };
                 Ok(stmt)

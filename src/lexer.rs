@@ -192,6 +192,7 @@ impl<R: Read> Lexer<R> {
                 b';' => self.simple_token(token::Tok::Semicolon),
                 b'{' => self.simple_token(token::Tok::OpenBrace),
                 b'}' => self.simple_token(token::Tok::CloseBrace),
+                b'&' => self.simple_token(token::Tok::Ampersand),
                 _ => {
                     let mut pos = self.current_pos();
                     pos.length = 1;
