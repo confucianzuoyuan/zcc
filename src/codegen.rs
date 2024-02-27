@@ -160,6 +160,27 @@ pub fn gen_stmt(node: ast::StmtWithPos) {
             }
             println!(".L.end.{}:", c);
         }
+        ast::Stmt::For {
+            cond,
+            then,
+            init,
+            inc,
+        } => {
+            let c = count();
+            gen_stmt(*init);
+            println!(".L.begin.{}:", c);
+            if let Some(cond) = *cond {
+                gen_expr(cond);
+                println!("  cmp $0, %rax");
+                println!("  je .L.end.{}", c);
+            }
+            gen_stmt(*then);
+            if let Some(inc) = *inc {
+                gen_expr(inc);
+            }
+            println!("  jmp .L.begin.{}", c);
+            println!(".L.end.{}:", c);
+        }
     }
 }
 

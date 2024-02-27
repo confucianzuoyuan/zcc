@@ -350,6 +350,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
 
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
+    ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
     ///      | "{" compount-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<ast::StmtWithPos> {
@@ -388,6 +389,38 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                         cond: Box::new(cond),
                         then: Box::new(then),
                         els: Box::new(els),
+                    },
+                    pos,
+                };
+                Ok(stmt)
+            }
+            token::Tok::For => {
+                use token::Tok::For;
+                let pos = eat!(self, For);
+                use token::Tok::OpenParen;
+                eat!(self, OpenParen);
+                let init = self.expr_stmt()?;
+                let cond = if self.peek()?.token != token::Tok::Semicolon {
+                    Some(self.expr()?)
+                } else {
+                    None
+                };
+                use token::Tok::Semicolon;
+                eat!(self, Semicolon);
+                let inc = if self.peek()?.token != token::Tok::CloseParen {
+                    Some(self.expr()?)
+                } else {
+                    None
+                };
+                use token::Tok::CloseParen;
+                eat!(self, CloseParen);
+                let then = self.stmt()?;
+                let stmt = ast::StmtWithPos {
+                    node: ast::Stmt::For {
+                        cond: Box::new(cond),
+                        then: Box::new(then),
+                        init: Box::new(init),
+                        inc: Box::new(inc),
                     },
                     pos,
                 };

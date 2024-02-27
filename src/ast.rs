@@ -34,6 +34,12 @@ pub enum Stmt {
         then: Box<StmtWithPos>,
         els: Box<Option<StmtWithPos>>,
     },
+    For {
+        cond: Box<Option<ExprWithPos>>,
+        then: Box<StmtWithPos>,
+        init: Box<StmtWithPos>,
+        inc: Box<Option<ExprWithPos>>,
+    },
 }
 
 pub type StmtWithPos = position::WithPos<Stmt>;

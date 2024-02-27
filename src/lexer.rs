@@ -163,6 +163,7 @@ impl<R: Read> Lexer<R> {
             "return" => token::Tok::Return,
             "if" => token::Tok::If,
             "else" => token::Tok::Else,
+            "for" => token::Tok::For,
             _ => token::Tok::Ident(ident),
         };
         self.make_token(token, len)

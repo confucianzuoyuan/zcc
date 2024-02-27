@@ -26,6 +26,7 @@ pub enum Tok {
     Return,
     If,
     Else,
+    For,
     EndOfFile,
 }
 
@@ -59,6 +60,7 @@ impl Display for Tok {
                 Tok::Return => "return",
                 Tok::If => "if",
                 Tok::Else => "else",
+                Tok::For => "for",
                 Tok::Number(num) => return num.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::EndOfFile => "<eof>",
