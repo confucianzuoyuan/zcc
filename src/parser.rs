@@ -349,6 +349,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     }
 
     /// stmt = "return" expr ";"
+    ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "{" compount-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<ast::StmtWithPos> {
@@ -365,6 +366,33 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 Ok(stmt)
             }
             token::Tok::OpenBrace => self.compount_stmt(),
+            token::Tok::If => {
+                use token::Tok::If;
+                let pos = eat!(self, If);
+                use token::Tok::OpenParen;
+                eat!(self, OpenParen);
+                let cond = self.expr()?;
+                use token::Tok::CloseParen;
+                eat!(self, CloseParen);
+                let then = self.stmt()?;
+                let els;
+                if self.peek()?.token == token::Tok::Else {
+                    use token::Tok::Else;
+                    eat!(self, Else);
+                    els = Some(self.stmt()?);
+                } else {
+                    els = None;
+                }
+                let stmt = ast::StmtWithPos {
+                    node: ast::Stmt::If {
+                        cond: Box::new(cond),
+                        then: Box::new(then),
+                        els: Box::new(els),
+                    },
+                    pos,
+                };
+                Ok(stmt)
+            }
             _ => self.expr_stmt(),
         }
     }

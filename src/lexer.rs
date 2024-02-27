@@ -161,6 +161,8 @@ impl<R: Read> Lexer<R> {
         let len = ident.len();
         let token = match ident.as_str() {
             "return" => token::Tok::Return,
+            "if" => token::Tok::If,
+            "else" => token::Tok::Else,
             _ => token::Tok::Ident(ident),
         };
         self.make_token(token, len)

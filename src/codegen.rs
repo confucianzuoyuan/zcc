@@ -3,7 +3,14 @@ use std::borrow::BorrowMut;
 use crate::{ast, parser};
 
 pub static mut DEPTH: i64 = 0;
-pub static mut STACK_SIZE: i64 = 0;
+pub static mut COUNT: i64 = 0;
+
+fn count() -> i64 {
+    unsafe {
+        COUNT += 1;
+        COUNT
+    }
+}
 
 fn depth_inc() {
     unsafe {
@@ -140,6 +147,19 @@ pub fn gen_stmt(node: ast::StmtWithPos) {
             }
         }
         ast::Stmt::Null => (),
+        ast::Stmt::If { cond, then, els } => {
+            let c = count();
+            gen_expr(*cond);
+            println!("  cmp $0, %rax");
+            println!("  je .L.else.{}", c);
+            gen_stmt(*then);
+            println!("  jmp .L.end.{}", c);
+            println!(".L.else.{}:", c);
+            if let Some(_else) = *els {
+                gen_stmt(_else);
+            }
+            println!(".L.end.{}:", c);
+        }
     }
 }
 

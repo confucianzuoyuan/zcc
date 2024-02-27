@@ -29,6 +29,11 @@ pub enum Stmt {
     Return(ExprWithPos),
     Block(Vec<StmtWithPos>),
     Null,
+    If {
+        cond: Box<ExprWithPos>,
+        then: Box<StmtWithPos>,
+        els: Box<Option<StmtWithPos>>,
+    },
 }
 
 pub type StmtWithPos = position::WithPos<Stmt>;

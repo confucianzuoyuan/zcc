@@ -24,6 +24,8 @@ pub enum Tok {
     Number(i64),
     Ident(String),
     Return,
+    If,
+    Else,
     EndOfFile,
 }
 
@@ -55,6 +57,8 @@ impl Display for Tok {
                 Tok::CloseBrace => "}",
                 Tok::Semicolon => ";",
                 Tok::Return => "return",
+                Tok::If => "if",
+                Tok::Else => "else",
                 Tok::Number(num) => return num.to_string(),
                 Tok::Ident(ref ident) => ident,
                 Tok::EndOfFile => "<eof>",
