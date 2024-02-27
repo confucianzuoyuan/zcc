@@ -164,6 +164,7 @@ impl<R: Read> Lexer<R> {
             "if" => token::Tok::If,
             "else" => token::Tok::Else,
             "for" => token::Tok::For,
+            "while" => token::Tok::While,
             _ => token::Tok::Ident(ident),
         };
         self.make_token(token, len)

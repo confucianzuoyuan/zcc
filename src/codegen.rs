@@ -181,6 +181,16 @@ pub fn gen_stmt(node: ast::StmtWithPos) {
             println!("  jmp .L.begin.{}", c);
             println!(".L.end.{}:", c);
         }
+        ast::Stmt::While { cond, then } => {
+            let c = count();
+            println!(".L.begin.{}:", c);
+            gen_expr(*cond);
+            println!("  cmp $0, %rax");
+            println!("  je .L.end.{}", c);
+            gen_stmt(*then);
+            println!("  jmp .L.begin.{}", c);
+            println!(".L.end.{}:", c);
+        }
     }
 }
 

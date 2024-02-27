@@ -351,6 +351,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     /// stmt = "return" expr ";"
     ///      | "if" "(" expr ")" stmt ("else" stmt)?
     ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
+    ///      | "while" "(" expr ")" stmt
     ///      | "{" compount-stmt
     ///      | expr-stmt
     fn stmt(&mut self) -> Result<ast::StmtWithPos> {
@@ -422,6 +423,21 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                         init: Box::new(init),
                         inc: Box::new(inc),
                     },
+                    pos,
+                };
+                Ok(stmt)
+            }
+            token::Tok::While => {
+                use token::Tok::While;
+                let pos = eat!(self, While);
+                use token::Tok::OpenParen;
+                eat!(self, OpenParen);
+                let cond = self.expr()?;
+                use token::Tok::CloseParen;
+                eat!(self, CloseParen);
+                let then = self.stmt()?;
+                let stmt = ast::StmtWithPos {
+                    node: ast::Stmt::While { cond: Box::new(cond), then: Box::new(then) },
                     pos,
                 };
                 Ok(stmt)

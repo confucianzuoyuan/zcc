@@ -40,6 +40,10 @@ pub enum Stmt {
         init: Box<StmtWithPos>,
         inc: Box<Option<ExprWithPos>>,
     },
+    While {
+        cond: Box<ExprWithPos>,
+        then: Box<StmtWithPos>,
+    },
 }
 
 pub type StmtWithPos = position::WithPos<Stmt>;
