@@ -1,4 +1,4 @@
-use crate::position;
+use crate::{position, types};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -26,29 +26,58 @@ pub enum Expr {
 pub type ExprWithPos = position::WithPos<Expr>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Stmt {
-    Expr(ExprWithPos),
-    Return(ExprWithPos),
-    Block(Vec<StmtWithPos>),
+pub enum InnerTypedExpr {
+    Int {
+        value: i64,
+    },
+    Binary {
+        left: Box<TypedExpr>,
+        oper: Operator,
+        right: Box<TypedExpr>,
+    },
+    Unary {
+        oper: Operator,
+        expr: Box<TypedExpr>,
+    },
+    Assign {
+        lvalue: Box<TypedExpr>,
+        rvalue: Box<TypedExpr>,
+    },
+    Var(VarObj),
+    Addr(Box<TypedExpr>),
+    Deref(Box<TypedExpr>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedExpr {
+    pub expr: InnerTypedExpr,
+    pub ty: types::Type,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt<T> {
+    Expr(T),
+    Return(T),
+    Block(Vec<StmtWithPos<T>>),
     Null,
     If {
-        cond: Box<ExprWithPos>,
-        then: Box<StmtWithPos>,
-        els: Box<Option<StmtWithPos>>,
+        cond: Box<T>,
+        then: Box<StmtWithPos<T>>,
+        els: Box<Option<StmtWithPos<T>>>,
     },
     For {
-        cond: Box<Option<ExprWithPos>>,
-        then: Box<StmtWithPos>,
-        init: Box<StmtWithPos>,
-        inc: Box<Option<ExprWithPos>>,
+        cond: Box<Option<T>>,
+        then: Box<StmtWithPos<T>>,
+        init: Box<StmtWithPos<T>>,
+        inc: Box<Option<T>>,
     },
     While {
-        cond: Box<ExprWithPos>,
-        then: Box<StmtWithPos>,
+        cond: Box<T>,
+        then: Box<StmtWithPos<T>>,
     },
 }
 
-pub type StmtWithPos = position::WithPos<Stmt>;
+pub type StmtWithPos<T> = position::WithPos<Stmt<T>>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Operator {
@@ -73,7 +102,7 @@ pub struct VarObj {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Function {
-    pub body: Box<StmtWithPos>,
+pub struct Function<T> {
+    pub body: Box<StmtWithPos<T>>,
     pub stack_size: i64,
 }

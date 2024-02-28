@@ -40,25 +40,25 @@ fn align_to(n: i64, align: i64) -> i64 {
     (n + align - 1) / align * align
 }
 
-fn gen_addr(node: ast::ExprWithPos) {
-    match node.node {
-        ast::Expr::Var(v) => {
+fn gen_addr(node: ast::TypedExpr) {
+    match node.expr {
+        ast::InnerTypedExpr::Var(v) => {
             let offset = parser::get_var_offset(v.name);
             println!("  lea {}(%rbp), %rax", offset);
         }
-        ast::Expr::Deref(e) => {
+        ast::InnerTypedExpr::Deref(e) => {
             gen_expr(*e);
         }
         _ => panic!("not an lvalue: {:?}", node),
     }
 }
 
-pub fn gen_expr(node: ast::ExprWithPos) {
-    match node.node {
+pub fn gen_expr(node: ast::TypedExpr) {
+    match node.expr {
         // 数值类型直接写入rax寄存器
-        ast::Expr::Int { value } => println!("  mov ${}, %rax", value),
+        ast::InnerTypedExpr::Int { value } => println!("  mov ${}, %rax", value),
         // gen_expr最终的求值结果在rax寄存器中
-        ast::Expr::Unary { oper: _, expr } => {
+        ast::InnerTypedExpr::Unary { oper: _, expr } => {
             gen_expr(*expr);
             println!(" neg %rax");
         }
@@ -67,13 +67,13 @@ pub fn gen_expr(node: ast::ExprWithPos) {
         // 然后将left的求值结果写入rax
         // 然后将栈中的值(也就是right的求值结果)弹入rdi寄存器
         // 然后对rdi(right的值)和rax(left的值)做二元计算
-        ast::Expr::Binary { left, oper, right } => {
+        ast::InnerTypedExpr::Binary { left, oper, right } => {
             gen_expr(*right);
             push();
             gen_expr(*left);
             pop("%rdi".to_string());
 
-            match oper.node {
+            match oper {
                 ast::Operator::Plus => println!("  add %rdi, %rax"),
                 ast::Operator::Minus => println!("  sub %rdi, %rax"),
                 ast::Operator::Times => println!("  imul %rdi, %rax"),
@@ -113,28 +113,28 @@ pub fn gen_expr(node: ast::ExprWithPos) {
                 }
             }
         }
-        ast::Expr::Assign { lvalue, rvalue } => {
+        ast::InnerTypedExpr::Assign { lvalue, rvalue } => {
             gen_addr(*lvalue);
             push();
             gen_expr(*rvalue);
             pop("%rdi".to_string());
             println!("  mov %rax, (%rdi)");
         }
-        ast::Expr::Var(_) => {
+        ast::InnerTypedExpr::Var(_) => {
             gen_addr(node);
             println!("  mov (%rax), %rax");
         }
-        ast::Expr::Deref(e) => {
+        ast::InnerTypedExpr::Deref(e) => {
             gen_expr(*e);
             println!("  mov (%rax), %rax");
         }
-        ast::Expr::Addr(e) => {
+        ast::InnerTypedExpr::Addr(e) => {
             gen_addr(*e);
         }
     }
 }
 
-fn assign_lvar_offsets(prog: &mut ast::Function) {
+fn assign_lvar_offsets(prog: &mut ast::Function<ast::TypedExpr>) {
     let mut offset: i64 = 0;
     let vars = parser::get_vars();
     for v in vars {
@@ -144,7 +144,7 @@ fn assign_lvar_offsets(prog: &mut ast::Function) {
     prog.stack_size = align_to(offset, 16);
 }
 
-pub fn gen_stmt(node: ast::StmtWithPos) {
+pub fn gen_stmt(node: ast::StmtWithPos<ast::TypedExpr>) {
     match node.node {
         ast::Stmt::Expr(e) => gen_expr(e),
         ast::Stmt::Return(e) => {
@@ -204,7 +204,7 @@ pub fn gen_stmt(node: ast::StmtWithPos) {
     }
 }
 
-pub fn codegen(mut prog: ast::Function) {
+pub fn codegen(mut prog: ast::Function<ast::TypedExpr>) {
     assign_lvar_offsets(&mut prog);
 
     println!("  .globl main");

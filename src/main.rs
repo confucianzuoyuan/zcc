@@ -12,6 +12,7 @@ mod position;
 mod symbol;
 mod terminal;
 mod token;
+mod types;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -33,6 +34,8 @@ fn main() {
         }
     } else {
         let node = ast.unwrap();
-        codegen::codegen(node);
+        let typed_node = types::convert_function_to_typed_function(node);
+        // println!("typed_node: {:?}", typed_node);
+        codegen::codegen(typed_node);
     }
 }

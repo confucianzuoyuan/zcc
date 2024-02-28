@@ -324,7 +324,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     }
 
     /// expr-stmt = expr? ";"
-    fn expr_stmt(&mut self) -> Result<ast::StmtWithPos> {
+    fn expr_stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
         match self.peek()?.token {
             token::Tok::Semicolon => {
                 let pos = self.peek()?.pos;
@@ -350,7 +350,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     }
 
     /// compount-stmt = stmt* "}"
-    fn compount_stmt(&mut self) -> Result<ast::StmtWithPos> {
+    fn compount_stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
         use token::Tok::OpenBrace;
         eat!(self, OpenBrace);
         let mut block = vec![];
@@ -375,7 +375,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
     ///      | "while" "(" expr ")" stmt
     ///      | "{" compount-stmt
     ///      | expr-stmt
-    fn stmt(&mut self) -> Result<ast::StmtWithPos> {
+    fn stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
         match self.peek()?.token {
             token::Tok::Return => {
                 use token::Tok::{Return, Semicolon};
@@ -499,7 +499,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         })
     }
 
-    pub fn parse(&mut self) -> Result<ast::Function> {
+    pub fn parse(&mut self) -> Result<ast::Function<ast::ExprWithPos>> {
         let body = self.stmt()?;
         match self.token() {
             Ok(token::Token {
