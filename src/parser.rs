@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::{ast, error, lexer, position, symbol, token};
+use crate::{ast, error, lexer, position, symbol, token, types};
 use lazy_static::lazy_static;
 
 lazy_static! {
@@ -204,10 +204,14 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 use token::Tok::Ident;
                 let pos = eat!(self, Ident, name);
                 if is_var_exist(name.clone()) == false {
-                    add_var_offset(name.clone(), 0);
+                    panic!("undefined variable: {}", name);
                 }
                 Ok(ast::ExprWithPos::new(
-                    ast::Expr::Var(ast::VarObj { name, offset: 0 }),
+                    ast::Expr::Var(ast::VarObj {
+                        name,
+                        ty: None,
+                        offset: 0,
+                    }),
                     pos,
                 ))
             }
@@ -349,7 +353,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         }
     }
 
-    /// compount-stmt = stmt* "}"
+    /// compount-stmt = (declaration | stmt)* "}"
     fn compount_stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
         use token::Tok::OpenBrace;
         eat!(self, OpenBrace);
@@ -358,7 +362,10 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
             if self.peek()?.token == token::Tok::CloseBrace {
                 break;
             }
-            block.push(self.stmt()?);
+            match self.peek()?.token {
+                token::Tok::KWInt => block.push(self.declaration()?),
+                _ => block.push(self.stmt()?),
+            }
         }
         use token::Tok::CloseBrace;
         let pos = eat!(self, CloseBrace);
@@ -468,6 +475,98 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
             }
             _ => self.expr_stmt(),
         }
+    }
+
+    /// declspec = "int"
+    fn declspec(&mut self) -> Result<types::Type> {
+        use token::Tok::KWInt;
+        eat!(self, KWInt);
+        Ok(types::Type::IntType)
+    }
+
+    /// declarator = "*"* ident
+    fn declarator(&mut self, ty: types::Type) -> Result<types::Type> {
+        let mut ty = ty;
+        loop {
+            match self.peek()?.token {
+                token::Tok::Star => {
+                    use token::Tok::Star;
+                    eat!(self, Star);
+                    ty = types::pointer_to(ty);
+                }
+                _ => break,
+            }
+        }
+
+        match self.peek()?.token {
+            token::Tok::Ident(_) => {
+                ty = match ty {
+                    types::Type::IntType { .. } => types::Type::IntType,
+                    types::Type::PointerType { base, .. } => types::Type::PointerType { base },
+                };
+            }
+            _ => panic!("expected a variable name"),
+        }
+
+        Ok(ty)
+    }
+
+    /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+    fn declaration(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
+        let basety = self.declspec()?;
+        let mut stmts = vec![];
+        let mut pos;
+
+        loop {
+            if self.peek()?.token == token::Tok::Semicolon {
+                pos = self.peek()?.pos;
+                break;
+            }
+            if self.peek()?.token == token::Tok::Comma {
+                use token::Tok::Comma;
+                eat!(self, Comma);
+            }
+            let ty = self.declarator(basety.clone())?;
+            let name;
+            use token::Tok::Ident;
+            pos = eat!(self, Ident, name);
+            let var = ast::VarObj {
+                name: name.clone(),
+                ty: Some(ty),
+                offset: 0,
+            };
+            add_var_offset(name, 0);
+            if self.peek()?.token != token::Tok::Equal {
+                continue;
+            }
+            use token::Tok::Equal;
+            eat!(self, Equal);
+            let lhs = ast::ExprWithPos {
+                node: ast::Expr::Var(var),
+                pos,
+            };
+            let rhs = self.assign_expr()?;
+            let node = ast::ExprWithPos {
+                node: ast::Expr::Assign {
+                    lvalue: Box::new(lhs),
+                    rvalue: Box::new(rhs),
+                },
+                pos,
+            };
+            let stmt = ast::StmtWithPos {
+                node: ast::Stmt::Expr(node),
+                pos,
+            };
+            stmts.push(stmt);
+        }
+
+        let node = ast::StmtWithPos {
+            node: ast::Stmt::Block(stmts),
+            pos,
+        };
+        use token::Tok::Semicolon;
+        eat!(self, Semicolon);
+        Ok(node)
     }
 
     fn peek(&mut self) -> std::result::Result<&token::Token, &error::Error> {

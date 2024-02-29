@@ -98,6 +98,7 @@ pub type OperatorWithPos = position::WithPos<Operator>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct VarObj {
     pub name: String,
+    pub ty: Option<types::Type>,
     pub offset: i64,
 }
 

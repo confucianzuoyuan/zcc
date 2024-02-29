@@ -48,18 +48,10 @@ impl<R: Read> Lexer<R> {
         let mut buffer = String::new();
         buffer.push(self.current_char()?);
         self.advance()?;
-        // match self.current_char() {
-        //     Ok(_) => (),
-        //     Err(_) => return Ok(buffer),
-        // };
         let mut ch = self.current_char()?;
         while pred(ch) {
             buffer.push(ch);
             self.advance()?;
-            // match self.current_char() {
-            //     Ok(_) => (),
-            //     Err(_) => break,
-            // };
             ch = self.current_char()?;
         }
         Ok(buffer)
@@ -165,6 +157,7 @@ impl<R: Read> Lexer<R> {
             "else" => token::Tok::Else,
             "for" => token::Tok::For,
             "while" => token::Tok::While,
+            "int" => token::Tok::KWInt,
             _ => token::Tok::Ident(ident),
         };
         self.make_token(token, len)
@@ -190,6 +183,7 @@ impl<R: Read> Lexer<R> {
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_double_equal(),
                 b';' => self.simple_token(token::Tok::Semicolon),
+                b',' => self.simple_token(token::Tok::Comma),
                 b'{' => self.simple_token(token::Tok::OpenBrace),
                 b'}' => self.simple_token(token::Tok::CloseBrace),
                 b'&' => self.simple_token(token::Tok::Ampersand),

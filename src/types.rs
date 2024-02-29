@@ -6,6 +6,12 @@ pub enum Type {
     PointerType { base: Box<Type> },
 }
 
+pub fn pointer_to(base: Type) -> Type {
+    Type::PointerType {
+        base: Box::new(base),
+    }
+}
+
 pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
     match expr.node {
         ast::Expr::Int { value } => ast::TypedExpr {
@@ -206,7 +212,7 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
         ast::Expr::Deref(e) => {
             let e = convert_expr_to_typed_expr(*e);
             let ty = match e.clone().ty {
-                Type::PointerType { base } => *base,
+                Type::PointerType { base, .. } => *base,
                 Type::IntType => Type::IntType,
             };
             ast::TypedExpr {
