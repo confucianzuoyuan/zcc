@@ -220,10 +220,20 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
                 ty,
             }
         }
-        ast::Expr::FunCall { funcname } => ast::TypedExpr {
-            expr: ast::InnerTypedExpr::FunCall { funcname },
-            ty: Type::IntType,
-        },
+        ast::Expr::FunCall { funcname, args } => {
+            let mut typed_args = vec![];
+            for arg in args {
+                let typed_arg = convert_expr_to_typed_expr(arg);
+                typed_args.push(typed_arg);
+            }
+            ast::TypedExpr {
+                expr: ast::InnerTypedExpr::FunCall {
+                    funcname,
+                    args: typed_args,
+                },
+                ty: Type::IntType,
+            }
+        }
     }
 }
 

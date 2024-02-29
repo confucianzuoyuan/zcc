@@ -4,6 +4,7 @@ use crate::{ast, parser};
 
 pub static mut DEPTH: i64 = 0;
 pub static mut COUNT: i64 = 0;
+pub static ARG_REG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 
 fn count() -> i64 {
     unsafe {
@@ -131,7 +132,18 @@ pub fn gen_expr(node: ast::TypedExpr) {
         ast::InnerTypedExpr::Addr(e) => {
             gen_addr(*e);
         }
-        ast::InnerTypedExpr::FunCall { funcname } => {
+        ast::InnerTypedExpr::FunCall { funcname, args } => {
+            let mut nargs = 0;
+            for arg in args {
+                gen_expr(arg);
+                push();
+                nargs += 1;
+            }
+            let mut i: i32 = nargs - 1;
+            while i >= 0 {
+                pop(ARG_REG[i as usize].to_string());
+                i -= 1;
+            }
             println!("  mov $0, %rax");
             println!("  call {}", funcname);
         }

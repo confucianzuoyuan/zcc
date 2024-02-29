@@ -23,6 +23,7 @@ pub enum Expr {
     Deref(Box<ExprWithPos>),
     FunCall {
         funcname: String,
+        args: Vec<ExprWithPos>,
     },
 }
 
@@ -51,6 +52,7 @@ pub enum InnerTypedExpr {
     Deref(Box<TypedExpr>),
     FunCall {
         funcname: String,
+        args: Vec<TypedExpr>,
     },
 }
 

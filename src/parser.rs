@@ -209,6 +209,29 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         }
     }
 
+    /// funcall = ident "(" (assign ("," assign)*)? ")"
+    fn funcall(&mut self, name: String) -> Result<ast::ExprWithPos> {
+        use token::Tok::OpenParen;
+        let pos = eat!(self, OpenParen);
+        let mut args = vec![];
+        while self.peek()?.token != token::Tok::CloseParen {
+            if self.peek()?.token == token::Tok::Comma {
+                use token::Tok::Comma;
+                eat!(self, Comma);
+            }
+            args.push(self.assign_expr()?);
+        }
+        use token::Tok::CloseParen;
+        eat!(self, CloseParen);
+        Ok(ast::ExprWithPos {
+            node: ast::Expr::FunCall {
+                funcname: name,
+                args,
+            },
+            pos,
+        })
+    }
+
     /// primary = "(" expr ")" | ident args? | num
     /// args = "(" ")"
     fn primary_expr(&mut self) -> Result<ast::ExprWithPos> {
@@ -221,13 +244,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 let pos = eat!(self, Ident, name);
                 // Function call
                 if self.peek()?.token == token::Tok::OpenParen {
-                    use token::Tok::{CloseParen, OpenParen};
-                    eat!(self, OpenParen);
-                    eat!(self, CloseParen);
-                    return Ok(ast::ExprWithPos::new(
-                        ast::Expr::FunCall { funcname: name },
-                        pos,
-                    ));
+                    return self.funcall(name);
                 }
                 // Variable
                 let var = find_var(name.clone());
