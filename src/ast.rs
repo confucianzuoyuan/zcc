@@ -21,6 +21,9 @@ pub enum Expr {
     Var(VarObj),
     Addr(Box<ExprWithPos>),
     Deref(Box<ExprWithPos>),
+    FunCall {
+        funcname: String,
+    },
 }
 
 pub type ExprWithPos = position::WithPos<Expr>;
@@ -46,6 +49,9 @@ pub enum InnerTypedExpr {
     Var(VarObj),
     Addr(Box<TypedExpr>),
     Deref(Box<TypedExpr>),
+    FunCall {
+        funcname: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

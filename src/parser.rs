@@ -209,7 +209,8 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         }
     }
 
-    // primary = "(" expr ")" | num
+    /// primary = "(" expr ")" | ident args? | num
+    /// args = "(" ")"
     fn primary_expr(&mut self) -> Result<ast::ExprWithPos> {
         match self.peek()?.token {
             token::Tok::Number(_) => self.int_lit(),
@@ -218,14 +219,22 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 let name;
                 use token::Tok::Ident;
                 let pos = eat!(self, Ident, name);
+                // Function call
+                if self.peek()?.token == token::Tok::OpenParen {
+                    use token::Tok::{CloseParen, OpenParen};
+                    eat!(self, OpenParen);
+                    eat!(self, CloseParen);
+                    return Ok(ast::ExprWithPos::new(
+                        ast::Expr::FunCall { funcname: name },
+                        pos,
+                    ));
+                }
+                // Variable
                 let var = find_var(name.clone());
                 if var.is_none() {
                     panic!("undefined variable: {}", name);
                 }
-                Ok(ast::ExprWithPos::new(
-                    ast::Expr::Var(var.unwrap()),
-                    pos,
-                ))
+                Ok(ast::ExprWithPos::new(ast::Expr::Var(var.unwrap()), pos))
             }
             _ => Err(self.unexpected_token("integer literal, (")?),
         }

@@ -220,6 +220,10 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
                 ty,
             }
         }
+        ast::Expr::FunCall { funcname } => ast::TypedExpr {
+            expr: ast::InnerTypedExpr::FunCall { funcname },
+            ty: Type::IntType,
+        },
     }
 }
 

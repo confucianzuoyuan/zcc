@@ -131,6 +131,10 @@ pub fn gen_expr(node: ast::TypedExpr) {
         ast::InnerTypedExpr::Addr(e) => {
             gen_addr(*e);
         }
+        ast::InnerTypedExpr::FunCall { funcname } => {
+            println!("  mov $0, %rax");
+            println!("  call {}", funcname);
+        }
     }
 }
 
