@@ -19,8 +19,8 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
             ty: Type::IntType,
         },
         ast::Expr::Var(v) => ast::TypedExpr {
-            expr: ast::InnerTypedExpr::Var(v),
-            ty: Type::IntType,
+            expr: ast::InnerTypedExpr::Var(v.clone()),
+            ty: v.ty,
         },
         ast::Expr::Binary {
             left,

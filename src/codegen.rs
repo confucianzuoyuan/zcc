@@ -139,7 +139,7 @@ fn assign_lvar_offsets(prog: &mut ast::Function<ast::TypedExpr>) {
     let vars = parser::get_vars();
     for v in vars {
         offset += 8;
-        parser::add_var_offset(v, -offset);
+        parser::update_var_offset(v, -offset);
     }
     prog.stack_size = align_to(offset, 16);
 }

@@ -1,40 +1,55 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use crate::{ast, error, lexer, position, symbol, token, types};
-use lazy_static::lazy_static;
 
-lazy_static! {
-    pub static ref VAR_OFFSET_TABLE: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
-}
-
-pub static mut VAR_VEC: Vec<String> = vec![];
+pub static mut VAR_VEC: Vec<ast::VarObj> = vec![];
 
 pub fn get_vars() -> Vec<String> {
     let mut result = vec![];
     unsafe {
         for k in &VAR_VEC {
-            result.push(k.clone());
+            result.push(k.name.clone());
         }
     }
     result
 }
 
-pub fn add_var_offset(name: String, offset: i64) {
-    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
-    _map.insert(name.clone(), offset);
+pub fn add_var(v: ast::VarObj) {
     unsafe {
-        VAR_VEC.insert(0, name);
+        VAR_VEC.insert(0, v);
+    }
+}
+
+pub fn find_var(name: String) -> Option<ast::VarObj> {
+    unsafe {
+        for o in &VAR_VEC {
+            if o.name == name {
+                return Some(o.clone());
+            }
+        }
+        None
+    }
+}
+
+pub fn update_var_offset(name: String, offset: i64) {
+    unsafe {
+        for o in &mut VAR_VEC {
+            if o.name == name {
+                o.offset = offset;
+            }
+        }
     }
 }
 
 pub fn get_var_offset(name: String) -> i64 {
-    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
-    *_map.get(&name).unwrap()
-}
-
-fn is_var_exist(name: String) -> bool {
-    let mut _map = VAR_OFFSET_TABLE.lock().unwrap();
-    _map.get(&name).is_some()
+    unsafe {
+        for o in &VAR_VEC {
+            if o.name == name {
+                return o.offset;
+            }
+        }
+    }
+    0
 }
 
 /// 接收多参数在Rust中实现的方式就是使用宏
@@ -203,15 +218,12 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 let name;
                 use token::Tok::Ident;
                 let pos = eat!(self, Ident, name);
-                if is_var_exist(name.clone()) == false {
+                let var = find_var(name.clone());
+                if var.is_none() {
                     panic!("undefined variable: {}", name);
                 }
                 Ok(ast::ExprWithPos::new(
-                    ast::Expr::Var(ast::VarObj {
-                        name,
-                        ty: None,
-                        offset: 0,
-                    }),
+                    ast::Expr::Var(var.unwrap()),
                     pos,
                 ))
             }
@@ -532,10 +544,10 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
             pos = eat!(self, Ident, name);
             let var = ast::VarObj {
                 name: name.clone(),
-                ty: Some(ty),
+                ty: ty,
                 offset: 0,
             };
-            add_var_offset(name, 0);
+            add_var(var.clone());
             if self.peek()?.token != token::Tok::Equal {
                 continue;
             }
