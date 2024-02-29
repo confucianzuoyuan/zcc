@@ -213,7 +213,7 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
             let e = convert_expr_to_typed_expr(*e);
             let ty = match e.clone().ty {
                 Type::PointerType { base, .. } => *base,
-                Type::IntType => Type::IntType,
+                Type::IntType => panic!("invalid pointer dereference"),
             };
             ast::TypedExpr {
                 expr: ast::InnerTypedExpr::Deref(Box::new(e)),
