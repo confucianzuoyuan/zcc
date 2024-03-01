@@ -1,120 +1,125 @@
-use crate::{position, types};
+use crate::types;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Expr {
-    Int {
-        value: i64,
-    },
-    Binary {
-        left: Box<ExprWithPos>,
-        oper: OperatorWithPos,
-        right: Box<ExprWithPos>,
-    },
-    Unary {
-        oper: OperatorWithPos,
-        expr: Box<ExprWithPos>,
-    },
-    Assign {
-        lvalue: Box<ExprWithPos>,
-        rvalue: Box<ExprWithPos>,
-    },
-    Var(VarObj),
-    Addr(Box<ExprWithPos>),
-    Deref(Box<ExprWithPos>),
-    FunCall {
-        funcname: String,
-        args: Vec<ExprWithPos>,
-    },
-}
-
-pub type ExprWithPos = position::WithPos<Expr>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum InnerTypedExpr {
-    Int {
-        value: i64,
-    },
-    Binary {
-        left: Box<TypedExpr>,
-        oper: Operator,
-        right: Box<TypedExpr>,
-    },
-    Unary {
-        oper: Operator,
-        expr: Box<TypedExpr>,
-    },
-    Assign {
-        lvalue: Box<TypedExpr>,
-        rvalue: Box<TypedExpr>,
-    },
-    Var(VarObj),
-    Addr(Box<TypedExpr>),
-    Deref(Box<TypedExpr>),
-    FunCall {
-        funcname: String,
-        args: Vec<TypedExpr>,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TypedExpr {
-    pub expr: InnerTypedExpr,
-    pub ty: types::Type,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Stmt<T> {
-    Expr(T),
-    Return(T),
-    Block(Vec<StmtWithPos<T>>),
-    Null,
-    If {
-        cond: Box<T>,
-        then: Box<StmtWithPos<T>>,
-        els: Box<Option<StmtWithPos<T>>>,
-    },
-    For {
-        cond: Box<Option<T>>,
-        then: Box<StmtWithPos<T>>,
-        init: Box<StmtWithPos<T>>,
-        inc: Box<Option<T>>,
-    },
-    While {
-        cond: Box<T>,
-        then: Box<StmtWithPos<T>>,
-    },
-}
-
-pub type StmtWithPos<T> = position::WithPos<Stmt<T>>;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Operator {
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
     Divide,
-    Minus,
-    Plus,
-    Times,
-    LesserThan,
-    LesserOrEqual,
-    GreaterThan,
-    GreaterOrEqual,
     Equal,
     NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
 }
 
-pub type OperatorWithPos = position::WithPos<Operator>;
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOperator {
+    Negate,
+}
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct VarObj {
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableDeclaration<InitT> {
+    pub var_list: Vec<(String, Option<InitT>)>,
+    pub var_type: types::Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForInit<InitT, ExpT> {
+    InitDecl(VariableDeclaration<InitT>),
+    InitExp(Option<ExpT>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Statement<InitT, ExpT> {
+    Return(Option<ExpT>),
+    Expression(ExpT),
+    If {
+        condition: ExpT,
+        then_clause: Box<Statement<InitT, ExpT>>,
+        else_clause: Box<Option<Statement<InitT, ExpT>>>,
+    },
+    Compound(Block<InitT, ExpT>),
+    While {
+        condition: ExpT,
+        body: Box<Statement<InitT, ExpT>>,
+    },
+    For {
+        init: ForInit<InitT, ExpT>,
+        condition: Option<ExpT>,
+        post: Option<ExpT>,
+        body: Box<Statement<InitT, ExpT>>,
+    },
+    Null,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlockItem<InitT, ExpT> {
+    S(Statement<InitT, ExpT>),
+    D(Declaration<InitT, ExpT>),
+}
+
+pub type Block<InitT, ExpT> = Vec<BlockItem<InitT, ExpT>>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionDeclaration<InitT, ExpT> {
     pub name: String,
-    pub ty: types::Type,
-    pub offset: i64,
+    pub fun_type: types::Type,
+    pub params: Vec<String>,
+    pub body: Option<Block<InitT, ExpT>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Function<T> {
-    pub name: String,
-    pub body: Box<StmtWithPos<T>>,
-    pub stack_size: i64,
-    pub locals: Vec<VarObj>,
-    pub return_ty: types::Type,
+#[derive(Debug, Clone, PartialEq)]
+pub enum Declaration<InitT, ExpT> {
+    FunDecl(FunctionDeclaration<InitT, ExpT>),
+    VarDecl(VariableDeclaration<InitT>),
 }
+
+pub type Program<InitT, ExpT> = Vec<Declaration<InitT, ExpT>>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UntypedExp {
+    Constant(i64),
+    Var(String),
+    Unary(UnaryOperator, Box<UntypedExp>),
+    Binary(BinaryOperator, Box<UntypedExp>, Box<UntypedExp>),
+    Assignment(Box<UntypedExp>, Box<UntypedExp>),
+    FunCall { f: String, args: Vec<UntypedExp> },
+    Dereference(Box<UntypedExp>),
+    AddrOf(Box<UntypedExp>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UntypedInitializer {
+    SingleInit(UntypedExp),
+    CompoundInit(Vec<UntypedInitializer>),
+}
+
+pub type UntypedProgram = Program<UntypedInitializer, UntypedExp>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedInnerExp {
+    Constant(i64),
+    Var(String),
+    Unary(UnaryOperator, Box<TypedExp>),
+    Binary(BinaryOperator, Box<TypedExp>, Box<TypedExp>),
+    Assignment(Box<TypedExp>, Box<TypedExp>),
+    FunCall { f: String, args: Vec<TypedExp> },
+    Dereference(Box<TypedExp>),
+    AddrOf(Box<TypedExp>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedExp {
+    pub e: TypedInnerExp,
+    pub t: types::Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedInitializer {
+    SingleInit(TypedExp),
+    CompoundInit(types::Type, Vec<TypedInitializer>),
+}
+
+pub type TypedProgram = Program<TypedInitializer, TypedExp>;

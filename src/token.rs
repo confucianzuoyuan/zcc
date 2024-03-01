@@ -1,9 +1,7 @@
 use std::fmt::Display;
 
-use crate::position;
-
 #[derive(Clone, Debug, PartialEq)]
-pub enum Tok {
+pub enum Token {
     Plus,
     Minus,
     Star,
@@ -34,44 +32,38 @@ pub enum Tok {
     EndOfFile,
 }
 
-#[derive(Debug)]
-pub struct Token {
-    pub pos: position::Pos,
-    pub token: Tok,
-}
-
-impl Display for Tok {
+impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = (|| {
             let string = match *self {
-                Tok::Plus => "+",
-                Tok::Minus => "-",
-                Tok::Slash => "/",
-                Tok::Star => "*",
-                Tok::Ampersand => "&",
-                Tok::Equal => "=",
-                Tok::DoubleEqual => "==",
-                Tok::Bang => "!",
-                Tok::BangEqual => "!=",
-                Tok::LesserOrEqual => "<=",
-                Tok::LesserThan => "<",
-                Tok::GreaterOrEqual => ">=",
-                Tok::GreaterThan => ">",
-                Tok::OpenParen => "(",
-                Tok::CloseParen => ")",
-                Tok::OpenBrace => "{",
-                Tok::CloseBrace => "}",
-                Tok::Semicolon => ";",
-                Tok::Comma => ",",
-                Tok::Return => "return",
-                Tok::If => "if",
-                Tok::Else => "else",
-                Tok::For => "for",
-                Tok::While => "while",
-                Tok::KWInt => "int",
-                Tok::Number(num) => return num.to_string(),
-                Tok::Ident(ref ident) => ident,
-                Tok::EndOfFile => "<eof>",
+                Token::Plus => "+",
+                Token::Minus => "-",
+                Token::Slash => "/",
+                Token::Star => "*",
+                Token::Ampersand => "&",
+                Token::Equal => "=",
+                Token::DoubleEqual => "==",
+                Token::Bang => "!",
+                Token::BangEqual => "!=",
+                Token::LesserOrEqual => "<=",
+                Token::LesserThan => "<",
+                Token::GreaterOrEqual => ">=",
+                Token::GreaterThan => ">",
+                Token::OpenParen => "(",
+                Token::CloseParen => ")",
+                Token::OpenBrace => "{",
+                Token::CloseBrace => "}",
+                Token::Semicolon => ";",
+                Token::Comma => ",",
+                Token::Return => "return",
+                Token::If => "if",
+                Token::Else => "else",
+                Token::For => "for",
+                Token::While => "while",
+                Token::KWInt => "int",
+                Token::Number(num) => return num.to_string(),
+                Token::Ident(ref ident) => ident,
+                Token::EndOfFile => "<eof>",
             };
             string.to_string()
         })();

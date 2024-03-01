@@ -1,686 +1,612 @@
-use std::{collections::HashMap, sync::Mutex};
+use crate::{ast, lexer, token, types};
 
-use crate::{ast, error, lexer, position, symbol, token, types};
+#[derive(Debug, Clone, PartialEq)]
+pub enum Declarator {
+    Ident(String),
+    PointerDeclarator(Box<Declarator>),
+    FunDeclarator(Vec<ParamInfo>, Box<Declarator>),
+}
 
-pub static mut VAR_VEC: Vec<ast::VarObj> = vec![];
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParamInfo {
+    Param(types::Type, Declarator),
+}
 
-pub fn make_varvec_empty() {
-    unsafe {
-        VAR_VEC = vec![];
+fn get_precedence(t: token::Token) -> Option<i64> {
+    match t {
+        token::Token::Star | token::Token::Slash => Some(50),
+        token::Token::Plus | token::Token::Minus => Some(45),
+        token::Token::LesserThan
+        | token::Token::LesserOrEqual
+        | token::Token::GreaterOrEqual
+        | token::Token::GreaterThan => Some(35),
+        token::Token::DoubleEqual | token::Token::BangEqual => Some(30),
+        token::Token::Equal => Some(1),
+        _ => None,
     }
 }
 
-pub fn get_vars() -> Vec<String> {
-    let mut result = vec![];
-    unsafe {
-        for k in &VAR_VEC {
-            result.push(k.name.clone());
-        }
-    }
-    result
-}
-
-pub fn add_var(v: ast::VarObj) {
-    unsafe {
-        VAR_VEC.insert(0, v);
-    }
-}
-
-pub fn find_var(name: String) -> Option<ast::VarObj> {
-    unsafe {
-        for o in &VAR_VEC {
-            if o.name == name {
-                return Some(o.clone());
-            }
-        }
-        None
-    }
-}
-
-pub fn update_var_offset(name: String, offset: i64) {
-    unsafe {
-        for o in &mut VAR_VEC {
-            if o.name == name {
-                o.offset = offset;
-            }
-        }
-    }
-}
-
-pub fn get_var_offset(f: ast::Function<ast::TypedExpr>, name: String) -> i64 {
-    for o in &f.locals {
-        if o.name == name {
-            return o.offset;
-        }
-    }
-    0
-}
-
-/// 接收多参数在Rust中实现的方式就是使用宏
-macro_rules! eat {
-    ($_self:ident, $pat:ident, $var:ident) => {
-        match $_self.token() {
-            Ok(token) => match token.token {
-                $pat(var) => {
-                    $var = var;
-                    token.pos
-                }
-                tok => {
-                    return Err(error::Error::UnexpectedToken {
-                        expected: stringify!($pat).to_lowercase(),
-                        pos: token.pos,
-                        unexpected: tok,
-                    })
-                }
-            },
-            Err(error) => return Err(error),
-        }
-    };
-    ($_self:ident, $pat:ident) => {
-        eat!($_self, $pat, stringify!($pat).to_lowercase())
-    };
-    ($_self:ident, $pat:ident, $expected:expr) => {
-        match $_self.token() {
-            Ok(token) => match token.token {
-                $pat => token.pos,
-                tok => {
-                    return Err(error::Error::UnexpectedToken {
-                        expected: $expected,
-                        pos: token.pos,
-                        unexpected: tok,
-                    })
-                }
-            },
-            Err(error) => return Err(error),
-        }
-    };
-}
-
-pub type Result<T> = std::result::Result<T, error::Error>;
-
-pub struct Parser<'a, R: std::io::Read> {
+pub struct Parser<R: std::io::Read> {
     lexer: lexer::Lexer<R>,
-    lookahead: Option<Result<token::Token>>,
-    symbols: &'a mut symbol::Symbols,
+    lookahead: Option<token::Token>,
 }
 
-impl<'a, R: std::io::Read> Parser<'a, R> {
-    pub fn new(lexer: lexer::Lexer<R>, symbols: &'a mut symbol::Symbols) -> Self {
+impl<R: std::io::Read> Parser<R> {
+    pub fn new(lexer: lexer::Lexer<R>) -> Self {
         Parser {
             lexer,
             lookahead: None,
-            symbols,
         }
     }
 
-    /// 解析表达式时, 首先解析优先级更低的运算符
-    /// expr = mul ("+" mul | "-" mul)*
-    fn additive_expr(&mut self) -> Result<ast::ExprWithPos> {
-        let mut expr = self.multiplicative_expr()?;
-        loop {
-            let oper = match self.peek_token() {
-                Ok(&token::Tok::Minus) => {
-                    use token::Tok::Minus;
-                    position::WithPos::new(ast::Operator::Minus, eat!(self, Minus))
-                }
-                Ok(&token::Tok::Plus) => {
-                    use token::Tok::Plus;
-                    position::WithPos::new(ast::Operator::Plus, eat!(self, Plus))
-                }
-                _ => break,
-            };
-            let right = Box::new(self.multiplicative_expr()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = position::WithPos::new(
-                ast::Expr::Binary {
-                    left: Box::new(expr),
-                    oper,
-                    right,
-                },
-                pos,
-            );
-        }
-        Ok(expr)
-    }
-
-    /// mul = primary ("*" primary | "/" primary)*
-    fn multiplicative_expr(&mut self) -> Result<ast::ExprWithPos> {
-        let mut expr = self.unary_expr()?;
-        loop {
-            let oper = match self.peek_token() {
-                Ok(&token::Tok::Star) => {
-                    use token::Tok::Star;
-                    position::WithPos::new(ast::Operator::Times, eat!(self, Star))
-                }
-                Ok(&token::Tok::Slash) => {
-                    use token::Tok::Slash;
-                    position::WithPos::new(ast::Operator::Divide, eat!(self, Slash))
-                }
-                _ => break,
-            };
-            let right = Box::new(self.unary_expr()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = position::WithPos::new(
-                ast::Expr::Binary {
-                    left: Box::new(expr),
-                    oper,
-                    right,
-                },
-                pos,
-            );
-        }
-        Ok(expr)
-    }
-
-    /// unary = ("+" | "-" | "*" | "&") unary
-    ///       | primary
-    fn unary_expr(&mut self) -> Result<ast::ExprWithPos> {
-        match self.peek()?.token {
-            token::Tok::Plus => {
-                use token::Tok::Plus;
-                eat!(self, Plus);
-                self.unary_expr()
-            }
-            token::Tok::Minus => {
-                use token::Tok::Minus;
-                let pos = eat!(self, Minus);
-                let expr = self.unary_expr()?;
-                let pos = pos.grow(expr.pos);
-                Ok(position::WithPos::new(
-                    ast::Expr::Unary {
-                        oper: position::WithPos::new(ast::Operator::Minus, pos),
-                        expr: Box::new(expr),
-                    },
-                    pos,
-                ))
-            }
-            token::Tok::Ampersand => {
-                use token::Tok::Ampersand;
-                let pos = eat!(self, Ampersand);
-                let expr = self.unary_expr()?;
-                Ok(position::WithPos::new(ast::Expr::Addr(Box::new(expr)), pos))
-            }
-            token::Tok::Star => {
-                use token::Tok::Star;
-                let pos = eat!(self, Star);
-                let expr = self.unary_expr()?;
-                Ok(position::WithPos::new(
-                    ast::Expr::Deref(Box::new(expr)),
-                    pos,
-                ))
-            }
-            _ => self.primary_expr(),
-        }
-    }
-
-    /// funcall = ident "(" (assign ("," assign)*)? ")"
-    fn funcall(&mut self, name: String) -> Result<ast::ExprWithPos> {
-        use token::Tok::OpenParen;
-        let pos = eat!(self, OpenParen);
-        let mut args = vec![];
-        while self.peek()?.token != token::Tok::CloseParen {
-            if self.peek()?.token == token::Tok::Comma {
-                use token::Tok::Comma;
-                eat!(self, Comma);
-            }
-            args.push(self.assign_expr()?);
-        }
-        use token::Tok::CloseParen;
-        eat!(self, CloseParen);
-        Ok(ast::ExprWithPos {
-            node: ast::Expr::FunCall {
-                funcname: name,
-                args,
-            },
-            pos,
-        })
-    }
-
-    /// primary = "(" expr ")" | ident args? | num
-    /// args = "(" ")"
-    fn primary_expr(&mut self) -> Result<ast::ExprWithPos> {
-        match self.peek()?.token {
-            token::Tok::Number(_) => self.int_lit(),
-            token::Tok::OpenParen => self.seq_exp(),
-            token::Tok::Ident(_) => {
-                let name;
-                use token::Tok::Ident;
-                let pos = eat!(self, Ident, name);
-                // Function call
-                if self.peek()?.token == token::Tok::OpenParen {
-                    return self.funcall(name);
-                }
-                // Variable
-                let var = find_var(name.clone());
-                if var.is_none() {
-                    panic!("undefined variable: {}", name);
-                }
-                Ok(ast::ExprWithPos::new(ast::Expr::Var(var.unwrap()), pos))
-            }
-            _ => Err(self.unexpected_token("integer literal, (")?),
-        }
-    }
-
-    /// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
-    fn relational_expr(&mut self) -> Result<ast::ExprWithPos> {
-        let mut expr = self.additive_expr()?;
-        loop {
-            let oper = match self.peek_token() {
-                Ok(&token::Tok::LesserThan) => {
-                    use token::Tok::LesserThan;
-                    position::WithPos::new(ast::Operator::LesserThan, eat!(self, LesserThan))
-                }
-                Ok(&token::Tok::LesserOrEqual) => {
-                    use token::Tok::LesserOrEqual;
-                    position::WithPos::new(ast::Operator::LesserOrEqual, eat!(self, LesserOrEqual))
-                }
-                Ok(&token::Tok::GreaterThan) => {
-                    use token::Tok::GreaterThan;
-                    position::WithPos::new(ast::Operator::GreaterThan, eat!(self, GreaterThan))
-                }
-                Ok(&token::Tok::GreaterOrEqual) => {
-                    use token::Tok::GreaterOrEqual;
-                    position::WithPos::new(
-                        ast::Operator::GreaterOrEqual,
-                        eat!(self, GreaterOrEqual),
-                    )
-                }
-                _ => break,
-            };
-            let right = Box::new(self.additive_expr()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = position::WithPos::new(
-                ast::Expr::Binary {
-                    left: Box::new(expr),
-                    oper,
-                    right,
-                },
-                pos,
-            );
-        }
-        Ok(expr)
-    }
-
-    /// equality = relational ("==" relational | "!=" relational)*
-    fn equality_expr(&mut self) -> Result<ast::ExprWithPos> {
-        let mut expr = self.relational_expr()?;
-        loop {
-            let oper = match self.peek_token() {
-                Ok(&token::Tok::DoubleEqual) => {
-                    use token::Tok::DoubleEqual;
-                    position::WithPos::new(ast::Operator::Equal, eat!(self, DoubleEqual))
-                }
-                Ok(&token::Tok::BangEqual) => {
-                    use token::Tok::BangEqual;
-                    position::WithPos::new(ast::Operator::NotEqual, eat!(self, BangEqual))
-                }
-                _ => break,
-            };
-            let right = Box::new(self.relational_expr()?);
-            let pos = expr.pos.grow(right.pos);
-            expr = position::WithPos::new(
-                ast::Expr::Binary {
-                    left: Box::new(expr),
-                    oper,
-                    right,
-                },
-                pos,
-            );
-        }
-        Ok(expr)
-    }
-
-    fn seq_exp(&mut self) -> Result<ast::ExprWithPos> {
-        use token::Tok::OpenParen;
-        eat!(self, OpenParen);
-        let expr = self.expr()?;
-        use token::Tok::CloseParen;
-        eat!(self, CloseParen);
-        Ok(expr)
-    }
-
-    fn int_lit(&mut self) -> Result<ast::ExprWithPos> {
-        let value;
-        use token::Tok::Number;
-        let pos = eat!(self, Number, value);
-        Ok(position::WithPos::new(ast::Expr::Int { value }, pos))
-    }
-
-    fn expr(&mut self) -> Result<ast::ExprWithPos> {
-        self.assign_expr()
-    }
-
-    /// assign = equality ("=" assign)?
-    fn assign_expr(&mut self) -> Result<ast::ExprWithPos> {
-        let lvalue = self.equality_expr()?;
-        match self.peek()?.token {
-            token::Tok::Equal => {
-                use token::Tok::Equal;
-                eat!(self, Equal);
-                Ok(position::WithPos::new(
-                    ast::Expr::Assign {
-                        lvalue: Box::new(lvalue.clone()),
-                        rvalue: Box::new(self.assign_expr()?),
-                    },
-                    lvalue.pos,
-                ))
-            }
-            _ => Ok(lvalue),
-        }
-    }
-
-    /// expr-stmt = expr? ";"
-    fn expr_stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
-        match self.peek()?.token {
-            token::Tok::Semicolon => {
-                let pos = self.peek()?.pos;
-                use token::Tok::Semicolon;
-                eat!(self, Semicolon);
-                let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::Null,
-                    pos,
-                };
-                Ok(stmt)
-            }
-            _ => {
-                let expr = self.expr()?;
-                use token::Tok::Semicolon;
-                eat!(self, Semicolon);
-                let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::Expr(expr.clone()),
-                    pos: expr.pos,
-                };
-                Ok(stmt)
-            }
-        }
-    }
-
-    /// compount-stmt = (declaration | stmt)* "}"
-    fn compount_stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
-        let mut block = vec![];
-        while self.peek()?.token != token::Tok::CloseBrace {
-            match self.peek()?.token {
-                token::Tok::KWInt => block.push(self.declaration()?),
-                _ => block.push(self.stmt()?),
-            }
-        }
-        use token::Tok::CloseBrace;
-        let pos = eat!(self, CloseBrace);
-        let stmt = ast::StmtWithPos {
-            node: ast::Stmt::Block(block),
-            pos: pos,
-        };
-        Ok(stmt)
-    }
-
-    /// stmt = "return" expr ";"
-    ///      | "if" "(" expr ")" stmt ("else" stmt)?
-    ///      | "for" "(" expr-stmt expr? ";" expr? ")" stmt
-    ///      | "while" "(" expr ")" stmt
-    ///      | "{" compount-stmt
-    ///      | expr-stmt
-    fn stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
-        match self.peek()?.token {
-            token::Tok::Return => {
-                use token::Tok::{Return, Semicolon};
-                eat!(self, Return);
-                let e = self.expr()?;
-                eat!(self, Semicolon);
-                let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::Return(e.clone()),
-                    pos: e.pos,
-                };
-                Ok(stmt)
-            }
-            token::Tok::OpenBrace => {
-                use token::Tok::OpenBrace;
-                eat!(self, OpenBrace);
-                self.compount_stmt()
-            }
-            token::Tok::If => {
-                use token::Tok::If;
-                let pos = eat!(self, If);
-                use token::Tok::OpenParen;
-                eat!(self, OpenParen);
-                let cond = self.expr()?;
-                use token::Tok::CloseParen;
-                eat!(self, CloseParen);
-                let then = self.stmt()?;
-                let els;
-                if self.peek()?.token == token::Tok::Else {
-                    use token::Tok::Else;
-                    eat!(self, Else);
-                    els = Some(self.stmt()?);
-                } else {
-                    els = None;
-                }
-                let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::If {
-                        cond: Box::new(cond),
-                        then: Box::new(then),
-                        els: Box::new(els),
-                    },
-                    pos,
-                };
-                Ok(stmt)
-            }
-            token::Tok::For => {
-                use token::Tok::For;
-                let pos = eat!(self, For);
-                use token::Tok::OpenParen;
-                eat!(self, OpenParen);
-                let init = self.expr_stmt()?;
-                let cond = if self.peek()?.token != token::Tok::Semicolon {
-                    Some(self.expr()?)
-                } else {
-                    None
-                };
-                use token::Tok::Semicolon;
-                eat!(self, Semicolon);
-                let inc = if self.peek()?.token != token::Tok::CloseParen {
-                    Some(self.expr()?)
-                } else {
-                    None
-                };
-                use token::Tok::CloseParen;
-                eat!(self, CloseParen);
-                let then = self.stmt()?;
-                let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::For {
-                        cond: Box::new(cond),
-                        then: Box::new(then),
-                        init: Box::new(init),
-                        inc: Box::new(inc),
-                    },
-                    pos,
-                };
-                Ok(stmt)
-            }
-            token::Tok::While => {
-                use token::Tok::While;
-                let pos = eat!(self, While);
-                use token::Tok::OpenParen;
-                eat!(self, OpenParen);
-                let cond = self.expr()?;
-                use token::Tok::CloseParen;
-                eat!(self, CloseParen);
-                let then = self.stmt()?;
-                let stmt = ast::StmtWithPos {
-                    node: ast::Stmt::While {
-                        cond: Box::new(cond),
-                        then: Box::new(then),
-                    },
-                    pos,
-                };
-                Ok(stmt)
-            }
-            _ => self.expr_stmt(),
-        }
-    }
-
-    /// declspec = "int"
-    fn declspec(&mut self) -> Result<types::Type> {
-        use token::Tok::KWInt;
-        eat!(self, KWInt);
-        Ok(types::Type::IntType)
-    }
-
-    /// type-suffix = ("(" func-params)?
-    fn type_suffix(&mut self, ty: types::Type) -> Result<types::Type> {
-        if self.peek()?.token == token::Tok::OpenParen {
-            use token::Tok::{CloseParen, OpenParen};
-            eat!(self, OpenParen);
-            eat!(self, CloseParen);
-            return Ok(types::Type::FuncType {
-                return_ty: Box::new(ty),
-            });
-        }
-        Ok(ty)
-    }
-
-    /// declarator = "*"* ident type-suffix
-    fn declarator(&mut self, ty: types::Type) -> Result<(types::Type, String)> {
-        let mut ty = ty;
-        loop {
-            match self.peek()?.token {
-                token::Tok::Star => {
-                    use token::Tok::Star;
-                    eat!(self, Star);
-                    ty = types::pointer_to(ty);
-                }
-                _ => break,
-            }
-        }
-
-        match self.peek()?.token {
-            token::Tok::Ident(_) => {
-                let name;
-                use token::Tok::Ident;
-                eat!(self, Ident, name);
-                ty = self.type_suffix(ty)?;
-                Ok((ty, name))
-            }
-            _ => panic!("expected a variable name"),
-        }
-    }
-
-    /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-    fn declaration(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
-        let basety = self.declspec()?;
-        let mut stmts = vec![];
-        let mut pos;
-
-        loop {
-            if self.peek()?.token == token::Tok::Semicolon {
-                pos = self.peek()?.pos;
-                break;
-            }
-            if self.peek()?.token == token::Tok::Comma {
-                use token::Tok::Comma;
-                eat!(self, Comma);
-            }
-            let t = self.declarator(basety.clone())?;
-            let var = ast::VarObj {
-                name: t.1,
-                ty: t.0,
-                offset: 0,
-            };
-            add_var(var.clone());
-            if self.peek()?.token != token::Tok::Equal {
-                continue;
-            }
-            use token::Tok::Equal;
-            pos = eat!(self, Equal);
-            let lhs = ast::ExprWithPos {
-                node: ast::Expr::Var(var),
-                pos,
-            };
-            let rhs = self.assign_expr()?;
-            let node = ast::ExprWithPos {
-                node: ast::Expr::Assign {
-                    lvalue: Box::new(lhs),
-                    rvalue: Box::new(rhs),
-                },
-                pos,
-            };
-            let stmt = ast::StmtWithPos {
-                node: ast::Stmt::Expr(node),
-                pos,
-            };
-            stmts.push(stmt);
-        }
-
-        let node = ast::StmtWithPos {
-            node: ast::Stmt::Block(stmts),
-            pos,
-        };
-        use token::Tok::Semicolon;
-        eat!(self, Semicolon);
-        Ok(node)
-    }
-
-    fn function(&mut self) -> Result<ast::Function<ast::ExprWithPos>> {
-        let mut ty = self.declspec()?;
-        let t = self.declarator(ty)?;
-        ty = t.0;
-        let name = t.1;
-        make_varvec_empty();
-
-        use token::Tok::OpenBrace;
-        eat!(self, OpenBrace);
-        let body = self.compount_stmt()?;
-        let mut locals = vec![];
-        unsafe {
-            for o in &VAR_VEC {
-                locals.push(o.clone());
-            }
-        }
-        Ok(ast::Function {
-            name,
-            body: Box::new(body),
-            locals,
-            stack_size: 0,
-            return_ty: ty,
-        })
-    }
-
-    fn peek(&mut self) -> std::result::Result<&token::Token, &error::Error> {
+    fn peek_token(&mut self) -> token::Token {
         if self.lookahead.is_none() {
             self.lookahead = Some(self.lexer.token());
         }
-
-        // NOTE: lookahead always contain a value, hence unwrap
-        self.lookahead.as_ref().unwrap().as_ref()
+        self.lookahead.as_ref().unwrap().clone()
     }
 
-    fn peek_token(&mut self) -> std::result::Result<&token::Tok, &error::Error> {
-        self.peek().map(|token| &token.token)
-    }
-
-    fn token(&mut self) -> Result<token::Token> {
+    fn token(&mut self) -> token::Token {
         if let Some(token) = self.lookahead.take() {
             return token;
         }
         self.lexer.token()
     }
 
-    fn unexpected_token(&mut self, expected: &str) -> Result<error::Error> {
-        let token = self.token()?;
-        Err(error::Error::UnexpectedToken {
-            expected: expected.to_string(),
-            pos: token.pos,
-            unexpected: token.token,
-        })
+    fn eat(&mut self, expected: token::Token) {
+        let token = self.token();
+        if token != expected {
+            panic!("expected token `{}`, but got token `{}`", expected, token);
+        }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<ast::Function<ast::ExprWithPos>>> {
-        let mut fns = vec![];
-        loop {
-            if self.peek()?.token == token::Tok::EndOfFile {
-                break;
-            }
-            fns.push(self.function()?);
+    fn parse_exp_loop(
+        &mut self,
+        min_prec: i64,
+        left: ast::UntypedExp,
+        next: token::Token,
+    ) -> ast::UntypedExp {
+        match get_precedence(next.clone()) {
+            Some(prec) if prec >= min_prec => match next {
+                token::Token::Equal => {
+                    self.eat(token::Token::Equal);
+                    let right = self.parse_expression(prec);
+                    let left = ast::UntypedExp::Assignment(Box::new(left), Box::new(right));
+                    let next_token = self.peek_token();
+                    self.parse_exp_loop(min_prec, left, next_token)
+                }
+                _ => {
+                    let operator = self.parse_binop();
+                    let right = self.parse_expression(prec + 1);
+                    let left = ast::UntypedExp::Binary(operator, Box::new(left), Box::new(right));
+                    let next_token = self.peek_token();
+                    self.parse_exp_loop(min_prec, left, next_token)
+                }
+            },
+            _ => left,
         }
-        Ok(fns)
+    }
+
+    fn parse_binop(&mut self) -> ast::BinaryOperator {
+        let next_token = self.peek_token();
+        self.eat(next_token.clone());
+        match next_token {
+            token::Token::Plus => ast::BinaryOperator::Add,
+            token::Token::Minus => ast::BinaryOperator::Subtract,
+            token::Token::Star => ast::BinaryOperator::Multiply,
+            token::Token::Slash => ast::BinaryOperator::Divide,
+            token::Token::DoubleEqual => ast::BinaryOperator::Equal,
+            token::Token::BangEqual => ast::BinaryOperator::NotEqual,
+            token::Token::LesserThan => ast::BinaryOperator::LessThan,
+            token::Token::LesserOrEqual => ast::BinaryOperator::LessOrEqual,
+            token::Token::GreaterThan => ast::BinaryOperator::GreaterThan,
+            token::Token::GreaterOrEqual => ast::BinaryOperator::GreaterOrEqual,
+            _ => panic!("Internal error when parsing binary operator"),
+        }
+    }
+
+    fn parse_unop(&mut self) -> ast::UnaryOperator {
+        match self.peek_token() {
+            token::Token::Minus => {
+                self.eat(token::Token::Minus);
+                ast::UnaryOperator::Negate
+            }
+            _ => panic!("Internal error when parsing unary operator"),
+        }
+    }
+
+    fn parse_unary_expression(&mut self) -> ast::UntypedExp {
+        match self.peek_token() {
+            token::Token::Star => {
+                self.eat(token::Token::Star);
+                let inner_exp = self.parse_unary_expression();
+                ast::UntypedExp::Dereference(Box::new(inner_exp))
+            }
+            token::Token::Ampersand => {
+                self.eat(token::Token::Ampersand);
+                let inner_exp = self.parse_unary_expression();
+                ast::UntypedExp::AddrOf(Box::new(inner_exp))
+            }
+            token::Token::Minus => {
+                let operator = self.parse_unop();
+                let inner_exp = self.parse_unary_expression();
+                ast::UntypedExp::Unary(operator, Box::new(inner_exp))
+            }
+            token::Token::Plus => {
+                self.eat(token::Token::Plus);
+                self.parse_unary_expression()
+            }
+            _ => self.parse_primary_expression(),
+        }
+    }
+
+    fn parse_primary_expression(&mut self) -> ast::UntypedExp {
+        match self.peek_token() {
+            token::Token::Number(i) => {
+                self.eat(token::Token::Number(i));
+                ast::UntypedExp::Constant(i)
+            }
+            token::Token::Ident(_) => {
+                let id = self.parse_id();
+                match self.peek_token() {
+                    token::Token::OpenParen => {
+                        let args = self.parse_optional_arg_list();
+                        ast::UntypedExp::FunCall { f: id, args }
+                    }
+                    _ => ast::UntypedExp::Var(id),
+                }
+            }
+            token::Token::OpenParen => {
+                self.eat(token::Token::OpenParen);
+                let e = self.parse_expression(0);
+                self.eat(token::Token::CloseParen);
+                e
+            }
+            other => panic!("expected: a primary expression, actual: {}", other),
+        }
+    }
+
+    fn parse_optional_arg_list(&mut self) -> Vec<ast::UntypedExp> {
+        self.eat(token::Token::OpenParen);
+        let args = match self.peek_token() {
+            token::Token::CloseParen => vec![],
+            _ => self.parse_arg_list(),
+        };
+        self.eat(token::Token::CloseParen);
+        args
+    }
+
+    fn parse_arg_list(&mut self) -> Vec<ast::UntypedExp> {
+        let arg = self.parse_expression(0);
+        match self.peek_token() {
+            token::Token::Comma => {
+                self.eat(token::Token::Comma);
+                let mut arg_list = vec![];
+                arg_list.push(arg);
+                arg_list.append(&mut self.parse_arg_list());
+                arg_list
+            }
+            _ => vec![arg],
+        }
+    }
+
+    fn parse_id(&mut self) -> String {
+        match self.peek_token() {
+            token::Token::Ident(x) => {
+                self.eat(token::Token::Ident(x.clone()));
+                x
+            }
+            other => panic!("expected: an identifier, actual: {}", other),
+        }
+    }
+
+    fn parse_expression(&mut self, min_prec: i64) -> ast::UntypedExp {
+        let initial_factor = self.parse_unary_expression();
+        let next_token = self.peek_token();
+        self.parse_exp_loop(min_prec, initial_factor, next_token)
+    }
+
+    fn is_specifier(&mut self, token: token::Token) -> bool {
+        match token {
+            token::Token::KWInt => true,
+            _ => false,
+        }
+    }
+
+    fn parse_simple_declarator(&mut self) -> Declarator {
+        match self.peek_token() {
+            token::Token::OpenParen => {
+                self.eat(token::Token::OpenParen);
+                let decl = self.parse_declarator();
+                self.eat(token::Token::CloseParen);
+                decl
+            }
+            token::Token::Ident(id) => {
+                self.eat(token::Token::Ident(id.clone()));
+                Declarator::Ident(id)
+            }
+            other => panic!("expected: a simple declarator, actual: {}", other),
+        }
+    }
+
+    fn parse_direct_declarator(&mut self) -> Declarator {
+        let simple_dec = self.parse_simple_declarator();
+        match self.peek_token() {
+            token::Token::OpenParen => {
+                let params = self.parse_param_list();
+                Declarator::FunDeclarator(params, Box::new(simple_dec))
+            }
+            _ => simple_dec,
+        }
+    }
+
+    fn parse_param_list(&mut self) -> Vec<ParamInfo> {
+        self.eat(token::Token::OpenParen);
+        if self.peek_token() != token::Token::CloseParen {
+            let params = self.param_loop();
+            self.eat(token::Token::CloseParen);
+            params
+        } else {
+            self.eat(token::Token::CloseParen);
+            vec![]
+        }
+    }
+
+    fn param_loop(&mut self) -> Vec<ParamInfo> {
+        let p = self.parse_param();
+        match self.peek_token() {
+            token::Token::Comma => {
+                let mut ps = vec![];
+                self.eat(token::Token::Comma);
+                ps.push(p);
+                ps.append(&mut self.param_loop());
+                ps
+            }
+            _ => vec![p],
+        }
+    }
+
+    fn parse_type(&mut self) -> types::Type {
+        self.eat(token::Token::KWInt);
+        types::Type::Int
+    }
+
+    fn parse_param(&mut self) -> ParamInfo {
+        let param_type = self.parse_type();
+        let param_decl = self.parse_declarator();
+        ParamInfo::Param(param_type, param_decl)
+    }
+
+    fn parse_declarator(&mut self) -> Declarator {
+        match self.peek_token() {
+            token::Token::Star => {
+                self.eat(token::Token::Star);
+                let inner = self.parse_declarator();
+                Declarator::PointerDeclarator(Box::new(inner))
+            }
+            _ => self.parse_direct_declarator(),
+        }
+    }
+
+    fn parse_variable_declaration(&mut self) -> ast::VariableDeclaration<ast::UntypedInitializer> {
+        match self.parse_declaration() {
+            ast::Declaration::VarDecl(vd) => vd,
+            ast::Declaration::FunDecl(_) => {
+                panic!("Expected variable declaration but found function declaration")
+            }
+        }
+    }
+
+    fn process_param(&mut self, param: ParamInfo) -> (String, types::Type) {
+        match param {
+            ParamInfo::Param(p_base_type, p_decl) => {
+                let (param_name, param_t, _) = self.process_declarator(p_decl, p_base_type);
+                match param_t {
+                    types::Type::FunType { .. } => {
+                        panic!("Function pointers in parameters are not supported")
+                    }
+                    _ => (),
+                };
+                (param_name, param_t)
+            }
+        }
+    }
+
+    fn process_declarator(
+        &mut self,
+        decl: Declarator,
+        base_type: types::Type,
+    ) -> (String, types::Type, Vec<String>) {
+        match decl {
+            Declarator::Ident(s) => (s, base_type, vec![]),
+            Declarator::PointerDeclarator(d) => {
+                let derived_type = types::Type::Pointer(Box::new(base_type));
+                self.process_declarator(*d, derived_type)
+            }
+            Declarator::FunDeclarator(params, decl) => match *decl {
+                Declarator::Ident(s) => {
+                    let mut param_names = vec![];
+                    let mut param_types = vec![];
+                    for param in params {
+                        let t = self.process_param(param);
+                        param_names.push(t.0);
+                        param_types.push(t.1);
+                    }
+                    let fun_type = types::Type::FunType {
+                        param_types,
+                        ret_type: Box::new(base_type),
+                    };
+                    (s, fun_type, param_names)
+                }
+                _ => panic!("cannot apply additional type derivations to a function declarator"),
+            },
+        }
+    }
+
+    fn parse_statement(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
+        match self.peek_token() {
+            token::Token::If => self.parse_if_statement(),
+            token::Token::OpenBrace => ast::Statement::Compound(self.parse_block()),
+            token::Token::While => self.parse_while_loop(),
+            token::Token::For => self.parse_for_loop(),
+            token::Token::Return => {
+                self.eat(token::Token::Return);
+                let exp = self.parse_optional_expression(token::Token::Semicolon);
+                ast::Statement::Return(exp)
+            }
+            _ => {
+                let opt_exp = self.parse_optional_expression(token::Token::Semicolon);
+                match opt_exp {
+                    Some(exp) => ast::Statement::Expression(exp),
+                    None => ast::Statement::Null,
+                }
+            }
+        }
+    }
+
+    fn parse_if_statement(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
+        self.eat(token::Token::If);
+        self.eat(token::Token::OpenParen);
+        let condition = self.parse_expression(0);
+        self.eat(token::Token::CloseParen);
+        let then_clause = self.parse_statement();
+        let else_clause = match self.peek_token() {
+            token::Token::Else => {
+                self.eat(token::Token::Else);
+                Some(self.parse_statement())
+            }
+            _ => None,
+        };
+        ast::Statement::If {
+            condition,
+            then_clause: Box::new(then_clause),
+            else_clause: Box::new(else_clause),
+        }
+    }
+
+    fn parse_while_loop(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
+        self.eat(token::Token::While);
+        self.eat(token::Token::OpenParen);
+        let condition = self.parse_expression(0);
+        self.eat(token::Token::CloseParen);
+        let body = self.parse_statement();
+        ast::Statement::While {
+            condition,
+            body: Box::new(body),
+        }
+    }
+
+    fn parse_for_loop(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
+        self.eat(token::Token::For);
+        self.eat(token::Token::OpenParen);
+        let init = self.parse_for_init();
+        let condition = self.parse_optional_expression(token::Token::Semicolon);
+        let post = self.parse_optional_expression(token::Token::CloseParen);
+        let body = self.parse_statement();
+        ast::Statement::For {
+            init,
+            condition,
+            post,
+            body: Box::new(body),
+        }
+    }
+
+    fn parse_optional_expression(&mut self, delim: token::Token) -> Option<ast::UntypedExp> {
+        if self.peek_token() == delim {
+            self.eat(delim);
+            None
+        } else {
+            let e = self.parse_expression(0);
+            self.eat(delim);
+            Some(e)
+        }
+    }
+
+    fn parse_block_item(&mut self) -> ast::BlockItem<ast::UntypedInitializer, ast::UntypedExp> {
+        let current_token = self.peek_token();
+        if self.is_specifier(current_token) {
+            ast::BlockItem::D(self.parse_declaration())
+        } else {
+            ast::BlockItem::S(self.parse_statement())
+        }
+    }
+
+    fn parse_block_item_list(
+        &mut self,
+    ) -> Vec<ast::BlockItem<ast::UntypedInitializer, ast::UntypedExp>> {
+        match self.peek_token() {
+            token::Token::CloseBrace => vec![],
+            _ => {
+                let mut block_item_list = vec![];
+                let next_block_item = self.parse_block_item();
+                block_item_list.push(next_block_item);
+                block_item_list.append(&mut self.parse_block_item_list());
+                block_item_list
+            }
+        }
+    }
+
+    fn parse_block(&mut self) -> ast::Block<ast::UntypedInitializer, ast::UntypedExp> {
+        self.eat(token::Token::OpenBrace);
+        let block_items = self.parse_block_item_list();
+        self.eat(token::Token::CloseBrace);
+        block_items
+    }
+
+    fn finish_parsing_function_declaration(
+        &mut self,
+        fun_type: types::Type,
+        name: String,
+        params: Vec<String>,
+    ) -> ast::FunctionDeclaration<ast::UntypedInitializer, ast::UntypedExp> {
+        let body = match self.peek_token() {
+            token::Token::OpenBrace => Some(self.parse_block()),
+            token::Token::Semicolon => {
+                self.eat(token::Token::Semicolon);
+                None
+            }
+            other => panic!("expected function body or semicolon, actual: {}", other),
+        };
+        ast::FunctionDeclaration {
+            name,
+            fun_type,
+            params,
+            body,
+        }
+    }
+
+    fn parsing_variable_declaration_helper(&mut self) -> (String, Option<ast::UntypedInitializer>) {
+        match self.peek_token() {
+            token::Token::Ident(id) => {
+                self.eat(token::Token::Ident(id.clone()));
+                if self.peek_token() == token::Token::Equal {
+                    self.eat(token::Token::Equal);
+                    let init = self.parse_initializer();
+                    (id, Some(init))
+                } else {
+                    (id, None)
+                }
+            }
+            other => panic!(
+                "expected: An initializer or semicolon or comma, actual: {}",
+                other
+            ),
+        }
+    }
+
+    fn finish_parsing_variable_declaration(
+        &mut self,
+        var_type: types::Type,
+        name: String,
+    ) -> ast::VariableDeclaration<ast::UntypedInitializer> {
+        match self.peek_token() {
+            token::Token::Semicolon => {
+                self.eat(token::Token::Semicolon);
+                ast::VariableDeclaration {
+                    var_list: vec![(name, None)],
+                    var_type,
+                }
+            }
+            token::Token::Comma => {
+                let mut var_list = vec![(name, None)];
+                while self.peek_token() == token::Token::Comma {
+                    self.eat(token::Token::Comma);
+                    var_list.push(self.parsing_variable_declaration_helper());
+                }
+                self.eat(token::Token::Semicolon);
+                ast::VariableDeclaration { var_list, var_type }
+            }
+            token::Token::Equal => {
+                self.eat(token::Token::Equal);
+                let init = self.parse_initializer();
+                let mut var_list = vec![(name, Some(init))];
+                while self.peek_token() == token::Token::Comma {
+                    self.eat(token::Token::Comma);
+                    var_list.push(self.parsing_variable_declaration_helper());
+                }
+                self.eat(token::Token::Semicolon);
+                ast::VariableDeclaration { var_list, var_type }
+            }
+            other => panic!("expected: An initializer or semicolon, actual: {}", other),
+        }
+    }
+
+    fn parse_initializer(&mut self) -> ast::UntypedInitializer {
+        if self.peek_token() == token::Token::OpenBrace {
+            self.eat(token::Token::OpenBrace);
+            let init_list = self.parse_init_list();
+            self.eat(token::Token::CloseBrace);
+            ast::UntypedInitializer::CompoundInit(init_list)
+        } else {
+            let e = self.parse_expression(0);
+            ast::UntypedInitializer::SingleInit(e)
+        }
+    }
+
+    fn parse_init_list(&mut self) -> Vec<ast::UntypedInitializer> {
+        let next_init = self.parse_initializer();
+        match self.peek_token() {
+            token::Token::Comma => {
+                self.eat(token::Token::Comma);
+                if self.peek_token() == token::Token::CloseBrace {
+                    vec![next_init]
+                } else {
+                    let mut init_list = vec![];
+                    init_list.push(next_init);
+                    init_list.append(&mut self.parse_init_list());
+                    init_list
+                }
+            }
+            _ => vec![next_init],
+        }
+    }
+
+    fn parse_declaration(&mut self) -> ast::Declaration<ast::UntypedInitializer, ast::UntypedExp> {
+        let base_typ = self.parse_type();
+        let declarator = self.parse_declarator();
+        let (name, typ, params) = self.process_declarator(declarator, base_typ);
+        match typ {
+            types::Type::FunType { .. } => ast::Declaration::FunDecl(
+                self.finish_parsing_function_declaration(typ, name, params),
+            ),
+            _ => {
+                if params.len() == 0 {
+                    ast::Declaration::VarDecl(self.finish_parsing_variable_declaration(typ, name))
+                } else {
+                    panic!("Internal error: should not reach here")
+                }
+            }
+        }
+    }
+
+    /// <for-init> ::= <declaration> | [ <exp> ] ";"
+    fn parse_for_init(&mut self) -> ast::ForInit<ast::UntypedInitializer, ast::UntypedExp> {
+        let next_token = self.peek_token();
+        if self.is_specifier(next_token) {
+            ast::ForInit::InitDecl(self.parse_variable_declaration())
+        } else {
+            let opt_e = self.parse_optional_expression(token::Token::Semicolon);
+            ast::ForInit::InitExp(opt_e)
+        }
+    }
+
+    /// { <function-declaration> }
+    fn parse_declaration_list(
+        &mut self,
+    ) -> Vec<ast::Declaration<ast::UntypedInitializer, ast::UntypedExp>> {
+        match self.peek_token() {
+            token::Token::EndOfFile => vec![],
+            _ => {
+                let next_decl = self.parse_declaration();
+                let mut decls = vec![];
+                decls.push(next_decl);
+                decls.append(&mut self.parse_declaration_list());
+                decls
+            }
+        }
+    }
+
+    pub fn parse(&mut self) -> ast::UntypedProgram {
+        self.parse_declaration_list()
     }
 }
