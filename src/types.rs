@@ -4,6 +4,7 @@ use crate::{ast, position};
 pub enum Type {
     IntType,
     PointerType { base: Box<Type> },
+    FuncType { return_ty: Box<Type> },
 }
 
 pub fn pointer_to(base: Type) -> Type {
@@ -89,8 +90,8 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
                         ty: right.ty,
                     }
                 }
-                (Type::PointerType { .. }, Type::PointerType { .. }) => {
-                    panic!("cannot add two pointers")
+                _ => {
+                    panic!("cannot add two pointers, or cannot add two func types")
                 }
             }
         }
@@ -162,7 +163,7 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
                     }
                 }
                 // wrong: num - ptr
-                (Type::IntType, Type::PointerType { .. }) => panic!("cannot add two pointers"),
+                _ => panic!("num cannot sub ptr"),
             }
         }
         ast::Expr::Binary { left, oper, right } => {
@@ -213,7 +214,7 @@ pub fn convert_expr_to_typed_expr(expr: ast::ExprWithPos) -> ast::TypedExpr {
             let e = convert_expr_to_typed_expr(*e);
             let ty = match e.clone().ty {
                 Type::PointerType { base, .. } => *base,
-                Type::IntType => panic!("invalid pointer dereference"),
+                _ => panic!("invalid pointer dereference"),
             };
             ast::TypedExpr {
                 expr: ast::InnerTypedExpr::Deref(Box::new(e)),
@@ -326,10 +327,17 @@ pub fn convert_stmt_to_typed_stmt(
 }
 
 pub fn convert_function_to_typed_function(
-    f: ast::Function<ast::ExprWithPos>,
-) -> ast::Function<ast::TypedExpr> {
-    ast::Function {
-        body: Box::new(convert_stmt_to_typed_stmt(*f.body)),
-        stack_size: f.stack_size,
+    funcs: Vec<ast::Function<ast::ExprWithPos>>,
+) -> Vec<ast::Function<ast::TypedExpr>> {
+    let mut result = vec![];
+    for f in funcs {
+        result.push(ast::Function {
+            name: f.name,
+            body: Box::new(convert_stmt_to_typed_stmt(*f.body)),
+            stack_size: f.stack_size,
+            locals: f.locals,
+            return_ty: f.return_ty,
+        })
     }
+    result
 }

@@ -5,6 +5,7 @@ use crate::{ast, parser};
 pub static mut DEPTH: i64 = 0;
 pub static mut COUNT: i64 = 0;
 pub static ARG_REG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+pub static mut CURRENT_FN: Option<ast::Function<ast::TypedExpr>> = None;
 
 fn count() -> i64 {
     unsafe {
@@ -44,7 +45,7 @@ fn align_to(n: i64, align: i64) -> i64 {
 fn gen_addr(node: ast::TypedExpr) {
     match node.expr {
         ast::InnerTypedExpr::Var(v) => {
-            let offset = parser::get_var_offset(v.name);
+            let offset = unsafe { parser::get_var_offset(CURRENT_FN.clone().unwrap(), v.name) };
             println!("  lea {}(%rbp), %rax", offset);
         }
         ast::InnerTypedExpr::Deref(e) => {
@@ -150,14 +151,15 @@ pub fn gen_expr(node: ast::TypedExpr) {
     }
 }
 
-fn assign_lvar_offsets(prog: &mut ast::Function<ast::TypedExpr>) {
-    let mut offset: i64 = 0;
-    let vars = parser::get_vars();
-    for v in vars {
-        offset += 8;
-        parser::update_var_offset(v, -offset);
+fn assign_lvar_offsets(prog: &mut Vec<ast::Function<ast::TypedExpr>>) {
+    for f in prog {
+        let mut offset: i64 = 0;
+        for v in &mut f.locals {
+            offset += 8;
+            v.offset = -offset;
+        }
+        f.stack_size = align_to(offset, 16);
     }
-    prog.stack_size = align_to(offset, 16);
 }
 
 pub fn gen_stmt(node: ast::StmtWithPos<ast::TypedExpr>) {
@@ -165,7 +167,9 @@ pub fn gen_stmt(node: ast::StmtWithPos<ast::TypedExpr>) {
         ast::Stmt::Expr(e) => gen_expr(e),
         ast::Stmt::Return(e) => {
             gen_expr(e);
-            println!("  jmp .L.return");
+            println!("  jmp .L.return.{}", unsafe {
+                CURRENT_FN.clone().unwrap().name
+            });
         }
         ast::Stmt::Block(block) => {
             for stmt in block {
@@ -220,26 +224,31 @@ pub fn gen_stmt(node: ast::StmtWithPos<ast::TypedExpr>) {
     }
 }
 
-pub fn codegen(mut prog: ast::Function<ast::TypedExpr>) {
-    assign_lvar_offsets(&mut prog);
+pub fn codegen(prog: &mut Vec<ast::Function<ast::TypedExpr>>) {
+    assign_lvar_offsets(prog);
 
-    println!("  .globl main");
-    println!("main:");
+    for f in prog {
+        println!("  .globl {}", f.name);
+        println!("{}:", f.name);
+        unsafe {
+            CURRENT_FN = Some(f.clone());
+        }
 
-    // Prologue
-    println!("  push %rbp");
-    println!("  mov %rsp, %rbp");
-    println!("  sub ${}, %rsp", prog.stack_size);
+        // Prologue
+        println!("  push %rbp");
+        println!("  mov %rsp, %rbp");
+        println!("  sub ${}, %rsp", f.stack_size);
 
-    gen_stmt(*prog.body);
-    unsafe {
-        assert!(DEPTH == 0);
+        // Emit code
+        gen_stmt(*f.body.clone());
+        unsafe {
+            assert!(DEPTH == 0);
+        }
+
+        // Epilogue
+        println!(".L.return.{}:", f.name);
+        println!("  mov %rbp, %rsp");
+        println!("  pop %rbp");
+        println!("  ret");
     }
-
-    println!(".L.return:");
-
-    // Epilogue
-    println!("  mov %rbp, %rsp");
-    println!("  pop %rbp");
-    println!("  ret");
 }

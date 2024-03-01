@@ -34,8 +34,8 @@ fn main() {
         }
     } else {
         let node = ast.unwrap();
-        let typed_node = types::convert_function_to_typed_function(node);
+        let mut typed_node = types::convert_function_to_typed_function(node);
         // println!("typed_node: {:?}", typed_node);
-        codegen::codegen(typed_node);
+        codegen::codegen(&mut typed_node);
     }
 }

@@ -4,6 +4,12 @@ use crate::{ast, error, lexer, position, symbol, token, types};
 
 pub static mut VAR_VEC: Vec<ast::VarObj> = vec![];
 
+pub fn make_varvec_empty() {
+    unsafe {
+        VAR_VEC = vec![];
+    }
+}
+
 pub fn get_vars() -> Vec<String> {
     let mut result = vec![];
     unsafe {
@@ -41,12 +47,10 @@ pub fn update_var_offset(name: String, offset: i64) {
     }
 }
 
-pub fn get_var_offset(name: String) -> i64 {
-    unsafe {
-        for o in &VAR_VEC {
-            if o.name == name {
-                return o.offset;
-            }
+pub fn get_var_offset(f: ast::Function<ast::TypedExpr>, name: String) -> i64 {
+    for o in &f.locals {
+        if o.name == name {
+            return o.offset;
         }
     }
     0
@@ -393,13 +397,8 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
 
     /// compount-stmt = (declaration | stmt)* "}"
     fn compount_stmt(&mut self) -> Result<ast::StmtWithPos<ast::ExprWithPos>> {
-        use token::Tok::OpenBrace;
-        eat!(self, OpenBrace);
         let mut block = vec![];
-        loop {
-            if self.peek()?.token == token::Tok::CloseBrace {
-                break;
-            }
+        while self.peek()?.token != token::Tok::CloseBrace {
             match self.peek()?.token {
                 token::Tok::KWInt => block.push(self.declaration()?),
                 _ => block.push(self.stmt()?),
@@ -433,7 +432,11 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 };
                 Ok(stmt)
             }
-            token::Tok::OpenBrace => self.compount_stmt(),
+            token::Tok::OpenBrace => {
+                use token::Tok::OpenBrace;
+                eat!(self, OpenBrace);
+                self.compount_stmt()
+            }
             token::Tok::If => {
                 use token::Tok::If;
                 let pos = eat!(self, If);
@@ -522,8 +525,21 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         Ok(types::Type::IntType)
     }
 
-    /// declarator = "*"* ident
-    fn declarator(&mut self, ty: types::Type) -> Result<types::Type> {
+    /// type-suffix = ("(" func-params)?
+    fn type_suffix(&mut self, ty: types::Type) -> Result<types::Type> {
+        if self.peek()?.token == token::Tok::OpenParen {
+            use token::Tok::{CloseParen, OpenParen};
+            eat!(self, OpenParen);
+            eat!(self, CloseParen);
+            return Ok(types::Type::FuncType {
+                return_ty: Box::new(ty),
+            });
+        }
+        Ok(ty)
+    }
+
+    /// declarator = "*"* ident type-suffix
+    fn declarator(&mut self, ty: types::Type) -> Result<(types::Type, String)> {
         let mut ty = ty;
         loop {
             match self.peek()?.token {
@@ -538,15 +554,14 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
 
         match self.peek()?.token {
             token::Tok::Ident(_) => {
-                ty = match ty {
-                    types::Type::IntType { .. } => types::Type::IntType,
-                    types::Type::PointerType { base, .. } => types::Type::PointerType { base },
-                };
+                let name;
+                use token::Tok::Ident;
+                eat!(self, Ident, name);
+                ty = self.type_suffix(ty)?;
+                Ok((ty, name))
             }
             _ => panic!("expected a variable name"),
         }
-
-        Ok(ty)
     }
 
     /// declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
@@ -564,13 +579,10 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 use token::Tok::Comma;
                 eat!(self, Comma);
             }
-            let ty = self.declarator(basety.clone())?;
-            let name;
-            use token::Tok::Ident;
-            pos = eat!(self, Ident, name);
+            let t = self.declarator(basety.clone())?;
             let var = ast::VarObj {
-                name: name.clone(),
-                ty: ty,
+                name: t.1,
+                ty: t.0,
                 offset: 0,
             };
             add_var(var.clone());
@@ -578,7 +590,7 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
                 continue;
             }
             use token::Tok::Equal;
-            eat!(self, Equal);
+            pos = eat!(self, Equal);
             let lhs = ast::ExprWithPos {
                 node: ast::Expr::Var(var),
                 pos,
@@ -605,6 +617,31 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         use token::Tok::Semicolon;
         eat!(self, Semicolon);
         Ok(node)
+    }
+
+    fn function(&mut self) -> Result<ast::Function<ast::ExprWithPos>> {
+        let mut ty = self.declspec()?;
+        let t = self.declarator(ty)?;
+        ty = t.0;
+        let name = t.1;
+        make_varvec_empty();
+
+        use token::Tok::OpenBrace;
+        eat!(self, OpenBrace);
+        let body = self.compount_stmt()?;
+        let mut locals = vec![];
+        unsafe {
+            for o in &VAR_VEC {
+                locals.push(o.clone());
+            }
+        }
+        Ok(ast::Function {
+            name,
+            body: Box::new(body),
+            locals,
+            stack_size: 0,
+            return_ty: ty,
+        })
     }
 
     fn peek(&mut self) -> std::result::Result<&token::Token, &error::Error> {
@@ -636,18 +673,14 @@ impl<'a, R: std::io::Read> Parser<'a, R> {
         })
     }
 
-    pub fn parse(&mut self) -> Result<ast::Function<ast::ExprWithPos>> {
-        let body = self.stmt()?;
-        match self.token() {
-            Ok(token::Token {
-                token: token::Tok::EndOfFile,
-                ..
-            })
-            | Err(error::Error::Eof) => Ok(ast::Function {
-                body: Box::new(body),
-                stack_size: 0,
-            }),
-            _ => Err(self.unexpected_token("end of file")?),
+    pub fn parse(&mut self) -> Result<Vec<ast::Function<ast::ExprWithPos>>> {
+        let mut fns = vec![];
+        loop {
+            if self.peek()?.token == token::Tok::EndOfFile {
+                break;
+            }
+            fns.push(self.function()?);
         }
+        Ok(fns)
     }
 }

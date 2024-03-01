@@ -112,6 +112,9 @@ pub struct VarObj {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function<T> {
+    pub name: String,
     pub body: Box<StmtWithPos<T>>,
     pub stack_size: i64,
+    pub locals: Vec<VarObj>,
+    pub return_ty: types::Type,
 }
