@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::ast;
+use crate::{ast, typecheck, types};
 use lazy_static::lazy_static;
 
 const ARG_REG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -117,20 +117,39 @@ fn gen_addr(node: ast::TypedExp) {
     }
 }
 
+/// Load a value from where %rax is pointing to.
+fn load(ty: types::Type) {
+    match ty {
+        // If it is an array, do not attempt to load a value to the
+        // register because in general we can't load an entire array to a
+        // register. As a result, the result of an evaluation of an array
+        // becomes not the array itself but the address of the array.
+        // This is where "array is automatically converted to a pointer to
+        // the first element of the array in C" occurs.
+        types::Type::Array { .. } => (),
+        _ => println!("  mov (%rax), %rax"),
+    }
+}
+
+/// Store %rax to an address that the stack top is pointing to.
+fn store() {
+    pop("%rdi".to_string());
+    println!("  mov %rax, (%rdi)");
+}
+
 fn gen_expr(typed_e: ast::TypedExp) {
     match typed_e.e {
         ast::TypedInnerExp::Constant(c) => println!("  mov ${}, %rax", c),
         ast::TypedInnerExp::Var(..) => {
-            gen_addr(typed_e);
-            println!("  mov (%rax), %rax");
+            gen_addr(typed_e.clone());
+            load(typed_e.t);
         }
         ast::TypedInnerExp::AddrOf(e) => gen_addr(*e),
         ast::TypedInnerExp::Assignment(lhs, rhs) => {
             gen_addr(*lhs);
             push();
             gen_expr(*rhs);
-            pop("%rdi".to_string());
-            println!("  mov %rax, (%rdi)");
+            store();
         }
         ast::TypedInnerExp::Unary(_, typed_e) => {
             gen_expr(*typed_e);
@@ -184,7 +203,7 @@ fn gen_expr(typed_e: ast::TypedExp) {
         }
         ast::TypedInnerExp::Dereference(e) => {
             gen_expr(*e);
-            println!("  mov (%rax), %rax");
+            load(typed_e.t);
         }
         ast::TypedInnerExp::FunCall { f, args } => {
             let mut nargs = 0;
@@ -307,7 +326,8 @@ fn assign_lvar_offsets(fd: ast::FunctionDeclaration<ast::TypedInitializer, ast::
                 ast::BlockItem::D(d) => match d {
                     ast::Declaration::VarDecl(vd) => {
                         for var_init in vd.var_list.iter().rev() {
-                            offset += 8;
+                            offset +=
+                                types::get_type_size(typecheck::symbols_get(var_init.0.clone())) as i64;
                             set_var_offset(get_current_fn(), var_init.0.clone(), -offset);
                         }
                     }

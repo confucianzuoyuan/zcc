@@ -141,6 +141,8 @@ impl<R: Read> Lexer<R> {
                 b',' => self.simple_token(token::Token::Comma),
                 b'{' => self.simple_token(token::Token::OpenBrace),
                 b'}' => self.simple_token(token::Token::CloseBrace),
+                b'[' => self.simple_token(token::Token::OpenBracket),
+                b']' => self.simple_token(token::Token::CloseBracket),
                 b'&' => self.simple_token(token::Token::Ampersand),
                 _ => panic!("unknown token"),
             };

@@ -5,6 +5,7 @@ pub enum Declarator {
     Ident(String),
     PointerDeclarator(Box<Declarator>),
     FunDeclarator(Vec<ParamInfo>, Box<Declarator>),
+    ArrayDeclarator(Box<Declarator>, usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -236,6 +237,14 @@ impl<R: std::io::Read> Parser<R> {
                 let params = self.parse_param_list();
                 Declarator::FunDeclarator(params, Box::new(simple_dec))
             }
+            token::Token::OpenBracket => {
+                let array_dimensions = self.parse_array_dimensions();
+                let mut array_dec = simple_dec.clone();
+                for dim in array_dimensions {
+                    array_dec = Declarator::ArrayDeclarator(Box::new(array_dec), dim);
+                }
+                array_dec
+            }
             _ => simple_dec,
         }
     }
@@ -322,6 +331,11 @@ impl<R: std::io::Read> Parser<R> {
             Declarator::PointerDeclarator(d) => {
                 let derived_type = types::Type::Pointer(Box::new(base_type));
                 self.process_declarator(*d, derived_type)
+            }
+            Declarator::ArrayDeclarator(inner, cnst) => {
+                let size = cnst;
+                let derived_type = types::Type::Array { elem_type: Box::new(base_type), size };
+                self.process_declarator(*inner, derived_type)
             }
             Declarator::FunDeclarator(params, decl) => match *decl {
                 Declarator::Ident(s) => {
@@ -576,6 +590,32 @@ impl<R: std::io::Read> Parser<R> {
                     panic!("Internal error: should not reach here")
                 }
             }
+        }
+    }
+
+    fn parse_constant(&mut self) -> usize {
+        match self.peek_token() {
+            token::Token::Number(i) => {
+                self.eat(token::Token::Number(i));
+                i as usize
+            },
+            _ => panic!(),
+        }
+    }
+
+    /// { "[" <const> "]" }+
+    fn parse_array_dimensions(&mut self) -> Vec<usize> {
+        match self.peek_token() {
+            token::Token::OpenBracket => {
+                let mut dims = vec![];
+                self.eat(token::Token::OpenBracket);
+                let dim = self.parse_constant();
+                self.eat(token::Token::CloseBracket);
+                dims.push(dim);
+                dims.append(&mut self.parse_array_dimensions());
+                dims
+            }
+            _ => vec![],
         }
     }
 

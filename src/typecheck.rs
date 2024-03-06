@@ -1,3 +1,4 @@
+use crate::types::get_type_size;
 use crate::{ast, types};
 
 use lazy_static::lazy_static;
@@ -11,9 +12,14 @@ lazy_static! {
     };
 }
 
-fn symbols_get(name: String) -> Option<types::Type> {
+fn symbols_get_opt(name: String) -> Option<types::Type> {
     let map = SYMBOLS.lock().unwrap();
     map.get(&name).cloned()
+}
+
+pub fn symbols_get(name: String) -> types::Type {
+    let map = SYMBOLS.lock().unwrap();
+    map.get(&name).unwrap().clone()
 }
 
 fn symbols_add_automatic_var(name: String, t: types::Type) {
@@ -40,12 +46,12 @@ fn validate_type(typ: types::Type) {
             }
             validate_type(*ret_type);
         }
-        types::Type::Int => (),
+        types::Type::Int | types::Type::Array { .. } => (),
     }
 }
 
 fn typecheck_var(v: String) -> ast::TypedExp {
-    let v_type = symbols_get(v.clone());
+    let v_type = symbols_get_opt(v.clone());
     match v_type {
         Some(typ) => {
             let e = ast::TypedInnerExp::Var(v);
@@ -138,9 +144,9 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                     t: types::Type::Int,
                 },
                 // ptr + num
-                (types::Type::Pointer(..), types::Type::Int) => {
+                (types::Type::Pointer(base), types::Type::Int) => {
                     let typed_num_eight = ast::TypedExp {
-                        e: ast::TypedInnerExp::Constant(8),
+                        e: ast::TypedInnerExp::Constant(get_type_size(*base) as i64),
                         t: types::Type::Int,
                     };
                     let rhs = ast::TypedExp {
@@ -161,9 +167,9 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                     }
                 }
                 // num + ptr
-                (types::Type::Int, types::Type::Pointer(..)) => {
+                (types::Type::Int, types::Type::Pointer(base)) => {
                     let typed_num_eight = ast::TypedExp {
-                        e: ast::TypedInnerExp::Constant(8),
+                        e: ast::TypedInnerExp::Constant(get_type_size(*base) as i64),
                         t: types::Type::Int,
                     };
                     let lhs = ast::TypedExp {
@@ -181,6 +187,33 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                             Box::new(typed_right.clone()),
                         ),
                         t: typed_right.t,
+                    }
+                }
+                // array + num
+                (types::Type::Array { elem_type, size: _ }, types::Type::Int) => {
+                    let typed_num_eight = ast::TypedExp {
+                        e: ast::TypedInnerExp::Constant(get_type_size(*elem_type.clone()) as i64),
+                        t: types::Type::Int,
+                    };
+                    let lhs = ast::TypedExp {
+                        e: ast::TypedInnerExp::AddrOf(Box::new(typed_left)),
+                        t: types::pointer_to(*elem_type),
+                    };
+                    let rhs = ast::TypedExp {
+                        e: ast::TypedInnerExp::Binary(
+                            ast::BinaryOperator::Multiply,
+                            Box::new(typed_right),
+                            Box::new(typed_num_eight),
+                        ),
+                        t: types::Type::Int,
+                    };
+                    ast::TypedExp {
+                        e: ast::TypedInnerExp::Binary(
+                            ast::BinaryOperator::Add,
+                            Box::new(lhs.clone()),
+                            Box::new(rhs),
+                        ),
+                        t: lhs.t,
                     }
                 }
                 // ptr + ptr
@@ -253,10 +286,21 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
         }
         ast::UntypedExp::AddrOf(e) => {
             let typed_e = typecheck_exp(*e);
-            let ty = types::pointer_to(typed_e.t.clone());
-            ast::TypedExp {
-                e: ast::TypedInnerExp::AddrOf(Box::new(typed_e)),
-                t: ty,
+            match typed_e.t.clone() {
+                types::Type::Array { .. } => {
+                    let ty = types::pointer_to(typed_e.t.clone());
+                    ast::TypedExp {
+                        e: ast::TypedInnerExp::AddrOf(Box::new(typed_e)),
+                        t: ty,
+                    }
+                }
+                _ => {
+                    let ty = types::pointer_to(typed_e.t.clone());
+                    ast::TypedExp {
+                        e: ast::TypedInnerExp::AddrOf(Box::new(typed_e)),
+                        t: ty,
+                    }
+                }
             }
         }
         ast::UntypedExp::Dereference(e) => {
@@ -269,13 +313,20 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                         t: ty,
                     }
                 }
+                types::Type::Array { elem_type, size: _ } => {
+                    let ty = types::pointer_to(*elem_type);
+                    ast::TypedExp {
+                        e: ast::TypedInnerExp::Dereference(Box::new(typed_e)),
+                        t: ty,
+                    }
+                }
                 _ => panic!("invalid pointer dereference"),
             }
         }
         ast::UntypedExp::Assignment(lhs, rhs) => {
             let typed_lhs = typecheck_exp(*lhs);
             let typed_rhs = typecheck_exp(*rhs);
-            let ty = typed_lhs.t.clone();
+            let ty = typed_rhs.t.clone();
             ast::TypedExp {
                 e: ast::TypedInnerExp::Assignment(Box::new(typed_lhs), Box::new(typed_rhs)),
                 t: ty,
