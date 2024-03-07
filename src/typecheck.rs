@@ -144,9 +144,9 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                     t: types::Type::Int,
                 },
                 // ptr + num
-                (types::Type::Pointer(base), types::Type::Int) => {
+                (types::Type::Pointer(..), types::Type::Int) => {
                     let typed_num_eight = ast::TypedExp {
-                        e: ast::TypedInnerExp::Constant(get_type_size(*base) as i64),
+                        e: ast::TypedInnerExp::Constant(get_type_size(typed_left.t.clone()) as i64),
                         t: types::Type::Int,
                     };
                     let rhs = ast::TypedExp {
@@ -190,14 +190,16 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                     }
                 }
                 // array + num
+                // int x[3]; `x + 1`的求值结果是指针类型，指向int的指针
+                // int x[2][3]; `x + 1`的求值结果是指针类型，指向int [3]的指针
                 (types::Type::Array { elem_type, size: _ }, types::Type::Int) => {
+                    let lhs = ast::TypedExp {
+                        e: ast::TypedInnerExp::AddrOf(Box::new(typed_left)),
+                        t: types::pointer_to(*elem_type.clone()),
+                    };
                     let typed_num_eight = ast::TypedExp {
                         e: ast::TypedInnerExp::Constant(get_type_size(*elem_type.clone()) as i64),
                         t: types::Type::Int,
-                    };
-                    let lhs = ast::TypedExp {
-                        e: ast::TypedInnerExp::AddrOf(Box::new(typed_left)),
-                        t: types::pointer_to(*elem_type),
                     };
                     let rhs = ast::TypedExp {
                         e: ast::TypedInnerExp::Binary(
@@ -313,11 +315,11 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                         t: ty,
                     }
                 }
+                // int x[2][3]; `*x`的类型是`int [3]`
                 types::Type::Array { elem_type, size: _ } => {
-                    let ty = types::pointer_to(*elem_type);
                     ast::TypedExp {
                         e: ast::TypedInnerExp::Dereference(Box::new(typed_e)),
-                        t: ty,
+                        t: *elem_type,
                     }
                 }
                 _ => panic!("invalid pointer dereference"),
@@ -425,16 +427,29 @@ fn typecheck_local_decl(
     }
 }
 
+fn get_init_type(init: ast::TypedInitializer) -> types::Type {
+    match init {
+        ast::TypedInitializer::SingleInit(typed_exp) => typed_exp.t,
+        ast::TypedInitializer::CompoundInit(..) => panic!(),
+    }
+}
+
 fn typecheck_local_var_decl(
     vd: ast::VariableDeclaration<ast::UntypedInitializer>,
 ) -> ast::VariableDeclaration<ast::TypedInitializer> {
     validate_type(vd.var_type.clone());
     let mut typed_var_list = vec![];
+    let mut var_type = vd.var_type.clone();
     for v in vd.var_list {
         symbols_add_automatic_var(v.0.clone(), vd.var_type.clone());
         match v.1.clone() {
             Some(init) => {
                 let typed_init = typecheck_init(init);
+                var_type = match get_init_type(typed_init.clone()) {
+                    types::Type::Array { elem_type, .. } => types::Type::Pointer(elem_type),
+                    _ => vd.var_type.clone(),
+                };
+                symbols_add_automatic_var(v.0.clone(), var_type.clone());
                 typed_var_list.push((v.0, Some(typed_init)));
             }
             None => {
@@ -444,7 +459,7 @@ fn typecheck_local_var_decl(
     }
     ast::VariableDeclaration {
         var_list: typed_var_list,
-        var_type: vd.var_type,
+        var_type: var_type,
     }
 }
 
