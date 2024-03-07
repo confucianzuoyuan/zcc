@@ -218,6 +218,34 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                         t: lhs.t,
                     }
                 }
+                // num + array
+                // int 2[x]
+                (types::Type::Int, types::Type::Array { elem_type, size: _ }) => {
+                    let rhs = ast::TypedExp {
+                        e: ast::TypedInnerExp::AddrOf(Box::new(typed_right)),
+                        t: types::pointer_to(*elem_type.clone()),
+                    };
+                    let typed_num_eight = ast::TypedExp {
+                        e: ast::TypedInnerExp::Constant(get_type_size(*elem_type.clone()) as i64),
+                        t: types::Type::Int,
+                    };
+                    let lhs = ast::TypedExp {
+                        e: ast::TypedInnerExp::Binary(
+                            ast::BinaryOperator::Multiply,
+                            Box::new(typed_left),
+                            Box::new(typed_num_eight),
+                        ),
+                        t: types::Type::Int,
+                    };
+                    ast::TypedExp {
+                        e: ast::TypedInnerExp::Binary(
+                            ast::BinaryOperator::Add,
+                            Box::new(rhs.clone()),
+                            Box::new(lhs),
+                        ),
+                        t: rhs.t,
+                    }
+                }
                 // ptr + ptr
                 _ => panic!("invalid operands"),
             }

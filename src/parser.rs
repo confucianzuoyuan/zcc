@@ -137,8 +137,26 @@ impl<R: std::io::Read> Parser<R> {
                 self.eat(token::Token::Plus);
                 self.parse_unary_expression()
             }
-            _ => self.parse_primary_expression(),
+            _ => self.parse_postfix_expression(),
         }
+    }
+
+    fn parse_postfix_expression(&mut self) -> ast::UntypedExp {
+        let mut node = self.parse_primary_expression();
+
+        while self.peek_token() == token::Token::OpenBracket {
+            // x[y] is short for *(x+y)
+            self.eat(token::Token::OpenBracket);
+            let idx = self.parse_expression(0);
+            self.eat(token::Token::CloseBracket);
+            node = ast::UntypedExp::Dereference(Box::new(ast::UntypedExp::Binary(
+                ast::BinaryOperator::Add,
+                Box::new(node),
+                Box::new(idx),
+            )));
+        }
+
+        node
     }
 
     fn parse_primary_expression(&mut self) -> ast::UntypedExp {
@@ -334,7 +352,10 @@ impl<R: std::io::Read> Parser<R> {
             }
             Declarator::ArrayDeclarator(inner, cnst) => {
                 let size = cnst;
-                let derived_type = types::Type::Array { elem_type: Box::new(base_type), size };
+                let derived_type = types::Type::Array {
+                    elem_type: Box::new(base_type),
+                    size,
+                };
                 self.process_declarator(*inner, derived_type)
             }
             Declarator::FunDeclarator(params, decl) => match *decl {
@@ -598,7 +619,7 @@ impl<R: std::io::Read> Parser<R> {
             token::Token::Number(i) => {
                 self.eat(token::Token::Number(i));
                 i as usize
-            },
+            }
             _ => panic!(),
         }
     }
