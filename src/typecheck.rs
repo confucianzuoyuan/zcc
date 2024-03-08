@@ -344,12 +344,10 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                     }
                 }
                 // int x[2][3]; `*x`的类型是`int [3]`
-                types::Type::Array { elem_type, size: _ } => {
-                    ast::TypedExp {
-                        e: ast::TypedInnerExp::Dereference(Box::new(typed_e)),
-                        t: *elem_type,
-                    }
-                }
+                types::Type::Array { elem_type, size: _ } => ast::TypedExp {
+                    e: ast::TypedInnerExp::Dereference(Box::new(typed_e)),
+                    t: *elem_type,
+                },
                 _ => panic!("invalid pointer dereference"),
             }
         }
@@ -362,6 +360,14 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
                 t: ty,
             }
         }
+        ast::UntypedExp::SizeOf(e) => {
+            let typed_e = typecheck_exp(*e);
+            ast::TypedExp {
+                e: ast::TypedInnerExp::SizeOf(Box::new(typed_e)),
+                t: types::Type::Int,
+            }
+        }
+        ast::UntypedExp::SizeOfT(..) => panic!("not support sizeof Type now"),
     }
 }
 

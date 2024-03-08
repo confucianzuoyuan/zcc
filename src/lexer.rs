@@ -107,12 +107,13 @@ impl<R: Read> Lexer<R> {
     fn identifier(&mut self) -> token::Token {
         let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_');
         let token = match ident.as_str() {
-            "return" => token::Token::Return,
-            "if" => token::Token::If,
-            "else" => token::Token::Else,
-            "for" => token::Token::For,
-            "while" => token::Token::While,
+            "return" => token::Token::KWReturn,
+            "if" => token::Token::KWIf,
+            "else" => token::Token::KWElse,
+            "for" => token::Token::KWFor,
+            "while" => token::Token::KWWhile,
             "int" => token::Token::KWInt,
+            "sizeof" => token::Token::KWSizeOf,
             _ => token::Token::Ident(ident),
         };
         token

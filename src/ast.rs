@@ -88,6 +88,8 @@ pub enum UntypedExp {
     FunCall { f: String, args: Vec<UntypedExp> },
     Dereference(Box<UntypedExp>),
     AddrOf(Box<UntypedExp>),
+    SizeOf(Box<UntypedExp>),
+    SizeOfT(types::Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,6 +110,8 @@ pub enum TypedInnerExp {
     FunCall { f: String, args: Vec<TypedExp> },
     Dereference(Box<TypedExp>),
     AddrOf(Box<TypedExp>),
+    SizeOf(Box<TypedExp>),
+    SizeOfT(types::Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]

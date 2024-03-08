@@ -222,6 +222,10 @@ fn gen_expr(typed_e: ast::TypedExp) {
             println!("  mov $0, %rax");
             println!("  call {}", f);
         }
+        ast::TypedInnerExp::SizeOf(e) => {
+            println!("  mov ${}, %rax", types::get_type_size(e.t));
+        }
+        ast::TypedInnerExp::SizeOfT(..) => panic!("not support sizeof Type now"),
     }
 }
 
@@ -327,7 +331,8 @@ fn assign_lvar_offsets(fd: ast::FunctionDeclaration<ast::TypedInitializer, ast::
                     ast::Declaration::VarDecl(vd) => {
                         for var_init in vd.var_list.iter().rev() {
                             offset +=
-                                types::get_type_size(typecheck::symbols_get(var_init.0.clone())) as i64;
+                                types::get_type_size(typecheck::symbols_get(var_init.0.clone()))
+                                    as i64;
                             set_var_offset(get_current_fn(), var_init.0.clone(), -offset);
                         }
                     }

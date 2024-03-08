@@ -181,6 +181,11 @@ impl<R: std::io::Read> Parser<R> {
                 self.eat(token::Token::CloseParen);
                 e
             }
+            token::Token::KWSizeOf => {
+                self.eat(token::Token::KWSizeOf);
+                let node = self.parse_unary_expression();
+                ast::UntypedExp::SizeOf(Box::new(node))
+            }
             other => panic!("expected: a primary expression, actual: {}", other),
         }
     }
@@ -380,12 +385,12 @@ impl<R: std::io::Read> Parser<R> {
 
     fn parse_statement(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
         match self.peek_token() {
-            token::Token::If => self.parse_if_statement(),
+            token::Token::KWIf => self.parse_if_statement(),
             token::Token::OpenBrace => ast::Statement::Compound(self.parse_block()),
-            token::Token::While => self.parse_while_loop(),
-            token::Token::For => self.parse_for_loop(),
-            token::Token::Return => {
-                self.eat(token::Token::Return);
+            token::Token::KWWhile => self.parse_while_loop(),
+            token::Token::KWFor => self.parse_for_loop(),
+            token::Token::KWReturn => {
+                self.eat(token::Token::KWReturn);
                 let exp = self.parse_optional_expression(token::Token::Semicolon);
                 ast::Statement::Return(exp)
             }
@@ -400,14 +405,14 @@ impl<R: std::io::Read> Parser<R> {
     }
 
     fn parse_if_statement(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
-        self.eat(token::Token::If);
+        self.eat(token::Token::KWIf);
         self.eat(token::Token::OpenParen);
         let condition = self.parse_expression(0);
         self.eat(token::Token::CloseParen);
         let then_clause = self.parse_statement();
         let else_clause = match self.peek_token() {
-            token::Token::Else => {
-                self.eat(token::Token::Else);
+            token::Token::KWElse => {
+                self.eat(token::Token::KWElse);
                 Some(self.parse_statement())
             }
             _ => None,
@@ -420,7 +425,7 @@ impl<R: std::io::Read> Parser<R> {
     }
 
     fn parse_while_loop(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
-        self.eat(token::Token::While);
+        self.eat(token::Token::KWWhile);
         self.eat(token::Token::OpenParen);
         let condition = self.parse_expression(0);
         self.eat(token::Token::CloseParen);
@@ -432,7 +437,7 @@ impl<R: std::io::Read> Parser<R> {
     }
 
     fn parse_for_loop(&mut self) -> ast::Statement<ast::UntypedInitializer, ast::UntypedExp> {
-        self.eat(token::Token::For);
+        self.eat(token::Token::KWFor);
         self.eat(token::Token::OpenParen);
         let init = self.parse_for_init();
         let condition = self.parse_optional_expression(token::Token::Semicolon);
