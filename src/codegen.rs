@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Mutex};
 use crate::{ast, symbols, typecheck, types};
 use lazy_static::lazy_static;
 
-const ARG_REG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+const ARG_REG8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
+const ARG_REG64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 static mut COUNT: i64 = 0;
 static mut DEPTH: i64 = 0;
 static mut CURRENT_FN: Option<String> = None;
@@ -131,14 +132,18 @@ fn load(ty: types::Type) {
         // This is where "array is automatically converted to a pointer to
         // the first element of the array in C" occurs.
         types::Type::Array { .. } => (),
+        types::Type::Char => println!("  movsbq (%rax), %rax"),
         _ => println!("  mov (%rax), %rax"),
     }
 }
 
 /// Store %rax to an address that the stack top is pointing to.
-fn store() {
+fn store(ty: types::Type) {
     pop("%rdi".to_string());
-    println!("  mov %rax, (%rdi)");
+    match ty {
+        types::Type::Char => println!("  mov %al, (%rdi)"),
+        _ => println!("  mov %rax, (%rdi)"),
+    }
 }
 
 fn gen_expr(typed_e: ast::TypedExp) {
@@ -153,7 +158,7 @@ fn gen_expr(typed_e: ast::TypedExp) {
             gen_addr(*lhs);
             push();
             gen_expr(*rhs);
-            store();
+            store(typed_e.t);
         }
         ast::TypedInnerExp::Unary(_, typed_e) => {
             gen_expr(*typed_e);
@@ -219,7 +224,7 @@ fn gen_expr(typed_e: ast::TypedExp) {
 
             let mut i = nargs - 1;
             while i >= 0 {
-                pop(ARG_REG[i as usize].to_string());
+                pop(ARG_REG64[i as usize].to_string());
                 i -= 1;
             }
 
@@ -401,11 +406,19 @@ pub fn gen(prog: ast::TypedProgram) {
                 // Save passed-by-register arguments to the stack
                 let mut i = 0;
                 for param in fd.params {
-                    println!(
-                        "  mov {}, {}(%rbp)",
-                        ARG_REG[i as usize].to_string(),
-                        get_var_offset(fd.name.clone(), param)
-                    );
+                    let t = symbols::get(param.clone()).t;
+                    match t {
+                        types::Type::Char => println!(
+                            "  mov {}, {}(%rbp)",
+                            ARG_REG8[i as usize].to_string(),
+                            get_var_offset(fd.name.clone(), param)
+                        ),
+                        _ => println!(
+                            "  mov {}, {}(%rbp)",
+                            ARG_REG64[i as usize].to_string(),
+                            get_var_offset(fd.name.clone(), param)
+                        ),
+                    }
                     i += 1;
                 }
 
@@ -428,7 +441,7 @@ pub fn gen(prog: ast::TypedProgram) {
                     println!("{}:", v.0);
                     println!("  .zero {}", types::get_type_size(symbols::get(v.0).t));
                 }
-            },
+            }
         }
     }
 }

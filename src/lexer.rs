@@ -113,6 +113,7 @@ impl<R: Read> Lexer<R> {
             "for" => token::Token::KWFor,
             "while" => token::Token::KWWhile,
             "int" => token::Token::KWInt,
+            "char" => token::Token::KWChar,
             "sizeof" => token::Token::KWSizeOf,
             _ => token::Token::Ident(ident),
         };

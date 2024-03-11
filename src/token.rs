@@ -31,6 +31,7 @@ pub enum Token {
     KWFor,
     KWWhile,
     KWInt,
+    KWChar,
     KWSizeOf,
     EndOfFile,
 }
@@ -66,6 +67,7 @@ impl Display for Token {
                 Token::KWFor => "for",
                 Token::KWWhile => "while",
                 Token::KWInt => "int",
+                Token::KWChar => "char",
                 Token::KWSizeOf => "sizeof",
                 Token::Number(num) => return num.to_string(),
                 Token::Ident(ref ident) => ident,

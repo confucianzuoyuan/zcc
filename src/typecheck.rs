@@ -13,7 +13,7 @@ fn validate_type(typ: types::Type) {
             }
             validate_type(*ret_type);
         }
-        types::Type::Int | types::Type::Array { .. } => (),
+        types::Type::Int | types::Type::Char | types::Type::Array { .. } => (),
     }
 }
 
@@ -223,7 +223,7 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
 
             match (typed_left.t.clone(), typed_right.t.clone()) {
                 // num - num
-                (types::Type::Int, types::Type::Int) => ast::TypedExp {
+                (types::Type::Int | types::Type::Char, types::Type::Int | types::Type::Char) => ast::TypedExp {
                     e: ast::TypedInnerExp::Binary(
                         ast::BinaryOperator::Subtract,
                         Box::new(typed_left),

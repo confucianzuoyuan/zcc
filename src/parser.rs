@@ -232,7 +232,7 @@ impl<R: std::io::Read> Parser<R> {
 
     fn is_specifier(&mut self, token: token::Token) -> bool {
         match token {
-            token::Token::KWInt => true,
+            token::Token::KWInt | token::Token::KWChar => true,
             _ => false,
         }
     }
@@ -299,8 +299,17 @@ impl<R: std::io::Read> Parser<R> {
     }
 
     fn parse_type(&mut self) -> types::Type {
-        self.eat(token::Token::KWInt);
-        types::Type::Int
+        match self.peek_token() {
+            token::Token::KWInt => {
+                self.eat(token::Token::KWInt);
+                types::Type::Int
+            }
+            token::Token::KWChar => {
+                self.eat(token::Token::KWChar);
+                types::Type::Char
+            }
+            _ => panic!("not valid type specifier"),
+        }
     }
 
     fn parse_param(&mut self) -> ParamInfo {
