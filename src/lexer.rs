@@ -131,13 +131,35 @@ impl<R: Read> Lexer<R> {
         token
     }
 
+    fn escape_char(&mut self) -> char {
+        let escaped_char = match self.current_char() {
+            'n' => '\n',
+            't' => '\t',
+            'b' => '\x08',
+            'v' => '\x0B',
+            'f' => '\x0C',
+            'r' => '\r',
+            'a' => '\x07',
+            // [GNU] \e for the ASCII escape character is a GNU C extension.
+            'e' => '\x1B',
+            _ => self.current_char(),
+        };
+        self.advance();
+        escaped_char
+    }
+
     fn string(&mut self) -> token::Token {
         let mut string = String::new();
         self.eat('"');
         let mut ch = self.current_char();
         while ch != '"' {
-            string.push(ch);
-            self.advance();
+            if ch == '\\' {
+                self.advance();
+                string.push(self.escape_char());
+            } else {
+                string.push(ch);
+                self.advance();
+            }
             ch = self.current_char();
         }
         self.eat('"');
