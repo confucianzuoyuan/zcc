@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::{ast, typecheck, types};
+use crate::{ast, symbols, typecheck, types};
 use lazy_static::lazy_static;
 
 const ARG_REG: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -110,7 +110,11 @@ fn align_to(n: i64, align: i64) -> i64 {
 fn gen_addr(node: ast::TypedExp) {
     match node.e {
         ast::TypedInnerExp::Var(v) => {
-            println!("  lea {}(%rbp), %rax", get_var_offset(get_current_fn(), v));
+            if symbols::is_global(v.clone()) {
+                println!("  lea {}(%rip), %rax", v);
+            } else {
+                println!("  lea {}(%rbp), %rax", get_var_offset(get_current_fn(), v));
+            }
         }
         ast::TypedInnerExp::Dereference(e) => gen_expr(*e),
         _ => panic!("not an lvalue"),
@@ -331,8 +335,7 @@ fn assign_lvar_offsets(fd: ast::FunctionDeclaration<ast::TypedInitializer, ast::
                     ast::Declaration::VarDecl(vd) => {
                         for var_init in vd.var_list.iter().rev() {
                             offset +=
-                                types::get_type_size(typecheck::symbols_get(var_init.0.clone()))
-                                    as i64;
+                                types::get_type_size(symbols::get(var_init.0.clone()).t) as i64;
                             set_var_offset(get_current_fn(), var_init.0.clone(), -offset);
                         }
                     }
@@ -382,6 +385,7 @@ pub fn gen(prog: ast::TypedProgram) {
     for f in prog {
         match f {
             ast::Declaration::FunDecl(fd) => {
+                println!("  .text");
                 unsafe {
                     CURRENT_FN = Some(fd.name.clone());
                 }
@@ -417,7 +421,14 @@ pub fn gen(prog: ast::TypedProgram) {
                 println!("  pop %rbp");
                 println!("  ret");
             }
-            ast::Declaration::VarDecl(..) => panic!("not support global variable now"),
+            ast::Declaration::VarDecl(vd) => {
+                println!("  .data");
+                for v in vd.var_list {
+                    println!("  .globl {}", v.0);
+                    println!("{}:", v.0);
+                    println!("  .zero {}", types::get_type_size(symbols::get(v.0).t));
+                }
+            },
         }
     }
 }

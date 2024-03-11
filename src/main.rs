@@ -10,6 +10,7 @@ mod types;
 mod parser;
 mod typecheck;
 mod codegen;
+mod symbols;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

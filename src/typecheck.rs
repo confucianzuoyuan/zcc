@@ -1,38 +1,5 @@
 use crate::types::get_type_size;
-use crate::{ast, types};
-
-use lazy_static::lazy_static;
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-lazy_static! {
-    static ref SYMBOLS: Mutex<HashMap<String, types::Type>> = {
-        let m = HashMap::new();
-        Mutex::new(m)
-    };
-}
-
-fn symbols_get_opt(name: String) -> Option<types::Type> {
-    let map = SYMBOLS.lock().unwrap();
-    map.get(&name).cloned()
-}
-
-pub fn symbols_get(name: String) -> types::Type {
-    let map = SYMBOLS.lock().unwrap();
-    map.get(&name).unwrap().clone()
-}
-
-fn symbols_add_automatic_var(name: String, t: types::Type) {
-    let mut map = SYMBOLS.lock().unwrap();
-    map.insert(name, t);
-}
-
-fn is_lvalue(typed_exp: ast::TypedExp) -> bool {
-    match typed_exp.e {
-        ast::TypedInnerExp::Dereference(..) | ast::TypedInnerExp::Var(..) => true,
-        _ => false,
-    }
-}
+use crate::{ast, symbols, types};
 
 fn validate_type(typ: types::Type) {
     match typ {
@@ -51,13 +18,13 @@ fn validate_type(typ: types::Type) {
 }
 
 fn typecheck_var(v: String) -> ast::TypedExp {
-    let v_type = symbols_get_opt(v.clone());
+    let v_type = symbols::get_opt(v.clone());
     match v_type {
-        Some(typ) => {
+        Some(entry) => {
             let e = ast::TypedInnerExp::Var(v);
-            match typ {
+            match entry.t {
                 types::Type::FunType { .. } => panic!("Tried to use function name as variable"),
-                _ => ast::TypedExp { e, t: typ },
+                _ => ast::TypedExp { e, t: entry.t },
             }
         }
         None => panic!("var not in symbol table"),
@@ -475,7 +442,7 @@ fn typecheck_local_var_decl(
     let mut typed_var_list = vec![];
     let mut var_type = vd.var_type.clone();
     for v in vd.var_list {
-        symbols_add_automatic_var(v.0.clone(), vd.var_type.clone());
+        symbols::add_automatic_var(v.0.clone(), vd.var_type.clone());
         match v.1.clone() {
             Some(init) => {
                 let typed_init = typecheck_init(init);
@@ -483,7 +450,46 @@ fn typecheck_local_var_decl(
                     types::Type::Array { elem_type, .. } => types::Type::Pointer(elem_type),
                     _ => vd.var_type.clone(),
                 };
-                symbols_add_automatic_var(v.0.clone(), var_type.clone());
+                symbols::add_automatic_var(v.0.clone(), var_type.clone());
+                typed_var_list.push((v.0, Some(typed_init)));
+            }
+            None => {
+                typed_var_list.push((v.0, None));
+            }
+        }
+    }
+    ast::VariableDeclaration {
+        var_list: typed_var_list,
+        var_type: var_type,
+    }
+}
+
+fn typecheck_file_scope_var_decl(
+    vd: ast::VariableDeclaration<ast::UntypedInitializer>,
+) -> ast::VariableDeclaration<ast::TypedInitializer> {
+    validate_type(vd.var_type.clone());
+    let mut typed_var_list = vec![];
+    let mut var_type = vd.var_type.clone();
+    for v in vd.var_list {
+        symbols::add_static_var(
+            v.0.clone(),
+            vd.var_type.clone(),
+            true,
+            symbols::InitialValue::Initial(vec![]),
+        );
+        match v.1.clone() {
+            Some(init) => {
+                let typed_init = typecheck_init(init);
+                var_type = match get_init_type(typed_init.clone()) {
+                    types::Type::Array { elem_type, .. } => types::Type::Pointer(elem_type),
+                    _ => vd.var_type.clone(),
+                };
+                symbols::add_static_var(
+                    v.0.clone(),
+                    var_type.clone(),
+                    true,
+                    symbols::InitialValue::Initial(vec![]),
+                );
                 typed_var_list.push((v.0, Some(typed_init)));
             }
             None => {
@@ -518,7 +524,7 @@ fn typecheck_fn_decl(
             ret_type: _,
         } => {
             for (idx, param) in f.params.iter().enumerate() {
-                symbols_add_automatic_var(param.clone(), param_types[idx].clone());
+                symbols::add_automatic_var(param.clone(), param_types[idx].clone());
             }
         }
         _ => panic!("Internal error, function has non-function type"),
@@ -561,7 +567,9 @@ fn typecheck_global_decl(
 ) -> ast::Declaration<ast::TypedInitializer, ast::TypedExp> {
     match decl {
         ast::Declaration::FunDecl(fd) => ast::Declaration::FunDecl(typecheck_fn_decl(fd)),
-        _ => panic!("not support global var"),
+        ast::Declaration::VarDecl(vd) => {
+            ast::Declaration::VarDecl(typecheck_file_scope_var_decl(vd))
+        }
     }
 }
 
