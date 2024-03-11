@@ -25,6 +25,7 @@ pub enum Token {
     Comma,
     Number(i64),
     Ident(String),
+    String(String),
     KWReturn,
     KWIf,
     KWElse,
@@ -70,6 +71,7 @@ impl Display for Token {
                 Token::KWChar => "char",
                 Token::KWSizeOf => "sizeof",
                 Token::Number(num) => return num.to_string(),
+                Token::String(ref string) => return format!("{:?}", string),
                 Token::Ident(ref ident) => ident,
                 Token::EndOfFile => "<eof>",
             };

@@ -18,6 +18,17 @@ impl<R: Read> Lexer<R> {
         self.bytes_iter.next();
     }
 
+    fn eat(&mut self, ch: char) {
+        if self.current_char() != ch {
+            panic!(
+                "Expected character `{}`, but found `{}`.",
+                ch,
+                self.current_char()
+            );
+        }
+        self.advance()
+    }
+
     pub fn integer(&mut self) -> token::Token {
         let buffer = self.take_while(char::is_numeric);
         let num = buffer.parse().unwrap();
@@ -120,6 +131,19 @@ impl<R: Read> Lexer<R> {
         token
     }
 
+    fn string(&mut self) -> token::Token {
+        let mut string = String::new();
+        self.eat('"');
+        let mut ch = self.current_char();
+        while ch != '"' {
+            string.push(ch);
+            self.advance();
+            ch = self.current_char();
+        }
+        self.eat('"');
+        token::Token::String(string)
+    }
+
     pub fn token(&mut self) -> token::Token {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
@@ -146,6 +170,7 @@ impl<R: Read> Lexer<R> {
                 b'[' => self.simple_token(token::Token::OpenBracket),
                 b']' => self.simple_token(token::Token::CloseBracket),
                 b'&' => self.simple_token(token::Token::Ampersand),
+                b'"' => self.string(),
                 _ => panic!("unknown token"),
             };
         }

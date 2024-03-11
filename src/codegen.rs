@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::{ast, symbols, typecheck, types};
+use crate::{ast, symbols, typecheck, types, unique_ids};
 use lazy_static::lazy_static;
 
 const ARG_REG8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
@@ -108,11 +108,47 @@ fn align_to(n: i64, align: i64) -> i64 {
     (n + align - 1) / align * align
 }
 
+fn get_string_helper(entry: symbols::Entry) -> Vec<u8> {
+    match entry.attrs {
+        symbols::IdentifierAttrs::StaticAttr { init, .. } => match init {
+            symbols::InitialValue::Initial(inits) => {
+                let mut bytes = vec![];
+                for init in inits {
+                    match init {
+                        symbols::StaticInit::CharInit(c) => bytes.push(c),
+                        _ => panic!(),
+                    }
+                }
+                bytes
+            }
+            _ => panic!(),
+        },
+        _ => panic!(),
+    }
+}
+
 fn gen_addr(node: ast::TypedExp) {
     match node.e {
         ast::TypedInnerExp::Var(v) => {
             if symbols::is_global(v.clone()) {
-                println!("  lea {}(%rip), %rax", v);
+                let entry = symbols::get(v.clone());
+                match entry.t.clone() {
+                    types::Type::Array { elem_type, .. } => match *elem_type {
+                        types::Type::Char => {
+                            let bytes = get_string_helper(entry);
+                            println!("  .data");
+                            println!("  .globl {}", v);
+                            println!("{}:", v);
+                            for b in bytes {
+                                println!("  .byte {}", b);
+                            }
+                            println!("  .text");
+                            println!("  lea {}(%rip), %rax", v);
+                        }
+                        _ => println!("  lea {}(%rip), %rax", v),
+                    },
+                    _ => println!("  lea {}(%rip), %rax", v),
+                }
             } else {
                 println!("  lea {}(%rbp), %rax", get_var_offset(get_current_fn(), v));
             }

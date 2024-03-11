@@ -82,6 +82,7 @@ pub type Program<InitT, ExpT> = Vec<Declaration<InitT, ExpT>>;
 pub enum UntypedExp {
     Constant(i64),
     Var(String),
+    String(String),
     Unary(UnaryOperator, Box<UntypedExp>),
     Binary(BinaryOperator, Box<UntypedExp>, Box<UntypedExp>),
     Assignment(Box<UntypedExp>, Box<UntypedExp>),

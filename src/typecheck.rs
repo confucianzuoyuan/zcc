@@ -1,5 +1,5 @@
 use crate::types::get_type_size;
-use crate::{ast, symbols, types};
+use crate::{ast, symbols, types, unique_ids};
 
 fn validate_type(typ: types::Type) {
     match typ {
@@ -38,6 +38,30 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
             e: ast::TypedInnerExp::Constant(c),
             t: types::Type::Int,
         },
+        ast::UntypedExp::String(string) => {
+            let string_label = unique_ids::new_unique_name();
+            let string_bytes = string.as_bytes();
+            let mut string_bytes_static_init = vec![];
+            for b in string_bytes {
+                string_bytes_static_init.push(symbols::StaticInit::CharInit(*b));
+            }
+            symbols::add_static_var(
+                string_label.clone(),
+                types::Type::Array {
+                    elem_type: Box::new(types::Type::Char),
+                    size: string.len() + 1,
+                },
+                true,
+                symbols::InitialValue::Initial(string_bytes_static_init),
+            );
+            ast::TypedExp {
+                e: ast::TypedInnerExp::Var(string_label),
+                t: types::Type::Array {
+                    elem_type: Box::new(types::Type::Char),
+                    size: string.len() + 1,
+                },
+            }
+        }
         ast::UntypedExp::Unary(ast::UnaryOperator::Negate, inner) => {
             let typed_inner = typecheck_exp(*inner);
             ast::TypedExp {
@@ -223,14 +247,16 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
 
             match (typed_left.t.clone(), typed_right.t.clone()) {
                 // num - num
-                (types::Type::Int | types::Type::Char, types::Type::Int | types::Type::Char) => ast::TypedExp {
-                    e: ast::TypedInnerExp::Binary(
-                        ast::BinaryOperator::Subtract,
-                        Box::new(typed_left),
-                        Box::new(typed_right),
-                    ),
-                    t: types::Type::Int,
-                },
+                (types::Type::Int | types::Type::Char, types::Type::Int | types::Type::Char) => {
+                    ast::TypedExp {
+                        e: ast::TypedInnerExp::Binary(
+                            ast::BinaryOperator::Subtract,
+                            Box::new(typed_left),
+                            Box::new(typed_right),
+                        ),
+                        t: types::Type::Int,
+                    }
+                }
                 // ptr - num
                 (types::Type::Pointer(..), types::Type::Int) => {
                     let typed_num_eight = ast::TypedExp {

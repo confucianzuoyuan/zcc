@@ -4,9 +4,15 @@ use crate::types;
 use lazy_static::lazy_static;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum StaticInit {
+    CharInit(u8),
+    IntInit(i64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum InitialValue {
     Tentative,
-    Initial(Vec<i64>),
+    Initial(Vec<StaticInit>),
     NoInitializer,
 }
 

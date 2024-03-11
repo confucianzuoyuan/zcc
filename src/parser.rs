@@ -186,6 +186,10 @@ impl<R: std::io::Read> Parser<R> {
                 let node = self.parse_unary_expression();
                 ast::UntypedExp::SizeOf(Box::new(node))
             }
+            token::Token::String(string) => {
+                self.eat(token::Token::String(string.clone()));
+                ast::UntypedExp::String(string)
+            }
             other => panic!("expected: a primary expression, actual: {}", other),
         }
     }
