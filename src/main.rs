@@ -14,6 +14,7 @@ mod symbols;
 mod unique_ids;
 mod ir;
 mod initializers;
+mod ir_gen;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -26,3 +26,10 @@ pub fn get_type_size(t: Type) -> usize {
         _ => panic!("type does not hava size: {:#?}", t),
     }
 }
+
+pub fn is_pointer(t: Type) -> bool {
+    match t {
+        Type::Pointer(..) => true,
+        _ => false,
+    }
+}

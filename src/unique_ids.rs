@@ -7,3 +7,11 @@ pub fn new_unique_name() -> String {
         label
     }
 }
+
+pub fn make_temporary() -> String {
+    unsafe {
+        let n = COUNT;
+        COUNT = n + 1;
+        format!("tmp.{}", n)
+    }
+}
