@@ -1,5 +1,5 @@
 use crate::types::get_type_size;
-use crate::{ast, symbols, types, unique_ids};
+use crate::{ast, initializers, symbols, types, unique_ids};
 
 fn validate_type(typ: types::Type) {
     match typ {
@@ -43,7 +43,7 @@ fn typecheck_exp(e: ast::UntypedExp) -> ast::TypedExp {
             let string_bytes = string.as_bytes();
             let mut string_bytes_static_init = vec![];
             for b in string_bytes {
-                string_bytes_static_init.push(symbols::StaticInit::CharInit(*b));
+                string_bytes_static_init.push(initializers::StaticInit::CharInit(*b as i8));
             }
             symbols::add_static_var(
                 string_label.clone(),

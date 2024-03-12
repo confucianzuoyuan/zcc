@@ -13,6 +13,7 @@ mod codegen;
 mod symbols;
 mod unique_ids;
 mod ir;
+mod initializers;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

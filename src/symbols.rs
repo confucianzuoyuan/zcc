@@ -1,18 +1,12 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::types;
+use crate::{initializers, types};
 use lazy_static::lazy_static;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum StaticInit {
-    CharInit(u8),
-    IntInit(i64),
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InitialValue {
     Tentative,
-    Initial(Vec<StaticInit>),
+    Initial(Vec<initializers::StaticInit>),
     NoInitializer,
 }
 

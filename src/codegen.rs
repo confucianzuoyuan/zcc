@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::{ast, symbols, typecheck, types, unique_ids};
+use crate::{ast, initializers, symbols, typecheck, types, unique_ids};
 use lazy_static::lazy_static;
 
 const ARG_REG8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
@@ -108,14 +108,14 @@ fn align_to(n: i64, align: i64) -> i64 {
     (n + align - 1) / align * align
 }
 
-fn get_string_helper(entry: symbols::Entry) -> Vec<u8> {
+fn get_string_helper(entry: symbols::Entry) -> Vec<i8> {
     match entry.attrs {
         symbols::IdentifierAttrs::StaticAttr { init, .. } => match init {
             symbols::InitialValue::Initial(inits) => {
                 let mut bytes = vec![];
                 for init in inits {
                     match init {
-                        symbols::StaticInit::CharInit(c) => bytes.push(c),
+                        initializers::StaticInit::CharInit(c) => bytes.push(c),
                         _ => panic!(),
                     }
                 }
