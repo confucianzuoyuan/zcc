@@ -306,6 +306,7 @@ fn gen_stmt(typed_stmt: ast::Statement<ast::TypedInitializer, ast::TypedExp>) {
             condition,
             post,
             body,
+            id: _,
         } => {
             let c = count();
             match init {
@@ -347,7 +348,11 @@ fn gen_stmt(typed_stmt: ast::Statement<ast::TypedInitializer, ast::TypedExp>) {
             println!("  jmp .L.begin.{}", c);
             println!(".L.end.{}:", c);
         }
-        ast::Statement::While { condition, body } => {
+        ast::Statement::While {
+            condition,
+            body,
+            id: _,
+        } => {
             let c = count();
             println!(".L.begin.{}:", c);
             gen_expr(condition);

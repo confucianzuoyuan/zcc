@@ -393,12 +393,17 @@ fn typecheck_statement(
                 else_clause: Box::new(typed_else),
             }
         }
-        ast::Statement::While { condition, body } => {
+        ast::Statement::While {
+            condition,
+            body,
+            id,
+        } => {
             let typed_condition = typecheck_exp(condition);
             let typed_body = typecheck_statement(*body);
             ast::Statement::While {
                 condition: typed_condition,
                 body: Box::new(typed_body),
+                id,
             }
         }
         ast::Statement::For {
@@ -406,6 +411,7 @@ fn typecheck_statement(
             condition,
             post,
             body,
+            id,
         } => {
             let typed_init = typecheck_for_init(init);
             let typed_condition = match condition {
@@ -422,6 +428,7 @@ fn typecheck_statement(
                 condition: typed_condition,
                 post: typed_post,
                 body: Box::new(typed_body),
+                id,
             }
         }
         ast::Statement::Compound(block_items) => {

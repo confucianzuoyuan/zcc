@@ -446,6 +446,7 @@ impl<R: std::io::Read> Parser<R> {
         ast::Statement::While {
             condition,
             body: Box::new(body),
+            id: "".to_string(),
         }
     }
 
@@ -461,6 +462,7 @@ impl<R: std::io::Read> Parser<R> {
             condition,
             post,
             body: Box::new(body),
+            id: "".to_string(),
         }
     }
 

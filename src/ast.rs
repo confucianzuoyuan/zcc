@@ -47,12 +47,14 @@ pub enum Statement<InitT, ExpT> {
     While {
         condition: ExpT,
         body: Box<Statement<InitT, ExpT>>,
+        id: String,
     },
     For {
         init: ForInit<InitT, ExpT>,
         condition: Option<ExpT>,
         post: Option<ExpT>,
         body: Box<Statement<InitT, ExpT>>,
+        id: String,
     },
     Null,
 }
