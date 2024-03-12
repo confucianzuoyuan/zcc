@@ -167,7 +167,41 @@ fn emit_ir_for_statement(
             let (eval_exp, _) = emit_ir_for_exp(e);
             eval_exp
         }
+        ast::Statement::If {
+            condition,
+            then_clause,
+            else_clause,
+        } => emit_ir_for_if_statement(condition, *then_clause, *else_clause),
         ast::Statement::Null => vec![],
         _ => panic!(),
+    }
+}
+
+fn emit_ir_for_if_statement(
+    condition: ast::TypedExp,
+    then_clause: ast::Statement<ast::TypedInitializer, ast::TypedExp>,
+    else_clause: Option<ast::Statement<ast::TypedInitializer, ast::TypedExp>>,
+) -> Vec<ir::Instruction> {
+    match else_clause {
+        None => {
+            let end_label = unique_ids::make_label("if_end".to_string());
+            let (mut eval_condition, c) = emit_ir_and_convert(condition);
+            eval_condition.push(ir::Instruction::JumpIfZero(c, end_label.clone()));
+            eval_condition.append(&mut emit_ir_for_statement(then_clause));
+            eval_condition.push(ir::Instruction::Label(end_label));
+            eval_condition
+        }
+        Some(_else_clause) => {
+            let else_label = unique_ids::make_label("else".to_string());
+            let end_label = unique_ids::make_label("".to_string());
+            let (mut eval_condition, c) = emit_ir_and_convert(condition);
+            eval_condition.push(ir::Instruction::JumpIfZero(c, else_label.clone()));
+            eval_condition.append(&mut emit_ir_for_statement(then_clause));
+            eval_condition.push(ir::Instruction::Jump(end_label.clone()));
+            eval_condition.push(ir::Instruction::Label(else_label));
+            eval_condition.append(&mut emit_ir_for_statement(_else_clause));
+            eval_condition.push(ir::Instruction::Label(end_label));
+            eval_condition
+        }
     }
 }

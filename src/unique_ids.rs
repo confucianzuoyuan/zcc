@@ -15,3 +15,19 @@ pub fn make_temporary() -> String {
         format!("tmp.{}", n)
     }
 }
+
+pub fn make_label(prefix: String) -> String {
+    unsafe {
+        let n = COUNT;
+        COUNT = n + 1;
+        format!("{}.{}", prefix, n)
+    }
+}
+
+pub fn make_named_temporary(prefix: String) -> String {
+    unsafe {
+        let n = COUNT;
+        COUNT = n + 1;
+        format!("{}.{}", prefix, n)
+    }
+}
