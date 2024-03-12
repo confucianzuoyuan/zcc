@@ -310,13 +310,13 @@ fn gen_stmt(typed_stmt: ast::Statement<ast::TypedInitializer, ast::TypedExp>) {
             let c = count();
             match init {
                 ast::ForInit::InitDecl(vd) => {
-                    for var_init in vd.var_list {
-                        if let Some(init) = var_init.1 {
+                    for var_init in vd {
+                        if let Some(init) = var_init.init {
                             match init {
                                 ast::TypedInitializer::SingleInit(e) => {
                                     println!(
                                         "  lea {}(%rbp), %rax",
-                                        get_var_offset(get_current_fn(), var_init.0)
+                                        get_var_offset(get_current_fn(), var_init.name)
                                     );
                                     push();
                                     gen_expr(e);
@@ -374,10 +374,10 @@ fn assign_lvar_offsets(fd: ast::FunctionDeclaration<ast::TypedInitializer, ast::
             match block_item {
                 ast::BlockItem::D(d) => match d {
                     ast::Declaration::VarDecl(vd) => {
-                        for var_init in vd.var_list.iter().rev() {
+                        for var_init in vd.iter().rev() {
                             offset +=
-                                types::get_type_size(symbols::get(var_init.0.clone()).t) as i64;
-                            set_var_offset(get_current_fn(), var_init.0.clone(), -offset);
+                                types::get_type_size(symbols::get(var_init.name.clone()).t) as i64;
+                            set_var_offset(get_current_fn(), var_init.name.clone(), -offset);
                         }
                     }
                     ast::Declaration::FunDecl(..) => {
@@ -397,13 +397,13 @@ fn gen_block(block: ast::Block<ast::TypedInitializer, ast::TypedExp>) {
         match block_item {
             ast::BlockItem::D(d) => match d {
                 ast::Declaration::VarDecl(vd) => {
-                    for var_init in vd.var_list.iter().rev() {
-                        if let Some(init) = var_init.1.clone() {
+                    for var_init in vd.iter().rev() {
+                        if let Some(init) = var_init.init.clone() {
                             match init {
                                 ast::TypedInitializer::SingleInit(e) => {
                                     println!(
                                         "  lea {}(%rbp), %rax",
-                                        get_var_offset(get_current_fn(), var_init.0.clone())
+                                        get_var_offset(get_current_fn(), var_init.name.clone())
                                     );
                                     push();
                                     gen_expr(e);
@@ -472,10 +472,10 @@ pub fn gen(prog: ast::TypedProgram) {
             }
             ast::Declaration::VarDecl(vd) => {
                 println!("  .data");
-                for v in vd.var_list {
-                    println!("  .globl {}", v.0);
-                    println!("{}:", v.0);
-                    println!("  .zero {}", types::get_type_size(symbols::get(v.0).t));
+                for v in vd {
+                    println!("  .globl {}", v.name);
+                    println!("{}:", v.name);
+                    println!("  .zero {}", types::get_type_size(symbols::get(v.name).t));
                 }
             }
         }

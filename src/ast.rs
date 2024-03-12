@@ -21,13 +21,16 @@ pub enum UnaryOperator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableDeclaration<InitT> {
-    pub var_list: Vec<(String, Option<InitT>)>,
+    pub name: String,
     pub var_type: types::Type,
+    pub init: Option<InitT>,
 }
+
+pub type VariableDeclarations<InitT> = Vec<VariableDeclaration<InitT>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ForInit<InitT, ExpT> {
-    InitDecl(VariableDeclaration<InitT>),
+    InitDecl(VariableDeclarations<InitT>),
     InitExp(Option<ExpT>),
 }
 
@@ -73,7 +76,7 @@ pub struct FunctionDeclaration<InitT, ExpT> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Declaration<InitT, ExpT> {
     FunDecl(FunctionDeclaration<InitT, ExpT>),
-    VarDecl(VariableDeclaration<InitT>),
+    VarDecl(VariableDeclarations<InitT>),
 }
 
 pub type Program<InitT, ExpT> = Vec<Declaration<InitT, ExpT>>;

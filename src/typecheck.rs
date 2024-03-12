@@ -462,71 +462,77 @@ fn get_init_type(init: ast::TypedInitializer) -> types::Type {
 }
 
 fn typecheck_local_var_decl(
-    vd: ast::VariableDeclaration<ast::UntypedInitializer>,
-) -> ast::VariableDeclaration<ast::TypedInitializer> {
-    validate_type(vd.var_type.clone());
-    let mut typed_var_list = vec![];
-    let mut var_type = vd.var_type.clone();
-    for v in vd.var_list {
-        symbols::add_automatic_var(v.0.clone(), vd.var_type.clone());
-        match v.1.clone() {
+    vd: ast::VariableDeclarations<ast::UntypedInitializer>,
+) -> ast::VariableDeclarations<ast::TypedInitializer> {
+    let mut typed_var_decls = vec![];
+    for var_decl in vd {
+        match var_decl.init {
             Some(init) => {
                 let typed_init = typecheck_init(init);
-                var_type = match get_init_type(typed_init.clone()) {
+                let var_type = match get_init_type(typed_init.clone()) {
                     types::Type::Array { elem_type, .. } => types::Type::Pointer(elem_type),
-                    _ => vd.var_type.clone(),
+                    _ => var_decl.var_type.clone(),
                 };
-                symbols::add_automatic_var(v.0.clone(), var_type.clone());
-                typed_var_list.push((v.0, Some(typed_init)));
+                symbols::add_automatic_var(var_decl.name.clone(), var_type.clone());
+                typed_var_decls.push(ast::VariableDeclaration {
+                    name: var_decl.name,
+                    var_type,
+                    init: Some(typed_init),
+                })
             }
             None => {
-                typed_var_list.push((v.0, None));
+                symbols::add_automatic_var(var_decl.name.clone(), var_decl.var_type.clone());
+                typed_var_decls.push(ast::VariableDeclaration {
+                    name: var_decl.name,
+                    var_type: var_decl.var_type,
+                    init: None,
+                });
             }
         }
     }
-    ast::VariableDeclaration {
-        var_list: typed_var_list,
-        var_type: var_type,
-    }
+    typed_var_decls
 }
 
 fn typecheck_file_scope_var_decl(
-    vd: ast::VariableDeclaration<ast::UntypedInitializer>,
-) -> ast::VariableDeclaration<ast::TypedInitializer> {
-    validate_type(vd.var_type.clone());
-    let mut typed_var_list = vec![];
-    let mut var_type = vd.var_type.clone();
-    for v in vd.var_list {
-        symbols::add_static_var(
-            v.0.clone(),
-            vd.var_type.clone(),
-            true,
-            symbols::InitialValue::Initial(vec![]),
-        );
-        match v.1.clone() {
+    vd: ast::VariableDeclarations<ast::UntypedInitializer>,
+) -> ast::VariableDeclarations<ast::TypedInitializer> {
+    let mut typed_var_decls = vec![];
+    for var_decl in vd {
+        match var_decl.init {
             Some(init) => {
                 let typed_init = typecheck_init(init);
-                var_type = match get_init_type(typed_init.clone()) {
+                let var_type = match get_init_type(typed_init.clone()) {
                     types::Type::Array { elem_type, .. } => types::Type::Pointer(elem_type),
-                    _ => vd.var_type.clone(),
+                    _ => var_decl.var_type.clone(),
                 };
                 symbols::add_static_var(
-                    v.0.clone(),
+                    var_decl.name.clone(),
                     var_type.clone(),
                     true,
                     symbols::InitialValue::Initial(vec![]),
                 );
-                typed_var_list.push((v.0, Some(typed_init)));
+                typed_var_decls.push(ast::VariableDeclaration {
+                    name: var_decl.name,
+                    var_type,
+                    init: Some(typed_init),
+                })
             }
             None => {
-                typed_var_list.push((v.0, None));
+                symbols::add_static_var(
+                    var_decl.name.clone(),
+                    var_decl.var_type.clone(),
+                    true,
+                    symbols::InitialValue::NoInitializer,
+                );
+                typed_var_decls.push(ast::VariableDeclaration {
+                    name: var_decl.name,
+                    var_type: var_decl.var_type,
+                    init: None,
+                });
             }
         }
     }
-    ast::VariableDeclaration {
-        var_list: typed_var_list,
-        var_type: var_type,
-    }
+    typed_var_decls
 }
 
 fn typecheck_init(init: ast::UntypedInitializer) -> ast::TypedInitializer {

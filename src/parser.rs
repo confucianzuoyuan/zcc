@@ -333,7 +333,7 @@ impl<R: std::io::Read> Parser<R> {
         }
     }
 
-    fn parse_variable_declaration(&mut self) -> ast::VariableDeclaration<ast::UntypedInitializer> {
+    fn parse_variable_declaration(&mut self) -> ast::VariableDeclarations<ast::UntypedInitializer> {
         match self.parse_declaration() {
             ast::Declaration::VarDecl(vd) => vd,
             ast::Declaration::FunDecl(_) => {
@@ -528,16 +528,27 @@ impl<R: std::io::Read> Parser<R> {
         }
     }
 
-    fn parsing_variable_declaration_helper(&mut self) -> (String, Option<ast::UntypedInitializer>) {
+    fn parsing_variable_declaration_helper(
+        &mut self,
+        t: types::Type,
+    ) -> ast::VariableDeclaration<ast::UntypedInitializer> {
         match self.peek_token() {
             token::Token::Ident(id) => {
                 self.eat(token::Token::Ident(id.clone()));
                 if self.peek_token() == token::Token::Equal {
                     self.eat(token::Token::Equal);
                     let init = self.parse_initializer();
-                    (id, Some(init))
+                    ast::VariableDeclaration {
+                        name: id,
+                        var_type: t,
+                        init: Some(init),
+                    }
                 } else {
-                    (id, None)
+                    ast::VariableDeclaration {
+                        name: id,
+                        var_type: t,
+                        init: None,
+                    }
                 }
             }
             other => panic!(
@@ -551,34 +562,44 @@ impl<R: std::io::Read> Parser<R> {
         &mut self,
         var_type: types::Type,
         name: String,
-    ) -> ast::VariableDeclaration<ast::UntypedInitializer> {
+    ) -> ast::VariableDeclarations<ast::UntypedInitializer> {
         match self.peek_token() {
+            // 处理 `int i;`这种情况
             token::Token::Semicolon => {
                 self.eat(token::Token::Semicolon);
-                ast::VariableDeclaration {
-                    var_list: vec![(name, None)],
+                vec![ast::VariableDeclaration {
+                    name,
                     var_type,
-                }
+                    init: None,
+                }]
             }
             token::Token::Comma => {
-                let mut var_list = vec![(name, None)];
+                let mut var_decls = vec![ast::VariableDeclaration {
+                    name,
+                    var_type: var_type.clone(),
+                    init: None,
+                }];
                 while self.peek_token() == token::Token::Comma {
                     self.eat(token::Token::Comma);
-                    var_list.push(self.parsing_variable_declaration_helper());
+                    var_decls.push(self.parsing_variable_declaration_helper(var_type.clone()));
                 }
                 self.eat(token::Token::Semicolon);
-                ast::VariableDeclaration { var_list, var_type }
+                var_decls
             }
             token::Token::Equal => {
                 self.eat(token::Token::Equal);
                 let init = self.parse_initializer();
-                let mut var_list = vec![(name, Some(init))];
+                let mut var_decls = vec![ast::VariableDeclaration {
+                    name,
+                    var_type: var_type.clone(),
+                    init: Some(init),
+                }];
                 while self.peek_token() == token::Token::Comma {
                     self.eat(token::Token::Comma);
-                    var_list.push(self.parsing_variable_declaration_helper());
+                    var_decls.push(self.parsing_variable_declaration_helper(var_type.clone()));
                 }
                 self.eat(token::Token::Semicolon);
-                ast::VariableDeclaration { var_list, var_type }
+                var_decls
             }
             other => panic!("expected: An initializer or semicolon, actual: {}", other),
         }
