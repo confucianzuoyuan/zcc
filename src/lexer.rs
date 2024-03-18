@@ -92,8 +92,8 @@ impl<R: Read> Lexer<R> {
     /// "<" or "<="
     fn lesser_or_lesser_euqal(&mut self) -> token::Token {
         self.two_char_token(
-            vec![('=', token::Token::LesserOrEqual)],
-            token::Token::LesserThan,
+            vec![('=', token::Token::LessOrEqual)],
+            token::Token::LessThan,
         )
     }
 
@@ -107,7 +107,7 @@ impl<R: Read> Lexer<R> {
 
     /// "==" or "="
     fn equal_or_double_equal(&mut self) -> token::Token {
-        self.two_char_token(vec![('=', token::Token::DoubleEqual)], token::Token::Equal)
+        self.two_char_token(vec![('=', token::Token::EqualEqual)], token::Token::Equal)
     }
 
     /// "!=" or "!"

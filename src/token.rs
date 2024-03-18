@@ -2,38 +2,38 @@ use std::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Ampersand,
-    OpenParen,
-    CloseParen,
-    OpenBrace,
-    CloseBrace,
-    OpenBracket,
-    CloseBracket,
-    Equal,
-    DoubleEqual,
-    Bang,
-    BangEqual,
-    LesserThan,
-    LesserOrEqual,
-    GreaterThan,
-    GreaterOrEqual,
-    Semicolon,
-    Comma,
+    Plus,           // "+"
+    Minus,          // "-"
+    Star,           // "*"
+    Slash,          // "/"
+    Ampersand,      // "&"
+    OpenParen,      // "("
+    CloseParen,     // ")"
+    OpenBrace,      // "{"
+    CloseBrace,     // "}"
+    OpenBracket,    // "["
+    CloseBracket,   // "]"
+    Equal,          // "="
+    EqualEqual,     // "=="
+    Bang,           // "!"
+    BangEqual,      // "!="
+    LessThan,       // "<"
+    LessOrEqual,    // "<="
+    GreaterThan,    // ">"
+    GreaterOrEqual, // ">="
+    Semicolon,      // ";"
+    Comma,          // ","
     Number(i64),
     Ident(String),
     String(String),
-    KWReturn,
-    KWIf,
-    KWElse,
-    KWFor,
-    KWWhile,
-    KWInt,
-    KWChar,
-    KWSizeOf,
+    KWReturn, // "return"
+    KWIf,     // "if"
+    KWElse,   // "else"
+    KWFor,    // "for"
+    KWWhile,  // "while"
+    KWInt,    // "int"
+    KWChar,   // "char"
+    KWSizeOf, // "sizeof"
     EndOfFile,
 }
 
@@ -47,11 +47,11 @@ impl Display for Token {
                 Token::Star => "*",
                 Token::Ampersand => "&",
                 Token::Equal => "=",
-                Token::DoubleEqual => "==",
+                Token::EqualEqual => "==",
                 Token::Bang => "!",
                 Token::BangEqual => "!=",
-                Token::LesserOrEqual => "<=",
-                Token::LesserThan => "<",
+                Token::LessOrEqual => "<=",
+                Token::LessThan => "<",
                 Token::GreaterOrEqual => ">=",
                 Token::GreaterThan => ">",
                 Token::OpenParen => "(",

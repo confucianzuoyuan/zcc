@@ -17,11 +17,11 @@ fn get_precedence(t: token::Token) -> Option<i64> {
     match t {
         token::Token::Star | token::Token::Slash => Some(50),
         token::Token::Plus | token::Token::Minus => Some(45),
-        token::Token::LesserThan
-        | token::Token::LesserOrEqual
+        token::Token::LessThan
+        | token::Token::LessOrEqual
         | token::Token::GreaterOrEqual
         | token::Token::GreaterThan => Some(35),
-        token::Token::DoubleEqual | token::Token::BangEqual => Some(30),
+        token::Token::EqualEqual | token::Token::BangEqual => Some(30),
         token::Token::Equal => Some(1),
         _ => None,
     }
@@ -96,10 +96,10 @@ impl<R: std::io::Read> Parser<R> {
             token::Token::Minus => ast::BinaryOperator::Subtract,
             token::Token::Star => ast::BinaryOperator::Multiply,
             token::Token::Slash => ast::BinaryOperator::Divide,
-            token::Token::DoubleEqual => ast::BinaryOperator::Equal,
+            token::Token::EqualEqual => ast::BinaryOperator::Equal,
             token::Token::BangEqual => ast::BinaryOperator::NotEqual,
-            token::Token::LesserThan => ast::BinaryOperator::LessThan,
-            token::Token::LesserOrEqual => ast::BinaryOperator::LessOrEqual,
+            token::Token::LessThan => ast::BinaryOperator::LessThan,
+            token::Token::LessOrEqual => ast::BinaryOperator::LessOrEqual,
             token::Token::GreaterThan => ast::BinaryOperator::GreaterThan,
             token::Token::GreaterOrEqual => ast::BinaryOperator::GreaterOrEqual,
             _ => panic!("Internal error when parsing binary operator"),
