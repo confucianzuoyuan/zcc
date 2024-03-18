@@ -126,6 +126,9 @@ impl<R: Read> Lexer<R> {
             "int" => token::Token::KWInt,
             "char" => token::Token::KWChar,
             "sizeof" => token::Token::KWSizeOf,
+            "unsigned" => token::Token::KWUnsigned,
+            "switch" => token::Token::KWSwitch,
+            "do" => token::Token::KWDo,
             _ => token::Token::Ident(ident),
         };
         token

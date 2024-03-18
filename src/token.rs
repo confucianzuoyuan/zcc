@@ -26,14 +26,17 @@ pub enum Token {
     Number(i64),
     Ident(String),
     String(String),
-    KWReturn, // "return"
-    KWIf,     // "if"
-    KWElse,   // "else"
-    KWFor,    // "for"
-    KWWhile,  // "while"
-    KWInt,    // "int"
-    KWChar,   // "char"
-    KWSizeOf, // "sizeof"
+    KWReturn,   // "return"
+    KWIf,       // "if"
+    KWElse,     // "else"
+    KWFor,      // "for"
+    KWWhile,    // "while"
+    KWInt,      // "int"
+    KWChar,     // "char"
+    KWUnsigned, // "unsigned"
+    KWDo,       // "do"
+    KWSwitch,   // "switch"
+    KWSizeOf,   // "sizeof"
     EndOfFile,
 }
 
@@ -70,6 +73,9 @@ impl Display for Token {
                 Token::KWInt => "int",
                 Token::KWChar => "char",
                 Token::KWSizeOf => "sizeof",
+                Token::KWDo => "do",
+                Token::KWSwitch => "switch",
+                Token::KWUnsigned => "unsigned",
                 Token::Number(num) => return num.to_string(),
                 Token::String(ref string) => return format!("{:?}", string),
                 Token::Ident(ref ident) => ident,
