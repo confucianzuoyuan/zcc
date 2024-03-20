@@ -134,17 +134,48 @@ impl<R: Read> Lexer<R> {
         self.make_token(token, len)
     }
 
-    /// "<" or "<="
-    fn less_or_less_euqal(&mut self) -> Result<token::Token> {
-        self.two_char_token(vec![('=', token::Tok::LessOrEqual)], token::Tok::LessThan)
+    /// "<" or "<=" or "<<" or "<<="
+    fn less_or_other(&mut self) -> Result<token::Token> {
+        self.save_start();
+        self.advance()?;
+        match self.current_char()? {
+            '=' => {
+                self.advance()?;
+                self.make_token(token::Tok::LessOrEqual, 2)
+            }
+            '<' => {
+                self.advance()?;
+                if self.current_char()? == '=' {
+                    self.advance()?;
+                    self.make_token(token::Tok::LessLessEqual, 3)
+                } else {
+                    self.make_token(token::Tok::LessLess, 2)
+                }
+            }
+            _ => self.make_token(token::Tok::LessThan, 1),
+        }
     }
 
-    /// ">" or ">="
-    fn greater_or_greater_euqal(&mut self) -> Result<token::Token> {
-        self.two_char_token(
-            vec![('=', token::Tok::GreaterOrEqual)],
-            token::Tok::GreaterThan,
-        )
+    /// ">" or ">=" or ">>=" or ">>"
+    fn greater_or_other(&mut self) -> Result<token::Token> {
+        self.save_start();
+        self.advance()?;
+        match self.current_char()? {
+            '=' => {
+                self.advance()?;
+                self.make_token(token::Tok::GreaterOrEqual, 2)
+            }
+            '>' => {
+                self.advance()?;
+                if self.current_char()? == '=' {
+                    self.advance()?;
+                    self.make_token(token::Tok::GreaterGreaterEqual, 3)
+                } else {
+                    self.make_token(token::Tok::GreaterGreater, 2)
+                }
+            }
+            _ => self.make_token(token::Tok::GreaterThan, 1),
+        }
     }
 
     /// "==" or "="
@@ -196,6 +227,11 @@ impl<R: Read> Lexer<R> {
     /// "*=" or "*"
     fn star_or_other(&mut self) -> Result<token::Token> {
         self.two_char_token(vec![('=', token::Tok::StarEqual)], token::Tok::Star)
+    }
+
+    /// "%=" or "%"
+    fn percent_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(vec![('=', token::Tok::PercentEqual)], token::Tok::Percent)
     }
 
     fn identifier(&mut self) -> Result<token::Token> {
@@ -357,8 +393,8 @@ impl<R: Read> Lexer<R> {
                 b'/' => self.slash_or_other(),
                 b'(' => self.simple_token(token::Tok::OpenParen),
                 b')' => self.simple_token(token::Tok::CloseParen),
-                b'<' => self.less_or_less_euqal(),
-                b'>' => self.greater_or_greater_euqal(),
+                b'<' => self.less_or_other(),
+                b'>' => self.greater_or_other(),
                 b'!' => self.bang_or_bang_equal(),
                 b'=' => self.equal_or_double_equal(),
                 b';' => self.simple_token(token::Tok::Semicolon),
@@ -369,6 +405,7 @@ impl<R: Read> Lexer<R> {
                 b']' => self.simple_token(token::Tok::CloseBracket),
                 b'&' => self.and_or_other(),
                 b'|' => self.or_or_other(),
+                b'%' => self.percent_or_other(),
                 b'"' => self.string(),
                 _ => {
                     let mut pos = self.current_pos();
