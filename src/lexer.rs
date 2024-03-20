@@ -191,10 +191,76 @@ impl<R: Read> Lexer<R> {
             'a' => '\x07',
             // [GNU] \e for the ASCII escape character is a GNU C extension.
             'e' => '\x1B',
-            _ => self.current_char()?,
+            escape => {
+                pos.length = 2;
+                return Err(error::Error::InvalidEscape {
+                    escape: escape.to_string(),
+                    pos,
+                });
+            }
         };
         self.advance()?;
         Ok(escaped_char)
+    }
+
+    fn slash_or_comment(&mut self) -> Result<token::Token> {
+        self.save_start();
+        self.advance()?;
+        if self.current_char()? == '*' {
+            match self.comment() {
+                Err(error::Error::Eof) => {
+                    let mut pos = self.saved_pos;
+                    pos.length = 2;
+                    return Err(error::Error::Unclosed {
+                        pos,
+                        token: "comment",
+                    });
+                }
+                Err(error) => return Err(error),
+                _ => (),
+            }
+            self.token()
+        } else if self.current_char()? == '/' {
+            loop {
+                self.advance()?;
+                if self.current_char()? == '\n' {
+                    self.advance()?;
+                    break;
+                }
+            }
+            self.token()
+        } else {
+            self.make_token(token::Tok::Slash, 1)
+        }
+    }
+
+    fn comment(&mut self) -> Result<()> {
+        let mut depth = 1;
+        loop {
+            self.advance()?;
+            let ch = self.current_char()?;
+            // check for nested comment.
+            if ch == '/' {
+                self.advance()?;
+                let ch = self.current_char()?;
+                if ch == '*' {
+                    depth += 1;
+                }
+            }
+            // check for end of comment
+            if ch == '*' {
+                self.advance()?;
+                let ch = self.current_char()?;
+                if ch == '/' {
+                    depth -= 1;
+                    if depth == 0 {
+                        self.advance()?;
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn string(&mut self) -> Result<token::Token> {
@@ -245,7 +311,7 @@ impl<R: Read> Lexer<R> {
                 b'+' => self.simple_token(token::Tok::Plus),
                 b'-' => self.simple_token(token::Tok::Minus),
                 b'*' => self.simple_token(token::Tok::Star),
-                b'/' => self.simple_token(token::Tok::Slash),
+                b'/' => self.slash_or_comment(),
                 b'(' => self.simple_token(token::Tok::OpenParen),
                 b')' => self.simple_token(token::Tok::CloseParen),
                 b'<' => self.less_or_less_euqal(),
