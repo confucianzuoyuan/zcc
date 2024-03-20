@@ -224,11 +224,13 @@ impl<R: Read> Lexer<R> {
             loop {
                 self.advance()?;
                 if self.current_char()? == '\n' {
-                    self.advance()?;
                     break;
                 }
             }
             self.token()
+        } else if self.current_char()? == '=' {
+            self.advance()?;
+            self.make_token(token::Tok::SlashEqual, 2)
         } else {
             self.make_token(token::Tok::Slash, 1)
         }
