@@ -1,86 +1,99 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{initializers, types};
-use lazy_static::lazy_static;
+use crate::position;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum InitialValue {
-    Tentative,
-    Initial(Vec<initializers::StaticInit>),
-    NoInitializer,
+pub type Symbol = i64;
+pub type SymbolWithPos = position::WithPos<Symbol>;
+
+#[derive(Debug)]
+pub struct Strings {
+    next_symbol: RefCell<Symbol>,
+    strings: RefCell<HashMap<Symbol, String>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum IdentifierAttrs {
-    FunAttr { defined: bool, global: bool },
-    StaticAttr { init: InitialValue, global: bool },
-    ConstAttr(i64),
-    LocalAttr,
-}
+impl Strings {
+    pub fn new() -> Self {
+        Self {
+            next_symbol: RefCell::new(0),
+            strings: RefCell::new(HashMap::new()),
+        }
+    }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Entry {
-    pub t: types::Type,
-    pub attrs: IdentifierAttrs,
-}
-
-lazy_static! {
-    static ref SYMBOL_TABLE: Mutex<HashMap<String, Entry>> = {
-        let m = HashMap::new();
-        Mutex::new(m)
-    };
-}
-
-pub fn add_automatic_var(name: String, t: types::Type) {
-    let mut map = SYMBOL_TABLE.lock().unwrap();
-    map.insert(
-        name,
-        Entry {
-            t,
-            attrs: IdentifierAttrs::LocalAttr,
-        },
-    );
-}
-
-pub fn add_static_var(name: String, t: types::Type, global: bool, init: InitialValue) {
-    let mut map = SYMBOL_TABLE.lock().unwrap();
-    map.insert(
-        name,
-        Entry {
-            t,
-            attrs: IdentifierAttrs::StaticAttr { init, global },
-        },
-    );
-}
-
-pub fn add_fun(name: String, t: types::Type, global: bool, defined: bool) {
-    let mut map = SYMBOL_TABLE.lock().unwrap();
-    map.insert(
-        name,
-        Entry {
-            t,
-            attrs: IdentifierAttrs::FunAttr { defined, global },
-        },
-    );
-}
-
-pub fn get(name: String) -> Entry {
-    let map = SYMBOL_TABLE.lock().unwrap();
-    map.get(&name).unwrap().clone()
-}
-
-pub fn get_opt(name: String) -> Option<Entry> {
-    let map = SYMBOL_TABLE.lock().unwrap();
-    match map.get(&name) {
-        Some(v) => Some(v.clone()),
-        None => None,
+    pub fn get(&self, symbol: Symbol) -> Option<String> {
+        let strings = self.strings.borrow();
+        strings.get(&symbol).map(Clone::clone)
     }
 }
 
-pub fn is_global(name: String) -> bool {
-    match get(name).attrs {
-        IdentifierAttrs::LocalAttr | IdentifierAttrs::ConstAttr(_) => false,
-        IdentifierAttrs::StaticAttr { init: _, global } => global,
-        IdentifierAttrs::FunAttr { defined: _, global } => global,
+#[derive(Debug)]
+pub struct Symbols<T> {
+    stack: Vec<Vec<Symbol>>,
+    strings: Rc<Strings>,
+    table: HashMap<Symbol, Vec<T>>,
+}
+
+impl<T> Symbols<T> {
+    pub fn begin_scope(&mut self) {
+        self.stack.push(vec![])
+    }
+
+    pub fn end_scope(&mut self) {
+        for symbol in self
+            .stack
+            .last()
+            .expect("Call begin_scope() before end_scope()")
+        {
+            let bindings = self.table.get_mut(symbol).expect("Symbol not in table");
+            bindings.pop();
+        }
+        self.stack.pop();
+    }
+
+    pub fn enter(&mut self, symbol: Symbol, data: T) {
+        let bindings = self.table.entry(symbol).or_insert_with(Vec::new);
+        bindings.push(data);
+        let current_bindings = self
+            .stack
+            .last_mut()
+            .expect("Call begin_scope() before enter()");
+        current_bindings.push(symbol);
+    }
+
+    pub fn look(&self, symbol: Symbol) -> Option<&T> {
+        self.table.get(&symbol).and_then(|vec| vec.last())
+    }
+
+    pub fn look_mut(&mut self, symbol: Symbol) -> Option<&mut T> {
+        self.table.get_mut(&symbol).and_then(|vec| vec.last_mut())
+    }
+
+    pub fn name(&self, symbol: Symbol) -> String {
+        self.strings.strings.borrow()[&symbol].to_string()
+    }
+
+    pub fn replace(&mut self, symbol: Symbol, data: T) {
+        let bindings = self.table.entry(symbol).or_insert_with(Vec::new);
+        bindings.pop().expect("Call enter() before replace()");
+        bindings.push(data);
+    }
+
+    pub fn symbol(&mut self, string: &str) -> Symbol {
+        if let Some((&key, _)) = self
+            .strings
+            .strings
+            .borrow()
+            .iter()
+            .find(|&(_, value)| value == string)
+        {
+            return key;
+        }
+
+        let symbol = *self.strings.next_symbol.borrow();
+        self.strings
+            .strings
+            .borrow_mut()
+            .insert(symbol, string.to_string());
+        *self.strings.next_symbol.borrow_mut() += 1;
+        symbol
     }
 }
