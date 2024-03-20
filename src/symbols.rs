@@ -33,6 +33,16 @@ pub struct Symbols<T> {
 }
 
 impl<T> Symbols<T> {
+    pub fn new(strings: Rc<Strings>) -> Self {
+        let mut symbols = Self {
+            stack: vec![],
+            strings,
+            table: HashMap::new(),
+        };
+        symbols.begin_scope();
+        symbols
+    }
+
     pub fn begin_scope(&mut self) {
         self.stack.push(vec![])
     }

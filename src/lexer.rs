@@ -173,6 +173,8 @@ impl<R: Read> Lexer<R> {
             "switch" => token::Tok::KWSwitch,
             "case" => token::Tok::KWCase,
             "do" => token::Tok::KWDo,
+            "void" => token::Tok::KWVoid,
+            "_Noreturn" => token::Tok::KWUnderscoreNoReturn,
             _ => token::Tok::Ident(ident),
         };
         self.make_token(token, len)
@@ -237,7 +239,7 @@ impl<R: Read> Lexer<R> {
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
                 b'0'..=b'9' => self.integer(),
                 b' ' | b'\n' | b'\t' => {
-                    self.advance();
+                    self.advance()?;
                     self.token()
                 }
                 b'+' => self.simple_token(token::Tok::Plus),
