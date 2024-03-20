@@ -94,6 +94,8 @@ pub enum Tok {
     KWUnderscoreThread,                // "__thread"
     KWUnderscoreAtomic,                // "_Atomic"
     KWUnderscoreAttributeUnderscore,   // "__attribute__"
+    KWContinue,                        // "continue"
+    KWStruct,                          // "struct"
 
     // 文件结束符
     EndOfFile,
@@ -194,6 +196,8 @@ impl Display for Tok {
                 Tok::KWUnion => "union",
                 Tok::KWVoid => "void",
                 Tok::KWVolatile => "volatile",
+                Tok::KWContinue => "continue",
+                Tok::KWStruct => "struct",
                 Tok::Number(num) => return num.to_string(),
                 Tok::String(ref string) => return format!("{:?}", string),
                 Tok::Ident(ref ident) => ident,
