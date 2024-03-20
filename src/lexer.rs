@@ -230,10 +230,9 @@ impl<R: Read> Lexer<R> {
                 } else {
                     let mut pos = self.saved_pos;
                     pos.length = 1;
-                    let ch = self.current_char()?;
                     return Err(error::Error::UnknownToken {
                         pos,
-                        start: ch as char,
+                        start: '.',
                     });
                 }
             }
