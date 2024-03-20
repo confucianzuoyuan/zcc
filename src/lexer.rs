@@ -157,6 +157,47 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', token::Tok::BangEqual)], token::Tok::Bang)
     }
 
+    /// "&&" or "&=" or "&"
+    fn and_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(
+            vec![('=', token::Tok::AndEqual), ('&', token::Tok::AndAnd)],
+            token::Tok::And,
+        )
+    }
+
+    /// "||" or "|=" or "|"
+    fn or_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(
+            vec![('=', token::Tok::OrEqual), ('|', token::Tok::OrOr)],
+            token::Tok::Or,
+        )
+    }
+
+    /// "++" or "+=" or "+"
+    fn plus_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(
+            vec![('+', token::Tok::PlusPlus), ('=', token::Tok::PlusEqual)],
+            token::Tok::Plus,
+        )
+    }
+
+    /// "--" or "-=" or "-" or "->"
+    fn minus_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(
+            vec![
+                ('-', token::Tok::MinusMinus),
+                ('=', token::Tok::MinusEqual),
+                ('>', token::Tok::MinusGreater),
+            ],
+            token::Tok::Minus,
+        )
+    }
+
+    /// "*=" or "*"
+    fn star_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(vec![('=', token::Tok::StarEqual)], token::Tok::Star)
+    }
+
     fn identifier(&mut self) -> Result<token::Token> {
         let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_')?;
         let len = ident.len();
@@ -203,7 +244,7 @@ impl<R: Read> Lexer<R> {
         Ok(escaped_char)
     }
 
-    fn slash_or_comment(&mut self) -> Result<token::Token> {
+    fn slash_or_other(&mut self) -> Result<token::Token> {
         self.save_start();
         self.advance()?;
         if self.current_char()? == '*' {
@@ -310,10 +351,10 @@ impl<R: Read> Lexer<R> {
                     self.advance()?;
                     self.token()
                 }
-                b'+' => self.simple_token(token::Tok::Plus),
-                b'-' => self.simple_token(token::Tok::Minus),
-                b'*' => self.simple_token(token::Tok::Star),
-                b'/' => self.slash_or_comment(),
+                b'+' => self.plus_or_other(),
+                b'-' => self.minus_or_other(),
+                b'*' => self.star_or_other(),
+                b'/' => self.slash_or_other(),
                 b'(' => self.simple_token(token::Tok::OpenParen),
                 b')' => self.simple_token(token::Tok::CloseParen),
                 b'<' => self.less_or_less_euqal(),
@@ -326,7 +367,8 @@ impl<R: Read> Lexer<R> {
                 b'}' => self.simple_token(token::Tok::CloseBrace),
                 b'[' => self.simple_token(token::Tok::OpenBracket),
                 b']' => self.simple_token(token::Tok::CloseBracket),
-                b'&' => self.simple_token(token::Tok::And),
+                b'&' => self.and_or_other(),
+                b'|' => self.or_or_other(),
                 b'"' => self.string(),
                 _ => {
                     let mut pos = self.current_pos();
