@@ -228,7 +228,7 @@ impl<R: Read> Lexer<R> {
                     self.advance()?;
                     self.make_token(token::Tok::DotDotDot, 3)
                 } else {
-                    let mut pos = self.current_pos();
+                    let mut pos = self.saved_pos;
                     pos.length = 1;
                     let ch = self.current_char()?;
                     return Err(error::Error::UnknownToken {
