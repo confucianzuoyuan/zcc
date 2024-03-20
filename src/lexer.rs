@@ -183,6 +183,11 @@ impl<R: Read> Lexer<R> {
         self.two_char_token(vec![('=', token::Tok::EqualEqual)], token::Tok::Equal)
     }
 
+    /// "##" or "#"
+    fn sharp_or_other(&mut self) -> Result<token::Token> {
+        self.two_char_token(vec![('#', token::Tok::SharpSharp)], token::Tok::Sharp)
+    }
+
     /// "!=" or "!"
     fn bang_or_bang_equal(&mut self) -> Result<token::Token> {
         self.two_char_token(vec![('=', token::Tok::BangEqual)], token::Tok::Bang)
@@ -210,6 +215,30 @@ impl<R: Read> Lexer<R> {
             vec![('+', token::Tok::PlusPlus), ('=', token::Tok::PlusEqual)],
             token::Tok::Plus,
         )
+    }
+
+    /// "..." or "."
+    fn dot_or_other(&mut self) -> Result<token::Token> {
+        self.save_start();
+        self.advance()?;
+        match self.current_char()? {
+            '.' => {
+                self.advance()?;
+                if self.current_char()? == '.' {
+                    self.advance()?;
+                    self.make_token(token::Tok::DotDotDot, 3)
+                } else {
+                    let mut pos = self.current_pos();
+                    pos.length = 1;
+                    let ch = self.current_char()?;
+                    return Err(error::Error::UnknownToken {
+                        pos,
+                        start: ch as char,
+                    });
+                }
+            }
+            _ => self.make_token(token::Tok::Dot, 1),
+        }
     }
 
     /// "--" or "-=" or "-" or "->"
@@ -418,6 +447,11 @@ impl<R: Read> Lexer<R> {
                     self.advance()?;
                     self.token()
                 }
+                b'\\' => self.simple_token(token::Tok::BackSlash),
+                b':' => self.simple_token(token::Tok::Colon),
+                b'?' => self.simple_token(token::Tok::QuestionMark),
+                b'.' => self.dot_or_other(),
+                b'#' => self.sharp_or_other(),
                 b'+' => self.plus_or_other(),
                 b'-' => self.minus_or_other(),
                 b'*' => self.star_or_other(),

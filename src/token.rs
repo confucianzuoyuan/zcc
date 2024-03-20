@@ -18,6 +18,7 @@ pub enum Tok {
     Or,                  // "|"
     OrOr,                // "||"
     OrEqual,             // "|="
+    Sharp,               // "#"
     SharpSharp,          // "##"
     HatEqual,            // "^="
     OpenParen,           // "("
@@ -41,11 +42,15 @@ pub enum Tok {
     GreaterGreater,      // ">>"
     GreaterGreaterEqual, // ">>="
     Semicolon,           // ";"
+    Colon,               // ":"
+    QuestionMark,        // "?"
     Comma,               // ","
+    Dot,                 // "."
     DotDotDot,           // "..."
     MinusGreater,        // "->"
     Percent,             // "%"
     PercentEqual,        // "%="
+    BackSlash,           // "\"
     Number(i64),
     Ident(String),
     String(String),
@@ -133,8 +138,11 @@ impl Display for Tok {
                 Tok::OpenBracket => "[",
                 Tok::CloseBracket => "]",
                 Tok::Semicolon => ";",
+                Tok::Colon => ":",
+                Tok::QuestionMark => "?",
                 Tok::Comma => ",",
                 Tok::AndAnd => "&&",
+                Tok::Dot => ".",
                 Tok::DotDotDot => "...",
                 Tok::GreaterGreater => ">>",
                 Tok::LessLess => "<<",
@@ -148,11 +156,13 @@ impl Display for Tok {
                 Tok::Percent => "%",
                 Tok::PercentEqual => "%=",
                 Tok::PlusPlus => "++",
+                Tok::Sharp => "#",
                 Tok::SharpSharp => "##",
                 Tok::SlashEqual => "/=",
                 Tok::StarEqual => "*=",
                 Tok::Or => "|",
                 Tok::OrEqual => "|=",
+                Tok::BackSlash => "\\",
                 Tok::KWReturn => "return",
                 Tok::KWIf => "if",
                 Tok::KWElse => "else",
