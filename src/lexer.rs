@@ -1,497 +1,276 @@
-use crate::{error, position, symbols, token};
+use std::io::BufRead;
 
-use std::io::{Bytes, Read};
-use std::iter::Peekable;
+use crate::token;
 
-pub type Result<T> = std::result::Result<T, error::Error>;
-
-pub struct Lexer<R: Read> {
-    bytes_iter: Peekable<Bytes<R>>,
-    pos: position::Pos,
-    saved_pos: position::Pos,
+pub struct Lexer {
+    current_file: String,
+    current_input: Vec<u8>,
+    current_position: usize,
 }
 
-impl<R: Read> Lexer<R> {
-    pub fn new(reader: R, filename: symbols::Symbol) -> Self {
+impl Lexer {
+    pub fn new(file_path: String) -> Self {
         Lexer {
-            bytes_iter: reader.bytes().peekable(),
-            pos: position::Pos::new(1, 1, 0, filename, 0),
-            saved_pos: position::Pos::new(1, 1, 0, filename, 0),
+            current_file: file_path,
+            current_input: vec![],
+            current_position: 0,
         }
     }
 
-    fn advance(&mut self) -> Result<()> {
-        match self.bytes_iter.next() {
-            Some(Ok(b'\n')) => {
-                self.pos.line += 1;
-                self.pos.column = 1;
-                self.pos.byte += 1;
+    fn error_at(&self, loc: usize, msg: &str) {
+        let mut line_no = 1;
+        let mut p = 0;
+        while p < self.current_position {
+            if self.current_input[p] == b'\n' {
+                line_no += 1;
             }
-            Some(Err(error)) => return Err(error.into()),
-            None => return Err(error::Error::Eof),
-            _ => {
-                self.pos.column += 1;
-                self.pos.byte += 1;
+            p += 1;
+        }
+        self.verror_at(line_no, loc, msg);
+    }
+
+    /// Reports an error message in the following format and exit.
+    ///
+    /// foo.c:10: x = y + 1;
+    ///               ^ <error message here>
+    fn verror_at(&self, line_no: i32, loc: usize, msg: &str) {
+        // Find a line containing `loc`.
+        let mut line = loc;
+        let code = &self.current_input;
+        while self.current_position < line && code[line - 1] != b'\n' {
+            line -= 1;
+        }
+
+        let mut end = loc;
+        while code[end] != b'\n' {
+            end += 1;
+        }
+
+        // Print out the line
+        let line_msg = format!("{}:{}: ", self.current_file, line_no);
+        let indent = line_msg.len();
+        eprint!("{}", line_msg);
+        eprintln!("{}", String::from_utf8(code[line..end].to_vec()).unwrap());
+
+        // Show the error message.
+        let pos = loc - line + indent;
+
+        eprint!("{}", " ".repeat(pos));
+        eprintln!("^ {}", msg);
+        std::process::exit(1);
+    }
+
+    /// Returns the contents of a given file.
+    pub fn read_file(&mut self) {
+        if self.current_file == "-" {
+            let stdin = std::io::stdin();
+            for line in stdin.lock().lines() {
+                self.current_input
+                    .append(&mut line.unwrap().as_bytes().to_vec());
+                self.current_input.push(b'\n');
             }
-        }
-        Ok(())
-    }
-
-    fn eat(&mut self, ch: char) -> Result<()> {
-        if self.current_char()? != ch {
-            panic!(
-                "Expected character `{}`, but found `{}`.",
-                ch,
-                self.current_char()?
-            );
-        }
-        self.advance()
-    }
-
-    pub fn number(&mut self) -> Result<token::Token> {
-        let buffer = self.take_while(char::is_numeric)?;
-        // the buffer only contains digit, hence unwrap().
-        let num = buffer.parse().unwrap();
-        self.make_token(token::Tok::Number(num), error::num_text_size(num))
-    }
-
-    fn make_token(&self, token: token::Tok, length: usize) -> Result<token::Token> {
-        if length > 10000 {
-            panic!();
-        }
-        let mut pos = self.saved_pos;
-        pos.length = length;
-        Ok(token::Token { pos, token })
-    }
-
-    fn current_pos(&self) -> position::Pos {
-        self.pos
-    }
-
-    fn save_start(&mut self) {
-        self.saved_pos = self.current_pos();
-    }
-
-    fn take_while<F: Fn(char) -> bool>(&mut self, pred: F) -> Result<String> {
-        self.save_start();
-        let mut buffer = String::new();
-        buffer.push(self.current_char()?);
-        self.advance()?;
-        let mut ch = self.current_char()?;
-        while pred(ch) {
-            buffer.push(ch);
-            self.advance()?;
-            ch = self.current_char()?;
-        }
-        Ok(buffer)
-    }
-
-    fn simple_token(&mut self, token: token::Tok) -> Result<token::Token> {
-        let mut pos = self.pos;
-        pos.length = 1;
-        self.advance()?;
-        Ok(token::Token { pos, token })
-    }
-
-    fn current_char(&mut self) -> Result<char> {
-        if let Some(&Ok(byte)) = self.bytes_iter.peek() {
-            return Ok(byte as char);
-        }
-
-        match self.bytes_iter.next() {
-            Some(Ok(_)) => unreachable!(),
-            Some(Err(error)) => Err(error.into()),
-            None => Err(error::Error::Eof),
-        }
-    }
-
-    fn two_char_token(
-        &mut self,
-        tokens: Vec<(char, token::Tok)>,
-        default: token::Tok,
-    ) -> Result<token::Token> {
-        self.save_start();
-        self.advance()?;
-        let token = match self.bytes_iter.peek() {
-            Some(&Ok(byte)) => {
-                let mut token = None;
-                let next_char = byte as char;
-                for (ch, tok) in tokens {
-                    if ch == next_char {
-                        token = Some(tok);
-                    }
-                }
-                token
-            }
-            _ => None,
-        };
-        let (token, len) = if let Some(token) = token {
-            self.advance()?;
-            (token, 2)
         } else {
-            (default, 1)
-        };
-        self.make_token(token, len)
-    }
-
-    /// "<" or "<=" or "<<" or "<<="
-    fn less_or_other(&mut self) -> Result<token::Token> {
-        self.save_start();
-        self.advance()?;
-        match self.current_char()? {
-            '=' => {
-                self.advance()?;
-                self.make_token(token::Tok::LessOrEqual, 2)
+            self.current_input = std::fs::read_to_string(self.current_file.clone())
+                .expect("no such file")
+                .as_bytes()
+                .to_vec();
+            if !self.current_input.ends_with(&[b'\n']) {
+                self.current_input.push(b'\n');
             }
-            '<' => {
-                self.advance()?;
-                if self.current_char()? == '=' {
-                    self.advance()?;
-                    self.make_token(token::Tok::LessLessEqual, 3)
-                } else {
-                    self.make_token(token::Tok::LessLess, 2)
-                }
-            }
-            _ => self.make_token(token::Tok::LessThan, 1),
         }
     }
 
-    /// ">" or ">=" or ">>=" or ">>"
-    fn greater_or_other(&mut self) -> Result<token::Token> {
-        self.save_start();
-        self.advance()?;
-        match self.current_char()? {
-            '=' => {
-                self.advance()?;
-                self.make_token(token::Tok::GreaterOrEqual, 2)
+    fn startswith(&self, prefix: &str) -> bool {
+        let len = prefix.len();
+        if self.current_position + len - 1 < self.current_input.len() {
+            if &self.current_input[self.current_position..self.current_position + len]
+                == prefix.as_bytes()
+            {
+                return true;
             }
-            '>' => {
-                self.advance()?;
-                if self.current_char()? == '=' {
-                    self.advance()?;
-                    self.make_token(token::Tok::GreaterGreaterEqual, 3)
-                } else {
-                    self.make_token(token::Tok::GreaterGreater, 2)
+        }
+        false
+    }
+
+    fn string_literal_end(&mut self, mut pos: usize) -> usize {
+        let start = pos;
+        while self.current_input[pos] != b'"' {
+            if self.current_input[pos] == b'\n' {
+                self.error_at(start, "unclosed string literal");
+            }
+            if self.current_input[pos] == b'\\' {
+                pos += 1;
+            }
+            pos += 1;
+        }
+        pos
+    }
+
+    fn read_escaped_char(&mut self, mut pos: usize) -> (usize, u8) {
+        let mut new_pos;
+        if self.current_input[pos] >= b'0' && self.current_input[pos] <= b'7' {
+            // Read an octal number
+            let mut c = self.current_input[pos] - b'0';
+            pos += 1;
+            if self.current_input[pos] >= b'0' && self.current_input[pos] <= b'7' {
+                c = (c << 3) + (self.current_input[pos] - b'0');
+                pos += 1;
+                if self.current_input[pos] >= b'0' && self.current_input[pos] <= b'7' {
+                    c = (c << 3) + (self.current_input[pos] - b'0');
+                    pos += 1;
                 }
             }
-            _ => self.make_token(token::Tok::GreaterThan, 1),
+            new_pos = pos;
+            return (new_pos, c);
         }
-    }
 
-    /// "==" or "="
-    fn equal_or_double_equal(&mut self) -> Result<token::Token> {
-        self.two_char_token(vec![('=', token::Tok::EqualEqual)], token::Tok::Equal)
-    }
-
-    /// "##" or "#"
-    fn sharp_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(vec![('#', token::Tok::SharpSharp)], token::Tok::Sharp)
-    }
-
-    /// "!=" or "!"
-    fn bang_or_bang_equal(&mut self) -> Result<token::Token> {
-        self.two_char_token(vec![('=', token::Tok::BangEqual)], token::Tok::Bang)
-    }
-
-    /// "&&" or "&=" or "&"
-    fn and_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(
-            vec![('=', token::Tok::AndEqual), ('&', token::Tok::AndAnd)],
-            token::Tok::And,
-        )
-    }
-
-    /// "||" or "|=" or "|"
-    fn or_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(
-            vec![('=', token::Tok::OrEqual), ('|', token::Tok::OrOr)],
-            token::Tok::Or,
-        )
-    }
-
-    /// "++" or "+=" or "+"
-    fn plus_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(
-            vec![('+', token::Tok::PlusPlus), ('=', token::Tok::PlusEqual)],
-            token::Tok::Plus,
-        )
-    }
-
-    /// "..." or "."
-    fn dot_or_other(&mut self) -> Result<token::Token> {
-        self.save_start();
-        self.advance()?;
-        match self.current_char()? {
-            '.' => {
-                self.advance()?;
-                if self.current_char()? == '.' {
-                    self.advance()?;
-                    self.make_token(token::Tok::DotDotDot, 3)
-                } else {
-                    let mut pos = self.saved_pos;
-                    pos.length = 1;
-                    return Err(error::Error::UnknownToken {
-                        pos,
-                        start: '.',
-                    });
-                }
+        if self.current_input[pos] == b'x' {
+            // Read a hexadecimal number.
+            pos += 1;
+            if !(self.current_input[pos] as char).is_ascii_hexdigit() {
+                self.error_at(pos, "invalid hex escape sequence");
             }
-            _ => self.make_token(token::Tok::Dot, 1),
+
+            let mut c = 0;
+            while (self.current_input[pos] as char).is_ascii_hexdigit() {
+                c = (c << 4) + from_hex(self.current_input[pos]);
+                pos += 1;
+            }
+            new_pos = pos;
+            return (new_pos, c);
         }
-    }
 
-    /// "--" or "-=" or "-" or "->"
-    fn minus_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(
-            vec![
-                ('-', token::Tok::MinusMinus),
-                ('=', token::Tok::MinusEqual),
-                ('>', token::Tok::MinusGreater),
-            ],
-            token::Tok::Minus,
-        )
-    }
+        new_pos = pos + 1;
 
-    /// "*=" or "*"
-    fn star_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(vec![('=', token::Tok::StarEqual)], token::Tok::Star)
-    }
-
-    /// "%=" or "%"
-    fn percent_or_other(&mut self) -> Result<token::Token> {
-        self.two_char_token(vec![('=', token::Tok::PercentEqual)], token::Tok::Percent)
-    }
-
-    fn identifier(&mut self) -> Result<token::Token> {
-        let ident = self.take_while(|ch| ch.is_alphanumeric() || ch == '_')?;
-        let len = ident.len();
-        let token = match ident.as_str() {
-            "return" => token::Tok::KWReturn,
-            "if" => token::Tok::KWIf,
-            "else" => token::Tok::KWElse,
-            "for" => token::Tok::KWFor,
-            "while" => token::Tok::KWWhile,
-            "int" => token::Tok::KWInt,
-            "char" => token::Tok::KWChar,
-            "short" => token::Tok::KWShort,
-            "long" => token::Tok::KWLong,
-            "double" => token::Tok::KWDouble,
-            "sizeof" => token::Tok::KWSizeOf,
-            "typeof" => token::Tok::KWTypeOf,
-            "typedef" => token::Tok::KWTypeDef,
-            "signed" => token::Tok::KWSigned,
-            "default" => token::Tok::KWDefault,
-            "extern" => token::Tok::KWExtern,
-            "_Bool" => token::Tok::KWUnderscoreBool,
-            "static" => token::Tok::KWStatic,
-            "_Alignof" => token::Tok::KWUnderscoreAlignof,
-            "_Alignas" => token::Tok::KWUnderscoreAlignas,
-            "unsigned" => token::Tok::KWUnsigned,
-            "switch" => token::Tok::KWSwitch,
-            "case" => token::Tok::KWCase,
-            "do" => token::Tok::KWDo,
-            "void" => token::Tok::KWVoid,
-            "_Noreturn" => token::Tok::KWUnderscoreNoReturn,
-            "__thread" => token::Tok::KWUnderscoreThread,
-            "asm" => token::Tok::KWAsm,
-            "float" => token::Tok::KWFloat,
-            "_Atomic" => token::Tok::KWUnderscoreAtomic,
-            "__attribute__" => token::Tok::KWUnderscoreAttributeUnderscore,
-            "_Thread_local" => token::Tok::KWUnderscoreThreadUnderscoreLocal,
-            "__restrict" => token::Tok::KWUnderscoreRestrict,
-            "__restrict__" => token::Tok::KWUnderscoreRestrictUnderscore,
-            "restrict" => token::Tok::KWRestrict,
-            "auto" => token::Tok::KWAuto,
-            "continue" => token::Tok::KWContinue,
-            "const" => token::Tok::KWConst,
-            "break" => token::Tok::KWBreak,
-            "goto" => token::Tok::KWGoto,
-            "struct" => token::Tok::KWStruct,
-            "union" => token::Tok::KWUnion,
-            "enum" => token::Tok::KWEnum,
-            "volatile" => token::Tok::KWVolatile,
-            "register" => token::Tok::KWRegister,
-            _ => token::Tok::Ident(ident),
-        };
-        self.make_token(token, len)
-    }
-
-    fn escape_char(&mut self, mut pos: position::Pos) -> Result<char> {
-        let escaped_char = match self.current_char()? {
-            'n' => '\n',
-            't' => '\t',
-            'b' => '\x08',
-            'v' => '\x0B',
-            'f' => '\x0C',
-            'r' => '\r',
-            'a' => '\x07',
+        // Escape sequences are defined using themselves here. E.g.
+        // '\n' is implemented using '\n'. This tautological definition
+        // works because the compiler that compiles our compiler knows
+        // what '\n' actually is. In other words, we "inherit" the ASCII
+        // code of '\n' from the compiler that compiles our compiler,
+        // so we don't have to teach the actual code here.
+        //
+        // This fact has huge implications not only for the correctness
+        // of the compiler but also for the security of the generated code.
+        // For more info, read "Reflections on Trusting Trust" by Ken Thompson.
+        // https://github.com/rui314/chibicc/wiki/thompson1984.pdf
+        let c = match self.current_input[pos] {
+            b'a' => b'\x07',
+            b'b' => b'\x08',
+            b't' => b'\t',
+            b'n' => b'\n',
+            b'v' => b'\x0B',
+            b'f' => b'\x0C',
+            b'r' => b'\r',
             // [GNU] \e for the ASCII escape character is a GNU C extension.
-            'e' => '\x1B',
-            escape => {
-                pos.length = 2;
-                return Err(error::Error::InvalidEscape {
-                    escape: escape.to_string(),
-                    pos,
-                });
-            }
+            b'e' => 27,
+            _ => self.current_input[pos],
         };
-        self.advance()?;
-        Ok(escaped_char)
+
+        (new_pos, c)
     }
 
-    fn slash_or_other(&mut self) -> Result<token::Token> {
-        self.save_start();
-        self.advance()?;
-        if self.current_char()? == '*' {
-            match self.comment() {
-                Err(error::Error::Eof) => {
-                    let mut pos = self.saved_pos;
-                    pos.length = 2;
-                    return Err(error::Error::Unclosed {
-                        pos,
-                        token: "comment",
-                    });
-                }
-                Err(error) => return Err(error),
-                _ => (),
+    fn read_string_literal(&mut self, start: usize) -> token::Token {
+        let end = self.string_literal_end(start + 1);
+        let mut buffer = String::new();
+        let mut pos = start + 1;
+        while pos < end {
+            if self.current_input[pos] == b'\\' {
+                let (new_pos, c) = self.read_escaped_char(pos + 1);
+                pos = new_pos;
+                buffer.push(c as char);
+            } else {
+                buffer.push(self.current_input[pos] as char);
+                pos += 1;
             }
-            self.token()
-        } else if self.current_char()? == '/' {
-            loop {
-                self.advance()?;
-                if self.current_char()? == '\n' {
-                    break;
-                }
-            }
-            self.token()
-        } else if self.current_char()? == '=' {
-            self.advance()?;
-            self.make_token(token::Tok::SlashEqual, 2)
-        } else {
-            self.make_token(token::Tok::Slash, 1)
+        }
+
+        token::Token {
+            token: token::TokenKind::String(buffer),
+            loc: start,
+            len: end + 1 - start,
         }
     }
 
-    fn comment(&mut self) -> Result<()> {
-        let mut depth = 1;
-        loop {
-            self.advance()?;
-            let ch = self.current_char()?;
-            // check for nested comment.
-            if ch == '/' {
-                self.advance()?;
-                let ch = self.current_char()?;
-                if ch == '*' {
-                    depth += 1;
+    pub fn tokenize(&mut self) -> Vec<token::Token> {
+        let mut tokens = vec![];
+        self.read_file();
+
+        while self.current_position < self.current_input.len() {
+            // Skip line comments
+            if self.startswith("//") {
+                self.current_position += 2;
+                while self.current_input[self.current_position] != b'\n' {
+                    self.current_position += 1;
                 }
+                continue;
             }
-            // check for end of comment
-            if ch == '*' {
-                self.advance()?;
-                let ch = self.current_char()?;
-                if ch == '/' {
-                    depth -= 1;
-                    if depth == 0 {
-                        self.advance()?;
-                        break;
+
+            // Skip block comments.
+            if self.startswith("/*") {
+                let loc = self.current_position;
+                self.current_position += 2;
+                while self.startswith("*/") {
+                    self.current_position += 1;
+                    if self.current_position == self.current_input.len() - 1 {
+                        self.error_at(loc, "unclosed block comment");
                     }
                 }
+                self.current_position += 2;
+                continue;
             }
-        }
-        Ok(())
-    }
 
-    fn string(&mut self) -> Result<token::Token> {
-        let result = (|| {
-            self.save_start();
-            let mut string = String::new();
-            let start = self.current_pos().byte;
-            self.eat('"')?;
-            let mut ch = self.current_char()?;
-            while ch != '"' {
-                // look for escaped character.
-                if ch == '\\' {
-                    let pos = self.current_pos();
-                    self.advance()?;
-                    string.push(self.escape_char(pos)?);
-                } else {
-                    string.push(ch);
-                    self.advance()?;
-                }
-                ch = self.current_char()?;
+            // Skip whitespace characters.
+            if (self.current_input[self.current_position] as char).is_whitespace() {
+                self.current_position += 1;
+                continue;
             }
-            self.eat('"')?;
-            let len = self.current_pos().byte - start;
-            self.make_token(token::Tok::String(string), len as usize)
-        })();
-        match result {
-            Err(error::Error::Eof) => {
-                let mut pos = self.saved_pos;
-                pos.length = 1;
-                Err(error::Error::Unclosed {
-                    pos,
-                    token: "string",
-                })
-            }
-            _ => result,
-        }
-    }
 
-    pub fn token(&mut self) -> Result<token::Token> {
-        if let Some(&Ok(ch)) = self.bytes_iter.peek() {
-            return match ch {
-                b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
-                b'0'..=b'9' => self.number(),
-                b' ' | b'\n' | b'\t' => {
-                    self.advance()?;
-                    self.token()
+            // Numeric literal
+            if (self.current_input[self.current_position] as char).is_numeric() {
+                let start = self.current_position;
+                let mut buffer = String::new();
+                buffer.push(self.current_input[self.current_position] as char);
+                self.current_position += 1;
+                while (self.current_input[self.current_position] as char).is_numeric() {
+                    buffer.push(self.current_input[self.current_position] as char);
+                    self.current_position += 1;
                 }
-                b'\\' => self.simple_token(token::Tok::BackSlash),
-                b':' => self.simple_token(token::Tok::Colon),
-                b'?' => self.simple_token(token::Tok::QuestionMark),
-                b'.' => self.dot_or_other(),
-                b'#' => self.sharp_or_other(),
-                b'+' => self.plus_or_other(),
-                b'-' => self.minus_or_other(),
-                b'*' => self.star_or_other(),
-                b'/' => self.slash_or_other(),
-                b'(' => self.simple_token(token::Tok::OpenParen),
-                b')' => self.simple_token(token::Tok::CloseParen),
-                b'<' => self.less_or_other(),
-                b'>' => self.greater_or_other(),
-                b'!' => self.bang_or_bang_equal(),
-                b'=' => self.equal_or_double_equal(),
-                b';' => self.simple_token(token::Tok::Semicolon),
-                b',' => self.simple_token(token::Tok::Comma),
-                b'{' => self.simple_token(token::Tok::OpenBrace),
-                b'}' => self.simple_token(token::Tok::CloseBrace),
-                b'[' => self.simple_token(token::Tok::OpenBracket),
-                b']' => self.simple_token(token::Tok::CloseBracket),
-                b'&' => self.and_or_other(),
-                b'|' => self.or_or_other(),
-                b'%' => self.percent_or_other(),
-                b'"' => self.string(),
-                _ => {
-                    let mut pos = self.current_pos();
-                    pos.length = 1;
-                    Err(error::Error::UnknownToken {
-                        pos,
-                        start: ch as char,
-                    })
-                }
-            };
-        }
-        match self.bytes_iter.next() {
-            Some(Ok(_)) => unreachable!(),
-            Some(Err(error)) => Err(error.into()),
-            None => {
-                let mut pos = self.pos;
-                pos.length = 1;
-                Ok(token::Token {
-                    pos,
-                    token: token::Tok::EndOfFile,
-                })
+                let end = self.current_position;
+                tokens.push(token::Token {
+                    token: token::TokenKind::Number(buffer.parse().unwrap()),
+                    loc: start,
+                    len: end - start,
+                });
+                continue;
             }
+
+            // String literal
+            if self.current_input[self.current_position] == b'"' {
+                let token = self.read_string_literal(self.current_position);
+                self.current_position += token.len;
+                tokens.push(token);
+                continue;
+            }
+
+            // Identifier or keyword
+
+            // Punctuators
+
+            self.error_at(self.current_position, "invalid token");
         }
+
+        println!("{:?}", tokens);
+
+        tokens
     }
+}
+
+fn from_hex(c: u8) -> u8 {
+    if c >= b'0' && c <= b'9' {
+        return c - b'0';
+    }
+    if c >= b'a' && c <= b'f' {
+        return c - b'a' + 10;
+    }
+    c - b'A' + 10
 }

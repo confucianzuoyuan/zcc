@@ -1,44 +1,50 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
-use std::rc::Rc;
-
-mod error;
 mod lexer;
-mod position;
-mod symbols;
-mod terminal;
 mod token;
 
-fn main() {
-    let strings = Rc::new(symbols::Strings::new());
-    let mut symbols = symbols::Symbols::new(Rc::clone(&strings));
-    if let Err(error) = drive(strings, &mut symbols) {
-        let terminal = terminal::Terminal::new();
-        if let Err(error) = error.show(&symbols, &terminal) {
-            eprint!("Error printing errors: {}", error);
-        }
-    }
+fn usage(status: i32) {
+    eprintln!("zcc [ -o <path> ] <file>");
+    std::process::exit(status);
 }
 
-fn drive(
-    strings: Rc<symbols::Strings>,
-    symbols: &mut symbols::Symbols<()>,
-) -> Result<(), error::Error> {
-    let mut args = std::env::args();
-    args.next();
-    if let Some(filename) = args.next() {
-        let file = std::io::BufReader::new(std::fs::File::open(&filename)?);
-        let file_symbol = symbols.symbol(&filename);
-        let mut lexer = lexer::Lexer::new(file, file_symbol);
-        let mut token;
-        loop {
-            token = lexer.token()?;
-            println!("{:?}", token);
-            if token.token == token::Tok::EndOfFile {
-                break;
-            }
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 1;
+    let mut opt_o = String::new();
+    let mut input_path = String::new();
+    while i < args.len() {
+        if args[i] == "--help" {
+            usage(0);
         }
+
+        if args[i] == "-o" {
+            i += 1;
+            if i == args.len() {
+                usage(1);
+            }
+            opt_o = args[i].clone();
+            i += 1;
+            continue;
+        }
+
+        if args[i].starts_with("-o") {
+            opt_o = args[i][2..].to_string();
+            i += 1;
+            continue;
+        }
+
+        if args[i].chars().nth(0).unwrap() == '-' && args[i].chars().nth(1).is_some() {
+            eprintln!("unknown argument: {}", args[i]);
+            std::process::exit(1);
+        }
+
+        input_path = args[i].clone();
+        i += 1;
     }
-    Ok(())
+
+    if input_path.is_empty() {
+        eprintln!("no input files");
+    }
+
+    let mut lexer = lexer::Lexer::new(input_path);
+    lexer.tokenize();
 }
