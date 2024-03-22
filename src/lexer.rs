@@ -284,11 +284,60 @@ impl Lexer {
             }
 
             // Punctuators
-            
+            if self.startswith("==") {
+                let start = self.current_position;
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::EqualEqual,
+                    loc: start,
+                    len: 2,
+                };
+                tokens.push(token);
+                continue;
+            }
+            if self.startswith("!=") {
+                let start = self.current_position;
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::BangEqual,
+                    loc: start,
+                    len: 2,
+                };
+                tokens.push(token);
+                continue;
+            }
+            if self.startswith(">=") {
+                let start = self.current_position;
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::GreaterOrEqual,
+                    loc: start,
+                    len: 2,
+                };
+                tokens.push(token);
+                continue;
+            }
+            if self.startswith("<=") {
+                let start = self.current_position;
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::LessOrEqual,
+                    loc: start,
+                    len: 2,
+                };
+                tokens.push(token);
+                continue;
+            }
 
             self.error_at(self.current_position, "invalid token");
         }
 
+        let eof_token = token::Token {
+            token: token::TokenKind::EndOfFile,
+            loc: self.current_position,
+            len: 0,
+        };
+        tokens.push(eof_token);
         println!("{:?}", tokens);
 
         tokens
