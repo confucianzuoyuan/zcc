@@ -253,8 +253,38 @@ impl Lexer {
             }
 
             // Identifier or keyword
+            if is_ident1(self.current_input[self.current_position]) {
+                let start = self.current_position;
+                let mut buffer = String::new();
+                buffer.push(self.current_input[self.current_position] as char);
+                self.current_position += 1;
+                while is_ident2(self.current_input[self.current_position]) {
+                    buffer.push(self.current_input[self.current_position] as char);
+                    self.current_position += 1;
+                }
+
+                let token_kind = match buffer.as_str() {
+                    "return" => token::TokenKind::KWReturn,
+                    "if" => token::TokenKind::KWIf,
+                    "else" => token::TokenKind::KWElse,
+                    "for" => token::TokenKind::KWFor,
+                    "while" => token::TokenKind::KWWhile,
+                    "int" => token::TokenKind::KWInt,
+                    "sizeof" => token::TokenKind::KWSizeOf,
+                    "char" => token::TokenKind::KWChar,
+                    ident => token::TokenKind::Ident(ident.to_string()),
+                };
+                let token = token::Token {
+                    token: token_kind,
+                    loc: start,
+                    len: self.current_position - start,
+                };
+                tokens.push(token);
+                continue;
+            }
 
             // Punctuators
+            
 
             self.error_at(self.current_position, "invalid token");
         }
@@ -273,4 +303,14 @@ fn from_hex(c: u8) -> u8 {
         return c - b'a' + 10;
     }
     c - b'A' + 10
+}
+
+// Returns true if c is valid as the first character of an identifier.
+fn is_ident1(c: u8) -> bool {
+    (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
+}
+
+// Returns true if c is valid as a non-first character of an identifier.
+fn is_ident2(c: u8) -> bool {
+    is_ident1(c) || (c >= b'0' && c <= b'9')
 }

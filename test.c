@@ -1,3 +1,1 @@
-// asdfsadf
-1234
-"\1500"
+int main
