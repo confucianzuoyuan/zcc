@@ -48,7 +48,7 @@ impl<R: Read> Lexer<R> {
         self.advance()
     }
 
-    pub fn integer(&mut self) -> Result<token::Token> {
+    pub fn number(&mut self) -> Result<token::Token> {
         let buffer = self.take_while(char::is_numeric)?;
         // the buffer only contains digit, hence unwrap().
         let num = buffer.parse().unwrap();
@@ -441,7 +441,7 @@ impl<R: Read> Lexer<R> {
         if let Some(&Ok(ch)) = self.bytes_iter.peek() {
             return match ch {
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.identifier(),
-                b'0'..=b'9' => self.integer(),
+                b'0'..=b'9' => self.number(),
                 b' ' | b'\n' | b'\t' => {
                     self.advance()?;
                     self.token()
