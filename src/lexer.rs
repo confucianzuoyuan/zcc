@@ -107,7 +107,7 @@ impl Lexer {
     }
 
     fn read_escaped_char(&mut self, mut pos: usize) -> (usize, u8) {
-        let mut new_pos;
+        let new_pos;
         if self.current_input[pos] >= b'0' && self.current_input[pos] <= b'7' {
             // Read an octal number
             let mut c = self.current_input[pos] - b'0';
@@ -188,6 +188,193 @@ impl Lexer {
             token: token::TokenKind::String(buffer),
             loc: start,
             len: end + 1 - start,
+        }
+    }
+
+    fn read_punctruator(&mut self) -> Option<token::Token> {
+        let start = self.current_position;
+        match self.current_input[self.current_position..] {
+            [b'=', b'=', ..] => {
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::EqualEqual,
+                    loc: start,
+                    len: 2,
+                };
+                Some(token)
+            }
+            [b'!', b'=', ..] => {
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::BangEqual,
+                    loc: start,
+                    len: 2,
+                };
+                Some(token)
+            }
+            [b'>', b'=', ..] => {
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::GreaterOrEqual,
+                    loc: start,
+                    len: 2,
+                };
+                Some(token)
+            }
+            [b'<', b'=', ..] => {
+                self.current_position += 2;
+                let token = token::Token {
+                    token: token::TokenKind::LessOrEqual,
+                    loc: start,
+                    len: 2,
+                };
+                Some(token)
+            }
+            [b'=', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Equal,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'!', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Bang,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'>', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::GreaterThan,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'<', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::LessThan,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'(', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::OpenParen,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b')', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::CloseParen,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'{', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::OpenBrace,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'}', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::CloseBrace,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'[', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::OpenBracket,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b']', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::CloseBracket,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b',', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Comma,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b';', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Semicolon,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'+', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Plus,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'-', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Minus,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'*', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Star,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            [b'/', ..] => {
+                self.current_position += 1;
+                let token = token::Token {
+                    token: token::TokenKind::Slash,
+                    loc: start,
+                    len: 1,
+                };
+                Some(token)
+            }
+            _ => None,
         }
     }
 
@@ -284,47 +471,7 @@ impl Lexer {
             }
 
             // Punctuators
-            if self.startswith("==") {
-                let start = self.current_position;
-                self.current_position += 2;
-                let token = token::Token {
-                    token: token::TokenKind::EqualEqual,
-                    loc: start,
-                    len: 2,
-                };
-                tokens.push(token);
-                continue;
-            }
-            if self.startswith("!=") {
-                let start = self.current_position;
-                self.current_position += 2;
-                let token = token::Token {
-                    token: token::TokenKind::BangEqual,
-                    loc: start,
-                    len: 2,
-                };
-                tokens.push(token);
-                continue;
-            }
-            if self.startswith(">=") {
-                let start = self.current_position;
-                self.current_position += 2;
-                let token = token::Token {
-                    token: token::TokenKind::GreaterOrEqual,
-                    loc: start,
-                    len: 2,
-                };
-                tokens.push(token);
-                continue;
-            }
-            if self.startswith("<=") {
-                let start = self.current_position;
-                self.current_position += 2;
-                let token = token::Token {
-                    token: token::TokenKind::LessOrEqual,
-                    loc: start,
-                    len: 2,
-                };
+            if let Some(token) = self.read_punctruator() {
                 tokens.push(token);
                 continue;
             }
