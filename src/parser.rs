@@ -63,7 +63,10 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Vec<Obj> {
-        while self.tokens[self.current_pos].token != token::TokenKind::EndOfFile {}
+        while self.tokens[self.current_pos].token != token::TokenKind::EndOfFile {
+            let basety = self.declspec();
+            println!("{:?}", basety);
+        }
         self.globals.clone()
     }
 }

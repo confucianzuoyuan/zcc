@@ -48,6 +48,7 @@ fn main() {
         eprintln!("no input files");
     }
 
-    let mut lexer = lexer::Lexer::new(input_path);
-    lexer.tokenize();
+    let lexer = lexer::Lexer::new(input_path);
+    let mut parser = parser::Parser::new(lexer);
+    parser.parse();
 }
