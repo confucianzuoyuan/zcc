@@ -60,7 +60,7 @@ impl Lexer {
         std::process::exit(1);
     }
 
-    fn error_tok(&mut self, token: token::Token, msg: &str) {
+    pub fn error_tok(&mut self, token: token::Token, msg: &str) {
         self.verror_at(token.line_no, token.loc, msg);
     }
 

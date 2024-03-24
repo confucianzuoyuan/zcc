@@ -1,4 +1,4 @@
-use crate::{token, types};
+use crate::{lexer, token, types};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Obj {
@@ -21,8 +21,8 @@ pub enum Obj {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
 pub struct Parser {
+    pub lexer: lexer::Lexer,
     pub tokens: Vec<token::Token>,
     pub locals: Vec<Obj>,
     pub globals: Vec<Obj>,
@@ -30,19 +30,40 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<token::Token>) -> Self {
+    pub fn new(mut lexer: lexer::Lexer) -> Self {
+        let tokens = lexer.tokenize();
         Self {
-            tokens,
+            lexer,
+            tokens: tokens,
             locals: vec![],
             globals: vec![],
             current_pos: 0,
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Obj> {
-        while self.tokens[self.current_pos].token != token::TokenKind::EndOfFile {
-            
+    fn eat(&mut self, token: token::TokenKind) {
+        if self.tokens[self.current_pos].token == token {
+            self.current_pos += 1;
+        } else {
+            self.lexer.error_tok(
+                self.tokens[self.current_pos].clone(),
+                format!("expected '{}'", token).as_str(),
+            );
         }
+    }
+
+    fn declspec(&mut self) -> types::Type {
+        if self.tokens[self.current_pos].token == token::TokenKind::KWChar {
+            self.current_pos += 1;
+            return types::Type::CHAR;
+        }
+
+        self.eat(token::TokenKind::KWInt);
+        types::Type::INT
+    }
+
+    pub fn parse(&mut self) -> Vec<Obj> {
+        while self.tokens[self.current_pos].token != token::TokenKind::EndOfFile {}
         self.globals.clone()
     }
 }
