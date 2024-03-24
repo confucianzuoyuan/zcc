@@ -104,7 +104,7 @@ pub enum TokenKind {
     EndOfFile,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub loc: usize,
     pub len: usize,

@@ -33,7 +33,7 @@ impl Lexer {
     ///
     /// foo.c:10: x = y + 1;
     ///               ^ <error message here>
-    fn verror_at(&self, line_no: i32, loc: usize, msg: &str) {
+    fn verror_at(&self, line_no: usize, loc: usize, msg: &str) {
         // Find a line containing `loc`.
         let mut line = loc;
         let code = &self.current_input;
@@ -58,6 +58,10 @@ impl Lexer {
         eprint!("{}", " ".repeat(pos));
         eprintln!("^ {}", msg);
         std::process::exit(1);
+    }
+
+    fn error_tok(&mut self, token: token::Token, msg: &str) {
+        self.verror_at(token.line_no, token.loc, msg);
     }
 
     /// Returns the contents of a given file.

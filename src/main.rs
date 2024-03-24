@@ -1,5 +1,8 @@
 mod lexer;
 mod token;
+mod ast;
+mod parser;
+mod types;
 
 fn usage(status: i32) {
     eprintln!("zcc [ -o <path> ] <file>");
