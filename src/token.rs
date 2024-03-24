@@ -108,6 +108,7 @@ pub enum TokenKind {
 pub struct Token {
     pub loc: usize,
     pub len: usize,
+    pub line_no: usize,
     pub token: TokenKind,
 }
 
