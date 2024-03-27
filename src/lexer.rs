@@ -1,23 +1,21 @@
-use std::io::BufRead;
+use crate::{error, token};
 
-use crate::token;
+pub type Result<T> = std::result::Result<T, error::Error>;
 
 pub struct Lexer {
-    current_file: String,
     current_input: Vec<u8>,
     current_position: usize,
 }
 
 impl Lexer {
-    pub fn new(file_path: String) -> Self {
+    pub fn new(source_code: Vec<u8>) -> Self {
         Lexer {
-            current_file: file_path,
-            current_input: vec![],
+            current_input: source_code,
             current_position: 0,
         }
     }
 
-    fn error_at(&self, loc: usize, msg: &str) {
+    fn error_at(&self, loc: usize, msg: &str) -> error::Error {
         let mut line_no = 1;
         let mut p = 0;
         while p < self.current_position {
@@ -26,63 +24,16 @@ impl Lexer {
             }
             p += 1;
         }
-        self.verror_at(line_no, loc, msg);
-    }
-
-    /// Reports an error message in the following format and exit.
-    ///
-    /// foo.c:10: x = y + 1;
-    ///               ^ <error message here>
-    fn verror_at(&self, line_no: usize, loc: usize, msg: &str) {
-        // Find a line containing `loc`.
-        let mut line = loc;
-        let code = &self.current_input;
-        while self.current_position < line && code[line - 1] != b'\n' {
-            line -= 1;
-        }
-
-        let mut end = loc;
-        while code[end] != b'\n' {
-            end += 1;
-        }
-
-        // Print out the line
-        let line_msg = format!("{}:{}: ", self.current_file, line_no);
-        let indent = line_msg.len();
-        eprint!("{}", line_msg);
-        eprintln!("{}", String::from_utf8(code[line..end].to_vec()).unwrap());
-
-        // Show the error message.
-        let pos = loc - line + indent;
-
-        eprint!("{}", " ".repeat(pos));
-        eprintln!("^ {}", msg);
-        std::process::exit(1);
-    }
-
-    pub fn error_tok(&mut self, token: token::Token, msg: &str) {
-        self.verror_at(token.line_no, token.loc, msg);
-    }
-
-    /// Returns the contents of a given file.
-    pub fn read_file(&mut self) {
-        if self.current_file == "-" {
-            let stdin = std::io::stdin();
-            for line in stdin.lock().lines() {
-                self.current_input
-                    .append(&mut line.unwrap().as_bytes().to_vec());
-                self.current_input.push(b'\n');
-            }
-        } else {
-            self.current_input = std::fs::read_to_string(self.current_file.clone())
-                .expect("no such file")
-                .as_bytes()
-                .to_vec();
-            if !self.current_input.ends_with(&[b'\n']) {
-                self.current_input.push(b'\n');
-            }
+        error::Error {
+            line_number: line_no,
+            location: loc,
+            message: msg.to_string(),
         }
     }
+
+    // pub fn error_tok(&mut self, token: token::Token, msg: &str) {
+    //     self.verror_at(token.line_no, token.loc, msg);
+    // }
 
     fn startswith(&self, prefix: &str) -> bool {
         let len = prefix.len();
@@ -96,18 +47,18 @@ impl Lexer {
         false
     }
 
-    fn string_literal_end(&mut self, mut pos: usize) -> usize {
+    fn string_literal_end(&mut self, mut pos: usize) -> Result<usize> {
         let start = pos;
         while self.current_input[pos] != b'"' {
             if self.current_input[pos] == b'\n' {
-                self.error_at(start, "unclosed string literal");
+                return Err(self.error_at(start, "unclosed string literal"));
             }
             if self.current_input[pos] == b'\\' {
                 pos += 1;
             }
             pos += 1;
         }
-        pos
+        Ok(pos)
     }
 
     fn read_escaped_char(&mut self, mut pos: usize) -> (usize, u8) {
@@ -173,8 +124,8 @@ impl Lexer {
         (new_pos, c)
     }
 
-    fn read_string_literal(&mut self, start: usize) -> token::Token {
-        let end = self.string_literal_end(start + 1);
+    fn read_string_literal(&mut self, start: usize) -> Result<token::Token> {
+        let end = self.string_literal_end(start + 1)?;
         let mut buffer = String::new();
         let mut pos = start + 1;
         while pos < end {
@@ -188,12 +139,12 @@ impl Lexer {
             }
         }
 
-        token::Token {
+        Ok(token::Token {
             token: token::TokenKind::String(buffer),
             loc: start,
             len: end + 1 - start,
             line_no: 0,
-        }
+        })
     }
 
     fn make_token(&mut self, token_kind: token::TokenKind, len: usize) -> token::Token {
@@ -257,9 +208,8 @@ impl Lexer {
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<token::Token> {
+    pub fn tokenize(&mut self) -> Result<Vec<token::Token>> {
         let mut tokens = vec![];
-        self.read_file();
 
         while self.current_position < self.current_input.len() {
             // Skip line comments
@@ -313,7 +263,7 @@ impl Lexer {
 
             // String literal
             if self.current_input[self.current_position] == b'"' {
-                let token = self.read_string_literal(self.current_position);
+                let token = self.read_string_literal(self.current_position)?;
                 self.current_position += token.len;
                 tokens.push(token);
                 continue;
@@ -368,9 +318,8 @@ impl Lexer {
         };
         tokens.push(eof_token);
         self.add_line_numbers(&mut tokens);
-        println!("{:?}", tokens);
 
-        tokens
+        Ok(tokens)
     }
 }
 

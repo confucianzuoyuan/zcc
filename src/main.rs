@@ -1,7 +1,10 @@
-mod lexer;
-mod token;
+use std::io::BufRead;
+
 mod ast;
+mod error;
+mod lexer;
 mod parser;
+mod token;
 mod types;
 
 fn usage(status: i32) {
@@ -48,7 +51,34 @@ fn main() {
         eprintln!("no input files");
     }
 
-    let lexer = lexer::Lexer::new(input_path);
-    let mut parser = parser::Parser::new(lexer);
-    parser.parse();
+    let source_code = read_file(input_path.clone());
+    let error_handler = error::ErrorHandler::new(input_path, source_code.clone());
+    let mut lexer = lexer::Lexer::new(source_code);
+    let tokens = lexer.tokenize();
+    match tokens {
+        Ok(_tokens) => println!("{:?}", _tokens),
+        Err(e) => error_handler.show(e),
+    }
+}
+
+/// Returns the contents of a given file.
+fn read_file(input_path: String) -> Vec<u8> {
+    let mut source_code = vec![];
+    if input_path == "-" {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            source_code.append(&mut line.unwrap().as_bytes().to_vec());
+            source_code.push(b'\n');
+        }
+    } else {
+        source_code = std::fs::read_to_string(input_path.clone())
+            .expect("no such file")
+            .as_bytes()
+            .to_vec();
+        if !source_code.ends_with(&[b'\n']) {
+            source_code.push(b'\n');
+        }
+    }
+
+    source_code
 }
