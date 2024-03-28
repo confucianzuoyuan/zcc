@@ -343,14 +343,18 @@ impl Parser {
     fn parse_param_list(&mut self) -> Result<Vec<ParamInfo>> {
         use token::TokenKind::*;
         self.expect(OpenParen)?;
-        let params =
-            match self.tokens.iter().map(|t| t.token.clone()).collect::<Vec<_>>()[self.current_pos..] {
-                [KWVoid, CloseParen] => {
-                    self.advance();
-                    Ok(vec![])
-                }
-                _ => self.param_loop(),
-            };
+        let params = match self
+            .tokens
+            .iter()
+            .map(|t| t.token.clone())
+            .collect::<Vec<_>>()[self.current_pos..]
+        {
+            [KWVoid, CloseParen] => {
+                self.advance();
+                Ok(vec![])
+            }
+            _ => self.param_loop(),
+        };
         self.expect(CloseParen)?;
         params
     }
@@ -485,7 +489,13 @@ impl Parser {
                 self.expect(token::TokenKind::Semicolon)?;
                 members
             }
-            _ => panic!(),
+            _ => {
+                return Err(error::Error {
+                    line_number: self.current_token().line_no,
+                    location: self.current_token().loc,
+                    message: format!("Unexpected {}", self.current_token().token),
+                })
+            }
         };
         Ok(ast::Declaration::StructDecl(ast::StructDeclaration {
             tag,

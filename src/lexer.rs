@@ -323,7 +323,7 @@ impl Lexer {
 
         let eof_token = token::Token {
             token: token::TokenKind::EndOfFile,
-            loc: self.current_position,
+            loc: self.current_input.len() - 1,
             len: 0,
             line_no: 0,
         };
