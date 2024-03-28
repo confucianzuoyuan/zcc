@@ -289,6 +289,17 @@ impl Lexer {
                     "int" => token::TokenKind::KWInt,
                     "sizeof" => token::TokenKind::KWSizeOf,
                     "char" => token::TokenKind::KWChar,
+                    "struct" => token::TokenKind::KWStruct,
+                    "continue" => token::TokenKind::KWContinue,
+                    "static" => token::TokenKind::KWStatic,
+                    "extern" => token::TokenKind::KWExtern,
+                    "signed" => token::TokenKind::KWSigned,
+                    "unsigned" => token::TokenKind::KWUnsigned,
+                    "double" => token::TokenKind::KWDouble,
+                    "void" => token::TokenKind::KWVoid,
+                    "do" => token::TokenKind::KWDo,
+                    "long" => token::TokenKind::KWLong,
+                    "break" => token::TokenKind::KWBreak,
                     ident => token::TokenKind::Ident(ident.to_string()),
                 };
                 let token = token::Token {

@@ -1,6 +1,7 @@
 use std::io::BufRead;
 
 mod ast;
+mod constant;
 mod error;
 mod lexer;
 mod parser;
@@ -56,7 +57,14 @@ fn main() {
     let mut lexer = lexer::Lexer::new(source_code);
     let tokens = lexer.tokenize();
     match tokens {
-        Ok(_tokens) => println!("{:?}", _tokens),
+        Ok(_tokens) => {
+            let mut parser = parser::Parser::new(_tokens);
+            let ast = parser.parse();
+            match ast {
+                Ok(_ast) => println!("{:#?}", _ast),
+                Err(e) => error_handler.show(e),
+            }
+        }
         Err(e) => error_handler.show(e),
     }
 }

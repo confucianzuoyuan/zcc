@@ -1,91 +1,207 @@
-use crate::{token, types};
+use crate::{constant, types};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
+pub enum UnaryOperator {
+    Complement,
+    Negate,
+    Not,
+}
+
+#[derive(Debug)]
 pub enum BinaryOperator {
     Add,
-    Sub,
-    Mul,
-    Div,
-    Eq,
-    Ne,
-    Lt,
-    Le,
+    Subtract,
+    Multiply,
+    Divide,
+    Mod,
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum UnaryOperator {
-    Neg,
+#[derive(Debug)]
+pub enum StorageClass {
+    Static,
+    Extern,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ExprInner {
-    Binary {
-        op: BinaryOperator,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    Unary {
-        op: UnaryOperator,
-        expr: Box<Expr>,
-    },
-    Assign {
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    FunCall {
-        funcname: String,
-        args: Vec<Expr>,
-    },
-    Addr(Box<Expr>),
-    Deref(Box<Expr>),
-    Stmt(Box<Stmt>),
-    Var(Obj),
-    Num(i64),
+#[derive(Debug)]
+pub struct MemberDeclaration {
+    pub member_name: String,
+    pub member_type: types::Type,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Expr {
-    pub e: ExprInner,
-    pub ty: Option<types::Type>,
-    pub token: token::Token,
+#[derive(Debug)]
+pub struct StructDeclaration {
+    pub tag: String,
+    pub members: Vec<MemberDeclaration>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Stmt {
-    Return(Expr),
+#[derive(Debug)]
+pub struct VariableDeclaration<InitType> {
+    name: String,
+    var_type: types::Type,
+    init: Option<InitType>,
+    storage_class: Option<StorageClass>,
+}
+
+#[derive(Debug)]
+pub enum ForInit<InitType, ExpType> {
+    InitDecl(VariableDeclaration<InitType>),
+    InitExp(Option<ExpType>),
+}
+
+#[derive(Debug)]
+pub enum Statement<InitType, ExpType> {
+    Return(Option<ExpType>),
+    Expression(ExpType),
     If {
-        cond: Expr,
-        then: Box<Stmt>,
-        els: Box<Option<Stmt>>,
+        condition: ExpType,
+        then_clause: Box<Statement<InitType, ExpType>>,
+        else_clause: Box<Option<Statement<InitType, ExpType>>>,
+    },
+    Compound(Block<InitType, ExpType>),
+    Break(String),
+    Continue(String),
+    While {
+        condition: ExpType,
+        body: Box<Statement<InitType, ExpType>>,
+        id: String,
     },
     For {
-        cond: Option<Expr>,
-        then: Box<Stmt>,
-        init: Box<Option<Stmt>>,
-        inc: Box<Option<Expr>>,
+        init: ForInit<InitType, ExpType>,
+        condition: Option<ExpType>,
+        post: Option<ExpType>,
+        body: Box<Statement<InitType, ExpType>>,
+        id: String,
     },
-    Expr(Expr),
-    Block(Vec<Stmt>),
+    Null,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Obj {
-    LocalVariable {
-        name: String,
-        ty: types::Type,
-        offset: i64,
+#[derive(Debug)]
+pub enum BlockItem<InitType, ExpType> {
+    S(Statement<InitType, ExpType>),
+    D(Declaration<InitType, ExpType>),
+}
+
+pub type Block<InitType, ExpType> = Vec<BlockItem<InitType, ExpType>>;
+
+#[derive(Debug)]
+pub struct FunctionDeclaration<InitType, ExpType> {
+    name: String,
+    fun_type: types::Type,
+    params: Vec<String>,
+    body: Option<Block<InitType, ExpType>>,
+    storage_class: Option<StorageClass>,
+}
+
+#[derive(Debug)]
+pub enum Declaration<InitType, ExpType> {
+    FunDecl(FunctionDeclaration<InitType, ExpType>),
+    VarDecl(VariableDeclaration<InitType>),
+    StructDecl(StructDeclaration),
+}
+
+pub type Program<InitType, ExpType> = Vec<Declaration<InitType, ExpType>>;
+
+#[derive(Debug)]
+pub enum UntypedExp {
+    Constant(constant::Type),
+    Var(String),
+    String(String),
+    Cast {
+        target_type: types::Type,
+        e: Box<UntypedExp>,
     },
-    GlobalVariable {
-        name: String,
-        ty: types::Type,
-        init_data: String,
+    Unary(UnaryOperator, Box<UntypedExp>),
+    Binary(BinaryOperator, Box<UntypedExp>, Box<UntypedExp>),
+    Assignment(Box<UntypedExp>, Box<UntypedExp>),
+    Conditional {
+        condition: Box<UntypedExp>,
+        then_result: Box<UntypedExp>,
+        else_result: Box<UntypedExp>,
     },
-    Function {
-        name: String,
-        ty: types::Type,
-        params: Vec<Obj>,
-        body: Box<Stmt>,
-        locals: Vec<Obj>,
-        stack_size: i64,
+    FunCall {
+        f: String,
+        args: Vec<UntypedExp>,
+    },
+    Dereference(Box<UntypedExp>),
+    AddrOf(Box<UntypedExp>),
+    Subscript {
+        ptr: Box<UntypedExp>,
+        index: Box<UntypedExp>,
+    },
+    SizeOf(Box<UntypedExp>),
+    SizeOfT(types::Type),
+    Dot {
+        strct: Box<UntypedExp>,
+        member: String,
+    },
+    Arrow {
+        strct: Box<UntypedExp>,
+        member: String,
     },
 }
+
+#[derive(Debug)]
+pub enum UntypedInitializer {
+    SingleInit(UntypedExp),
+    CompoundInit(Vec<UntypedExp>),
+}
+
+pub type UntypedProgram = Program<UntypedInitializer, UntypedExp>;
+
+pub enum TypedInnerExp {
+    Constant(constant::Type),
+    Var(String),
+    String(String),
+    Cast {
+        target_type: types::Type,
+        e: TypedExp,
+    },
+    Unary(UnaryOperator, TypedExp),
+    Binary(BinaryOperator, TypedExp, TypedExp),
+    Assignment(TypedExp, TypedExp),
+    Conditional {
+        condition: TypedExp,
+        then_result: TypedExp,
+        else_result: TypedExp,
+    },
+    FunCall {
+        f: String,
+        args: Vec<TypedExp>,
+    },
+    Dereference(TypedExp),
+    AddrOf(TypedExp),
+    Subscript {
+        ptr: TypedExp,
+        index: TypedExp,
+    },
+    SizeOf(TypedExp),
+    SizeOfT(types::Type),
+    Dot {
+        strct: TypedExp,
+        member: String,
+    },
+    Arrow {
+        strct: TypedExp,
+        member: String,
+    },
+}
+
+pub struct TypedExp {
+    e: Box<TypedInnerExp>,
+    t: types::Type,
+}
+
+pub enum TypedInitializer {
+    SingleInit(TypedExp),
+    CompoundInit(types::Type, Vec<TypedInitializer>),
+}
+
+pub type TypedProgram = Program<TypedInitializer, TypedExp>;

@@ -1,1 +1,5 @@
-int main() { return "adsasdfadsf; }
+struct strt {
+  int a;
+  int b;
+  int c;
+};

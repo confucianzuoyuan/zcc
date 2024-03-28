@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub enum TokenKind {
     Plus,                // "+"
     PlusEqual,           // "+="
@@ -104,7 +104,7 @@ pub enum TokenKind {
     EndOfFile,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Token {
     pub loc: usize,
     pub len: usize,
