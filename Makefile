@@ -1,12 +1,12 @@
 TEST_SRCS=$(wildcard test/*.c)
 TESTS=$(TEST_SRCS:.c=.exe)
 
-chibicc: clean
+zcc: clean
 	cargo build
-	cp target/debug/chibicc-rust chibicc
+	cp target/debug/zcc zcc
 
-test/%.exe: chibicc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./chibicc -o test/$*.s -
+test/%.exe: zcc test/%.c
+	$(CC) -o- -E -P -C test/$*.c | ./zcc -o test/$*.s -
 	$(CC) -o $@ test/$*.s -xc test/common
 
 test: $(TESTS)
@@ -14,7 +14,7 @@ test: $(TESTS)
 	test/driver.sh
 
 clean:
-	rm -rf chibicc tmp* $(TESTS) test/*.s test/*.exe
+	rm -rf zcc tmp* $(TESTS) test/*.s test/*.exe
 	find * -type f '(' -name '*~' -o -name '*.o' ')' -exec rm {} ';'
 	cargo clean
 
