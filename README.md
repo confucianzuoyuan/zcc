@@ -1,7 +1,7 @@
-clone famous c compiler project `chibicc` with Rust commit by commit.
+inspired by famous project: `chibicc`
 
 ```sh
 $ cargo build
 ```
 
-and the compiler is in path `target/debug/chibicc-rust`.
+and the compiler is in path `target/debug/zcc`.
