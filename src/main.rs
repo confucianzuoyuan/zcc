@@ -23,6 +23,8 @@ mod sema;
 mod symbol;
 mod terminal;
 mod token;
+mod tokenize;
+mod unicode;
 
 use clap::Parser as ClapParser;
 
