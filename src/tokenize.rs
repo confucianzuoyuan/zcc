@@ -85,7 +85,7 @@ impl Tokenizer {
         loop {
             let c = decode_utf8(&src[..], p);
             if !is_identifier(c.0) {
-                return c.1 - start;
+                return c.1;
             }
             p = c.1;
             if p >= src.len() {
@@ -155,9 +155,63 @@ impl Tokenizer {
         }
         false
     }
+
+    /// Read a punctuator token from p and returns its length.
+    pub fn read_punctuator(&self, p: usize) -> usize {
+        let src = self
+            .context
+            .get_file(self.current_file)
+            .expect("msg")
+            .contents;
+        let punctuators = [
+            "<<=", ">>=", "...", "==", "!=", "<=", ">=", "->", "+=", "-=", "*=", "/=", "++", "--",
+            "%=", "&=", "|=", "^=", "&&", "||", "<<", ">>", "##",
+        ];
+        for punctuator in punctuators.iter() {
+            if self.startswith(p, punctuator) {
+                return punctuator.len();
+            }
+        }
+        let single_punctuators = [
+            "(", ")", "{", "}", "[", "]", ";", ",", ".", ":", "?", "+", "-", "*", "/", "%", "&",
+            "|", "^", "~", "!", "<", ">", "=", "#",
+        ];
+        for single_punctuator in single_punctuators.iter() {
+            if self.startswith(p, single_punctuator) {
+                return single_punctuator.len();
+            }
+        }
+        0
+    }
 }
 
 // Reports an error message in the following format.
 //
 // foo.c:10: x = y + 1;
 //               ^ <error message here>
+
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::file::File;
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        assert_eq!(add(1, 2), 3);
+    }
+
+    #[test]
+    fn test_lexer() {
+        let mut context = Context::new();
+        context.add_file(File::new("name", 0, "int main()".as_bytes()));
+        let mut tokenizer = Tokenizer::new(context);
+        let len = tokenizer.read_identifier(0);
+        assert_eq!(len, 3);
+    }
+}
