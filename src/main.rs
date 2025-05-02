@@ -14,14 +14,18 @@ use terminal::Terminal;
 
 mod ast;
 mod codegen;
+mod context;
 mod environment;
 mod error;
+mod file;
 mod lexer;
+mod obj;
 mod parser;
 mod position;
 mod sema;
 mod symbol;
 mod terminal;
+mod tok;
 mod token;
 mod tokenize;
 mod unicode;
