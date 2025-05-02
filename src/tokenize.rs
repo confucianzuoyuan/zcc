@@ -76,20 +76,84 @@ impl Tokenizer {
             .expect("msg")
             .contents;
         let mut p = start;
-        let c = decode_utf8(&src[p..], start);
-        p += c.1;
+        let c = decode_utf8(&src[..], start);
+        p = c.1;
         if is_identifier_start(c.0) {
             return 0;
         }
 
         loop {
-            let c = decode_utf8(&src[p..], p);
-            p += c.1;
+            let c = decode_utf8(&src[..], p);
             if !is_identifier(c.0) {
                 return c.1 - start;
             }
+            p = c.1;
+            if p >= src.len() {
+                break;
+            }
         }
         0
+    }
+
+    pub fn is_keyword(&self, tok: &Token) -> bool {
+        let src = self
+            .context
+            .get_file(self.current_file)
+            .expect("msg")
+            .contents;
+        let keywords = [
+            "return",
+            "if",
+            "else",
+            "for",
+            "while",
+            "int",
+            "sizeof",
+            "char",
+            "struct",
+            "union",
+            "short",
+            "long",
+            "void",
+            "typedef",
+            "_Bool",
+            "enum",
+            "static",
+            "goto",
+            "break",
+            "continue",
+            "switch",
+            "case",
+            "default",
+            "extern",
+            "_Alignof",
+            "_Alignas",
+            "do",
+            "signed",
+            "unsigned",
+            "const",
+            "volatile",
+            "auto",
+            "register",
+            "restrict",
+            "__restrict",
+            "__restrict__",
+            "_Noreturn",
+            "float",
+            "double",
+            "typeof",
+            "asm",
+            "_Thread_local",
+            "__thread",
+            "_Atomic",
+            "__attribute__",
+        ];
+        for keyword in keywords.iter() {
+            if self.equal(tok, keyword) {
+                return true;
+            }
+        }
+        false
     }
 }
 
