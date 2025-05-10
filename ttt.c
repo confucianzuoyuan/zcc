@@ -1,9 +1,6 @@
-typedef struct T T;
+union {
+  int a;
+  char b[6];
+} x;
 
-struct T {
-    int x;
-};
-
-int main() {
-    return sizeof(T);
-}
+int main() { return sizeof(x); }

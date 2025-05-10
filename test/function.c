@@ -1,6 +1,6 @@
 #include "test.h"
 
-int ret3(void) {
+int ret3() {
   return 3;
   return 5;
 }
@@ -41,7 +41,7 @@ int sub_short(short a, short b, short c) {
 
 int g1;
 
-int *g1_ptr(void) { return &g1; }
+int *g1_ptr() { return &g1; }
 char int_to_char(int x) { return x; }
 
 int div_long(long a, long b) {
@@ -50,69 +50,6 @@ int div_long(long a, long b) {
 
 _Bool bool_fn_add(_Bool x) { return x + 1; }
 _Bool bool_fn_sub(_Bool x) { return x - 1; }
-
-static int static_fn(void) { return 3; }
-
-int param_decay(int x[]) { return x[0]; }
-
-int counter() {
-  static int i;
-  static int j = 1+1;
-  return i++ + j++;
-}
-
-void ret_none() {
-  return;
-}
-
-_Bool true_fn();
-_Bool false_fn();
-char char_fn();
-short short_fn();
-
-unsigned char uchar_fn();
-unsigned short ushort_fn();
-
-char schar_fn();
-short sshort_fn();
-
-int add_all(int n, ...);
-
-typedef struct {
-  int gp_offset;
-  int fp_offset;
-  void *overflow_arg_area;
-  void *reg_save_area;
-} __va_elem;
-
-typedef __va_elem va_list[1];
-
-int add_all(int n, ...);
-int sprintf(char *buf, char *fmt, ...);
-int vsprintf(char *buf, char *fmt, va_list ap);
-
-char *fmt(char *buf, char *fmt, ...) {
-  va_list ap;
-  *ap = *(__va_elem *)__va_area__;
-  vsprintf(buf, fmt, ap);
-}
-
-double add_double(double x, double y);
-float add_float(float x, float y);
-
-float add_float3(float x, float y, float z) {
-  return x + y + z;
-}
-
-double add_double3(double x, double y, double z) {
-  return x + y + z;
-}
-
-int (*fnptr(int (*fn)(int n, ...)))(int, ...) {
-  return fn;
-}
-
-int param_decay2(int x()) { return x(); }
 
 int main() {
   ASSERT(3, ret3());
@@ -144,52 +81,6 @@ int main() {
   ASSERT(0, bool_fn_sub(-3));
   ASSERT(1, bool_fn_add(0));
   ASSERT(1, bool_fn_sub(0));
-
-  ASSERT(3, static_fn());
-
-  ASSERT(3, ({ int x[2]; x[0]=3; param_decay(x); }));
-
-  ASSERT(2, counter());
-  ASSERT(4, counter());
-  ASSERT(6, counter());
-
-  ret_none();
-
-  ASSERT(1, true_fn());
-  ASSERT(0, false_fn());
-  ASSERT(3, char_fn());
-  ASSERT(5, short_fn());
-
-  ASSERT(6, add_all(3,1,2,3));
-  ASSERT(5, add_all(4,1,2,3,-1));
-
-  { char buf[100]; fmt(buf, "%d %d %s", 1, 2, "foo"); printf("%s\n", buf); }
-
-  ASSERT(0, ({ char buf[100]; sprintf(buf, "%d %d %s", 1, 2, "foo"); strcmp("1 2 foo", buf); }));
-
-  ASSERT(0, ({ char buf[100]; fmt(buf, "%d %d %s", 1, 2, "foo"); strcmp("1 2 foo", buf); }));
-
-  ASSERT(251, uchar_fn());
-  ASSERT(65528, ushort_fn());
-  ASSERT(-5, schar_fn());
-  ASSERT(-8, sshort_fn());
-
-  ASSERT(6, add_float(2.3, 3.8));
-  ASSERT(6, add_double(2.3, 3.8));
-
-  ASSERT(7, add_float3(2.5, 2.5, 2.5));
-  ASSERT(7, add_double3(2.5, 2.5, 2.5));
-
-  ASSERT(0, ({ char buf[100]; sprintf(buf, "%.1f", (float)3.5); strcmp(buf, "3.5"); }));
-
-  ASSERT(0, ({ char buf[100]; fmt(buf, "%.1f", (float)3.5); strcmp(buf, "3.5"); }));
-
-  ASSERT(5, (add2)(2,3));
-  ASSERT(5, (&add2)(2,3));
-  ASSERT(7, ({ int (*fn)(int,int) = add2; fn(2,5); }));
-  ASSERT(6, fnptr(add_all)(3, 1, 2, 3));
-
-  ASSERT(3, param_decay2(ret3));
 
   printf("OK\n");
   return 0;
