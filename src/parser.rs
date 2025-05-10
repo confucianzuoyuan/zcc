@@ -531,7 +531,20 @@ impl<'a> Parser<'a> {
         if self.peek_is("for") {
             let loc = self.advance().loc;
             self.skip("(");
-            let init = Some(P::new(self.expr_stmt()));
+            self.enter_scope();
+            let init;
+            if self.peek_is_ty_name() {
+                let mut stmts = Vec::new();
+                self.declaration(&mut stmts);
+                self.skip(";");
+                init = Some(Box::new(StmtNode {
+                    kind: StmtKind::Block(stmts),
+                    loc,
+                    ty: Ty::unit(),
+                }));
+            } else {
+                init = Some(P::new(self.expr_stmt()));
+            }
 
             let mut cond = None;
             if !self.peek_is(";") {
@@ -546,6 +559,8 @@ impl<'a> Parser<'a> {
             self.skip(")");
 
             let body = P::new(self.stmt());
+
+            self.exit_scope();
 
             return StmtNode {
                 kind: StmtKind::For(init, cond, inc, body),

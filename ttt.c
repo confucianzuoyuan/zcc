@@ -1,3 +1,8 @@
-static int static_fn() { return 3; }
-
-int main() { return static_fn(); }
+int main() {
+  return ({
+    int j = 0;
+    for (int i = 0; i <= 10; i = i + 1)
+      j = j + i;
+    j;
+  });
+}
