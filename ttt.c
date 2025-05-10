@@ -1,6 +1,3 @@
-union {
-  int a;
-  char b[6];
-} x;
+static int static_fn() { return 3; }
 
-int main() { return sizeof(x); }
+int main() { return static_fn(); }

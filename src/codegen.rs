@@ -1,19 +1,21 @@
-use std::{io::Write, ops::{Add, Sub, Div, Mul}, fmt::Display, rc::Rc};
+use std::{
+    fmt::Display,
+    io::Write,
+    ops::{Add, Div, Mul, Sub},
+    rc::Rc,
+};
 
-use crate::{parser::{BindingKind, Function, StmtNode, StmtKind, ExprNode, ExprKind, SourceUnit, TyKind, Ty}, context::{Context, ascii}};
+use crate::{
+    context::{Context, ascii},
+    parser::{
+        BindingKind, ExprKind, ExprNode, Function, SourceUnit, StmtKind, StmtNode, Ty, TyKind,
+    },
+};
 
-const ARG_REGS8: [&str;6] = [
-    "%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"
-];
-const ARG_REGS16: [&str;6] = [
-    "%di", "%si", "%dx", "%cx", "%r8w", "%r9w"
-];
-const ARG_REGS32: [&str;6] = [
-    "%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"
-];
-const ARG_REGS64: [&str;6] = [
-    "%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"
-];
+const ARG_REGS8: [&str; 6] = ["%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"];
+const ARG_REGS16: [&str; 6] = ["%di", "%si", "%dx", "%cx", "%r8w", "%r9w"];
+const ARG_REGS32: [&str; 6] = ["%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"];
+const ARG_REGS64: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 
 pub fn preprocess_source_unit(su: &SourceUnit) {
     for decl in su {
@@ -48,7 +50,7 @@ pub struct Codegen<'a> {
     su: &'a SourceUnit,
     depth: i64,
     id_count: usize,
-    cur_ret_lbl: Option<String>
+    cur_ret_lbl: Option<String>,
 }
 
 macro_rules! wln {
@@ -75,7 +77,7 @@ impl<'a> Codegen<'a> {
             su,
             depth: 0,
             id_count: 0,
-            cur_ret_lbl: None
+            cur_ret_lbl: None,
         }
     }
 
@@ -98,13 +100,11 @@ impl<'a> Codegen<'a> {
                     while let Some(b) = it.next() {
                         if it.peek().is_none() {
                             wln!(self, "{}", b);
-                        }
-                        else {
+                        } else {
                             w!(self, "{},", b);
                         }
                     }
-                }
-                else {
+                } else {
                     wln!(self, "  .zero {}", binding.ty.size);
                 }
             }
@@ -120,14 +120,19 @@ impl<'a> Codegen<'a> {
                 ref params,
                 ref locals,
                 ref body,
-                stack_size
-            }) = decl.kind {
+                stack_size,
+            }) = decl.kind
+            {
                 let name = ascii(&decl.name);
                 let ret_lbl = format!(".L.return.{}", name);
                 self.cur_ret_lbl = Some(ret_lbl);
 
                 wln!(self);
-                wln!(self, "  .globl {}", name);
+                if decl.ty.is_static {
+                    wln!(self, "  .local {}", name);
+                } else {
+                    wln!(self, "  .globl {}", name);
+                }
                 for local in locals {
                     let local = local.borrow();
                     if let BindingKind::LocalVar { stack_offset } = local.kind {
@@ -169,7 +174,7 @@ impl<'a> Codegen<'a> {
             2 => wln!(self, " mov {}, {}(%rbp)", ARG_REGS16[reg_idx], stack_offset),
             4 => wln!(self, " mov {}, {}(%rbp)", ARG_REGS32[reg_idx], stack_offset),
             8 => wln!(self, " mov {}, {}(%rbp)", ARG_REGS64[reg_idx], stack_offset),
-            _ => panic!("invalid size")
+            _ => panic!("invalid size"),
         }
     }
 
@@ -181,12 +186,12 @@ impl<'a> Codegen<'a> {
                 self.expr(expr);
                 let ret_lbl = self.cur_ret_lbl.as_ref().unwrap();
                 wln!(self, "  jmp {}", ret_lbl);
-            },
+            }
             StmtKind::Block(ref stmts) => {
                 for stmt in stmts {
                     self.stmt(stmt)
                 }
-            },
+            }
             StmtKind::If(ref cond, ref then_stmt, ref else_stmt) => {
                 let id = self.next_id();
                 self.expr(cond);
@@ -199,7 +204,7 @@ impl<'a> Codegen<'a> {
                     self.stmt(else_stmt);
                 }
                 wln!(self, ".L.end.{}:", id);
-            },
+            }
             StmtKind::For(ref init, ref cond, ref inc, ref body) => {
                 let id = self.next_id();
                 if let Some(init) = init {
@@ -217,7 +222,7 @@ impl<'a> Codegen<'a> {
                 }
                 wln!(self, "  jmp .L.begin.{}", id);
                 wln!(self, ".L.end.{}:", id);
-            },
+            }
         }
     }
 
@@ -289,8 +294,7 @@ impl<'a> Codegen<'a> {
                 self.pop("%rdi");
                 if lhs.ty.size == 8 {
                     wln!(self, "  cqo");
-                }
-                else {
+                } else {
                     wln!(self, "  cdq");
                 }
                 wln!(self, "  idiv {}", data_reg(&lhs.ty));
@@ -342,7 +346,7 @@ impl<'a> Codegen<'a> {
                         self.stmt(stmt);
                     }
                 }
-            },
+            }
             ExprKind::Cast(expr) => {
                 self.expr(expr);
 
@@ -350,7 +354,7 @@ impl<'a> Codegen<'a> {
                 let to = &node.ty;
 
                 match to.kind {
-                    TyKind::Unit => {},
+                    TyKind::Unit => {}
                     TyKind::Bool => {
                         self.cmp_zero(from);
                         wln!(self, "  setne %al");
@@ -369,8 +373,7 @@ impl<'a> Codegen<'a> {
     fn cmp_zero(&mut self, ty: &Ty) {
         if ty.is_integer_like() && ty.size <= 4 {
             wln!(self, "  cmp $0, %eax");
-        }
-        else {
+        } else {
             wln!(self, "  cmp $0, %rax");
         }
     }
@@ -378,14 +381,16 @@ impl<'a> Codegen<'a> {
     fn load(&mut self, ty: &Ty) {
         match ty.kind {
             TyKind::Array(_, _) | TyKind::Struct(_) | TyKind::Union(_) =>
-                // If it is an array/struct/union, do not attempt to load a value to the
-                // register because in general we can't load an entire array to a
-                // register. As a result, the result of an evaluation of an array
-                // becomes not the array itself but the address of the array.
-                // This is where "array is automatically converted to a pointer to
-                // the first element of the array in C" occurs.
-                return,
-            _ => {},
+            // If it is an array/struct/union, do not attempt to load a value to the
+            // register because in general we can't load an entire array to a
+            // register. As a result, the result of an evaluation of an array
+            // becomes not the array itself but the address of the array.
+            // This is where "array is automatically converted to a pointer to
+            // the first element of the array in C" occurs.
+            {
+                return;
+            }
+            _ => {}
         }
 
         // When we load a char or a short value to a register, we always
@@ -395,14 +400,11 @@ impl<'a> Codegen<'a> {
         // a long value to a register, it simply occupies the entire register.
         if ty.size == 1 {
             wln!(self, "  movsbl (%rax), %eax");
-        }
-        else if ty.size == 2 {
+        } else if ty.size == 2 {
             wln!(self, "  movswl (%rax), %eax");
-        }
-        else if ty.size == 4 {
+        } else if ty.size == 4 {
             wln!(self, "  movsxd (%rax), %rax");
-        }
-        else {
+        } else {
             wln!(self, "  mov (%rax), %rax");
         }
     }
@@ -417,20 +419,17 @@ impl<'a> Codegen<'a> {
                     wln!(self, "  mov %r8b, {}(%rdi)", i);
                 }
                 return;
-            },
+            }
             _ => {}
         }
 
         if ty.size == 1 {
             wln!(self, "  mov %al, (%rdi)");
-        }
-        else if ty.size == 2 {
+        } else if ty.size == 2 {
             wln!(self, "  mov %ax, (%rdi)");
-        }
-        else if ty.size == 4 {
+        } else if ty.size == 4 {
             wln!(self, "  mov %eax, (%rdi)");
-        }
-        else {
+        } else {
             wln!(self, "  mov %rax, (%rdi)");
         }
     }
@@ -454,31 +453,30 @@ impl<'a> Codegen<'a> {
                     BindingKind::LocalVar { stack_offset } => {
                         wln!(self, "  lea {}(%rbp), %rax", stack_offset);
                     }
-                    BindingKind::GlobalVar {..} => {
+                    BindingKind::GlobalVar { .. } => {
                         wln!(self, "  lea {}(%rip), %rax", ascii(&data.name));
                     }
-                    _ => panic!("Unsupported")
+                    _ => panic!("Unsupported"),
                 }
-            },
+            }
             ExprKind::Deref(expr) => {
                 self.expr(expr);
-            },
+            }
             ExprKind::Comma(exprs) => {
                 let mut it = exprs.iter().peekable();
                 while let Some(expr) = it.next() {
                     if it.peek().is_none() {
                         self.addr(expr);
-                    }
-                    else {
+                    } else {
                         self.expr(expr);
                     }
                 }
-            },
+            }
             ExprKind::MemberAccess(expr, member) => {
                 self.addr(expr);
                 wln!(self, "  add ${}, %rax", member.upgrade().unwrap().offset);
             }
-            _ => self.ctx.error_at(&expr.loc, "not an lvalue")
+            _ => self.ctx.error_at(&expr.loc, "not an lvalue"),
         };
     }
 
@@ -511,19 +509,22 @@ fn acc_reg(ty: &Rc<Ty>) -> &str {
 // Casting
 
 enum CastType {
-    I8 = 0, I16, I32, I64
+    I8 = 0,
+    I16,
+    I32,
+    I64,
 }
 
 lazy_static! {
-    static ref CAST_TABLE: [[Option<&'static str>;4];4] = {
-        let i32i8  = Some("movsbl %al, %eax");
+    static ref CAST_TABLE: [[Option<&'static str>; 4]; 4] = {
+        let i32i8 = Some("movsbl %al, %eax");
         let i32i16 = Some("movswl %ax, %eax");
         let i32i64 = Some("movsxd %eax, %rax");
         [
-            [  None,   None, None, i32i64],
-            [ i32i8,   None, None, i32i64],
-            [ i32i8, i32i16, None, i32i64],
-            [ i32i8, i32i16, None,   None],
+            [None, None, None, i32i64],
+            [i32i8, None, None, i32i64],
+            [i32i8, i32i16, None, i32i64],
+            [i32i8, i32i16, None, None],
         ]
     };
 }
@@ -534,25 +535,35 @@ fn to_cast_type(ty: &Ty) -> CastType {
         TyKind::Char => I8,
         TyKind::Short => I16,
         TyKind::Int => I32,
-        _ => I64
+        _ => I64,
     }
 }
 
 // Alignment
 
-pub trait Alignable : Display + Copy + Add<Output=Self> + Sub<Output=Self> + Div<Output=Self> + Mul<Output=Self> {
+pub trait Alignable:
+    Display + Copy + Add<Output = Self> + Sub<Output = Self> + Div<Output = Self> + Mul<Output = Self>
+{
     fn one() -> Self;
     fn is_zero(self) -> bool;
 }
 
 impl Alignable for i64 {
-    fn one() -> Self { 1 }
-    fn is_zero(self) -> bool { return self == 0 }
+    fn one() -> Self {
+        1
+    }
+    fn is_zero(self) -> bool {
+        return self == 0;
+    }
 }
 
 impl Alignable for usize {
-    fn one() -> Self { 1 }
-    fn is_zero(self) -> bool { return self == 0 }
+    fn one() -> Self {
+        1
+    }
+    fn is_zero(self) -> bool {
+        return self == 0;
+    }
 }
 
 // Round up `n` to the nearest multiple of `align`. For instance,

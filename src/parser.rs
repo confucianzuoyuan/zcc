@@ -39,6 +39,7 @@ pub struct Ty {
     pub kind: TyKind,
     pub size: usize,
     pub align: usize,
+    pub is_static: bool,
 }
 
 impl Ty {
@@ -47,6 +48,7 @@ impl Ty {
             kind: TyKind::Bool,
             size: 1,
             align: 1,
+            is_static: false,
         })
     }
     fn char() -> Rc<Ty> {
@@ -54,6 +56,7 @@ impl Ty {
             kind: TyKind::Char,
             size: 1,
             align: 1,
+            is_static: false,
         })
     }
     fn short() -> Rc<Ty> {
@@ -61,6 +64,7 @@ impl Ty {
             kind: TyKind::Short,
             size: 2,
             align: 2,
+            is_static: false,
         })
     }
     fn int() -> Rc<Ty> {
@@ -68,6 +72,7 @@ impl Ty {
             kind: TyKind::Int,
             size: 4,
             align: 4,
+            is_static: false,
         })
     }
     fn long() -> Rc<Ty> {
@@ -75,6 +80,7 @@ impl Ty {
             kind: TyKind::Long,
             size: 8,
             align: 8,
+            is_static: false,
         })
     }
     fn enm() -> Rc<Ty> {
@@ -82,6 +88,7 @@ impl Ty {
             kind: TyKind::Enum,
             size: 4,
             align: 4,
+            is_static: false,
         })
     }
     fn unit() -> Rc<Ty> {
@@ -89,6 +96,7 @@ impl Ty {
             kind: TyKind::Unit,
             size: 1,
             align: 1,
+            is_static: false,
         })
     }
     fn ptr(base: Rc<Ty>) -> Rc<Ty> {
@@ -96,6 +104,7 @@ impl Ty {
             kind: TyKind::Ptr(base),
             size: 8,
             align: 8,
+            is_static: false,
         })
     }
     fn func(ret: Rc<Ty>, params: Vec<Rc<Ty>>) -> Rc<Ty> {
@@ -103,6 +112,7 @@ impl Ty {
             kind: TyKind::Fn(ret, params),
             size: 0,
             align: 1,
+            is_static: false,
         })
     }
     fn array(base: Rc<Ty>, len: usize) -> Rc<Ty> {
@@ -112,6 +122,7 @@ impl Ty {
             kind: TyKind::Array(base, len),
             size: base_size * len,
             align: base_align,
+            is_static: false,
         })
     }
     fn strct(mut members: Vec<Member>) -> Rc<Ty> {
@@ -130,6 +141,7 @@ impl Ty {
             kind: TyKind::Struct(members.into_iter().map(|m| Rc::new(m)).collect()),
             size,
             align,
+            is_static: false,
         })
     }
     fn union(members: Vec<Member>) -> Rc<Ty> {
@@ -140,6 +152,7 @@ impl Ty {
             kind: TyKind::Union(members.into_iter().map(|m| Rc::new(m)).collect()),
             size,
             align,
+            is_static: false,
         })
     }
 
@@ -664,7 +677,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // declspec = struct-decl | union-decl | enum-specifier | "void" | "_Bool" | "char" | ("short" | "int" | "long")+
+    // declspec = ("void" | "_Bool" | "char" | "short" | "int" "long"
+    //             | "typedef" | "static"
+    //             | struct-decl | union-decl | typedef-name
+    //             | enum-specifier)+
     //
     // The order of typenames in a type-specifier doesn't matter. For
     // example, `int long static` means the same as `static long int`.
@@ -696,10 +712,21 @@ impl<'a> Parser<'a> {
             self.advance();
             return Ty::char();
         }
+
+        // handle storage class specifiers: typedef
         if let Some(binding) = self.find_typedef(self.peek_src()) {
             let ty = binding.borrow().ty.clone();
             self.advance();
             return ty;
+        }
+
+        // handle storage class specifiers: static
+        if self.peek_is("static") {
+            self.advance();
+            let ty = self.declspec();
+            let mut ty = Rc::into_inner(ty).unwrap();
+            ty.is_static = true;
+            return Rc::new(ty);
         }
 
         #[derive(PartialOrd, Ord, PartialEq, Eq)]
