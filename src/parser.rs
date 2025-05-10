@@ -537,7 +537,7 @@ impl<'a> Parser<'a> {
                 let mut stmts = Vec::new();
                 self.declaration(&mut stmts);
                 self.skip(";");
-                init = Some(Box::new(StmtNode {
+                init = Some(P::new(StmtNode {
                     kind: StmtKind::Block(stmts),
                     loc,
                     ty: Ty::unit(),
@@ -1080,7 +1080,93 @@ impl<'a> Parser<'a> {
             let rhs = P::new(self.assign());
             node = self.synth_assign(P::new(node), rhs, loc);
         }
+
+        if self.peek_is("+=") {
+            let loc = self.advance().loc;
+            let rhs = P::new(self.assign());
+            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
+        }
         node
+    }
+
+    // Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
+    // where tmp is a fresh pointer variable.
+    fn to_assign(&mut self, binary: P<ExprNode>) -> ExprNode {
+        let loc = binary.loc;
+        match binary.kind {
+            ExprKind::Add(lhs, rhs)
+            | ExprKind::Mul(lhs, rhs)
+            | ExprKind::Sub(lhs, rhs)
+            | ExprKind::Div(lhs, rhs) => {
+                let var_ty = Ty::ptr(lhs.ty.clone());
+                eprintln!("{:?}", var_ty);
+                let lhs_ty = lhs.ty.clone();
+                let var_data = Rc::new(RefCell::new(Binding {
+                    kind: BindingKind::LocalVar { stack_offset: -1 },
+                    name: "tmp".into(),
+                    ty: var_ty.clone(),
+                    loc,
+                }));
+                self.add_local(var_data.clone());
+
+                // tmp = &A
+                let expr1 = ExprNode {
+                    kind: ExprKind::Assign(
+                        P::new(ExprNode {
+                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                            loc,
+                            ty: var_ty.clone(),
+                        }),
+                        P::new(ExprNode {
+                            kind: ExprKind::Addr(lhs),
+                            loc,
+                            ty: var_ty.clone(),
+                        }),
+                    ),
+                    loc,
+                    ty: Ty::unit(),
+                };
+
+                // *tmp = *tmp op B
+                let expr2 = ExprNode {
+                    kind: ExprKind::Assign(
+                        // *tmp
+                        P::new(ExprNode {
+                            kind: ExprKind::Deref(P::new(ExprNode {
+                                kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                                loc,
+                                ty: var_ty.clone(),
+                            })),
+                            loc,
+                            ty: lhs_ty.clone(),
+                        }),
+                        // *tmp op B
+                        P::new(ExprNode {
+                            kind: ExprKind::Add(
+                                // *tmp
+                                P::new(ExprNode {
+                                    kind: ExprKind::Deref(P::new(ExprNode {
+                                        kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                                        loc,
+                                        ty: var_ty,
+                                    })),
+                                    loc,
+                                    ty: lhs_ty.clone(),
+                                }),
+                                // B
+                                rhs,
+                            ),
+                            loc,
+                            ty: lhs_ty.clone(),
+                        }),
+                    ),
+                    loc,
+                    ty: lhs_ty,
+                };
+            }
+            _ => panic!(),
+        }
+        panic!("")
     }
 
     // equality = relational ("==" relational | "!=" relational)*
@@ -1327,7 +1413,7 @@ impl<'a> Parser<'a> {
             if self.peek_is("->") {
                 // x -> y is short for (*x).y
                 let loc = self.advance().loc;
-                node = self.synth_deref(Box::new(node), loc);
+                node = self.synth_deref(P::new(node), loc);
                 node = self.struct_ref(node);
                 continue;
             }
@@ -1362,7 +1448,7 @@ impl<'a> Parser<'a> {
 
         let ty = member.ty.clone();
         ExprNode {
-            kind: ExprKind::MemberAccess(Box::new(struct_node), Rc::downgrade(&member)),
+            kind: ExprKind::MemberAccess(P::new(struct_node), Rc::downgrade(&member)),
             loc,
             ty,
         }

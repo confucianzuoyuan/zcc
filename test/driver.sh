@@ -1,5 +1,5 @@
 #!/bin/bash
-tmp=`mktemp -d /tmp/zcc-test-XXXXXX`
+tmp=`mktemp -d /tmp/chibicc-test-XXXXXX`
 trap 'rm -rf $tmp' INT TERM HUP EXIT
 echo > $tmp/empty.c
 
@@ -14,12 +14,12 @@ check() {
 
 # -o
 rm -f $tmp/out
-./zcc -o $tmp/out $tmp/empty.c
+./chibicc -o $tmp/out $tmp/empty.c
 [ -f $tmp/out ]
 check -o
 
 # --help
-./zcc --help 2>&1 | grep -q zcc
+./chibicc --help 2>&1 | grep -q chibicc
 check --help
 
 echo OK
