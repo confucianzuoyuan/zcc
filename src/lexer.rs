@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::context::{Context, AsciiStr};
+use crate::context::{AsciiStr, Context};
 
 #[derive(Debug)]
 pub enum TokenKind {
@@ -9,26 +9,30 @@ pub enum TokenKind {
     Keyword,
     Num(i64),
     Str(AsciiStr),
-    Eof
+    Eof,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct SourceLocation {
     pub offset: usize,
     pub line: u32,
-    pub column: u32
+    pub column: u32,
 }
 
 #[derive(Debug)]
 pub struct Token {
     pub loc: SourceLocation,
     pub length: usize,
-    pub kind: TokenKind
+    pub kind: TokenKind,
 }
 
 lazy_static! {
     pub static ref TY_KEYWORDS: HashSet<&'static [u8]> = [
-        "void", "_Bool", "char", "short", "int", "long", "struct", "union", "enum"
+        "void", "_Bool", "char", "short", "int", "long", "struct", "union", "enum",
+        "typedef", "static", "extern", "_Alignas", "signed", "unsigned", "const",
+        "volatile", "auto", "register", "restrict", "__restrict", "__restrict__",
+        "_Noreturn", "float", "double", "typeof", "inline", "_Thread_local",
+        "__thread", "_Atomic"
     ].map(|k| k.as_bytes()).into();
 
     static ref KEYWORDS: HashSet<&'static [u8]> = {
@@ -37,15 +41,25 @@ lazy_static! {
             "if", "else",
             "for", "while",
             "sizeof",
-            "typedef"
+            "goto",
+            "break",
+            "continue",
+            "switch", "case", "default",
+            "_Alignof",
+            "do",
+            "const",
+            "asm",
+            "__attribute__"
         ].map(|k| k.as_bytes()).into();
         others.union(&TY_KEYWORDS).cloned().collect()
     };
 
+    // Longer strings should go first
     static ref PUNCTUATION: Vec<&'static [u8]> = [
-        // Longer strings should go first
+        "<<=", ">>=", "...",
         "==", "!=", "<=", ">=",
-        "->",
+        "->", "+=", "-=","*=","/=","++","--","%=","&=","|=","^=","&&",
+        "||","<<",">>","##",
 
         ";", "=", "(", ")",
         "{", "}", ",", ".", "[", "]",
@@ -63,7 +77,12 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(ctx: &'a Context) -> Self {
-        Self { ctx, offset: 0, line: 1, column: 1 }
+        Self {
+            ctx,
+            offset: 0,
+            line: 1,
+            column: 1,
+        }
     }
 
     pub fn advance(&mut self) {
@@ -94,7 +113,11 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn loc(&self) -> SourceLocation {
-        SourceLocation { offset: self.offset, line: self.line, column: self.column }
+        SourceLocation {
+            offset: self.offset,
+            line: self.line,
+            column: self.column,
+        }
     }
 
     pub fn len(&self, start_loc: &SourceLocation) -> usize {
@@ -106,11 +129,17 @@ impl<'a> Lexer<'a> {
 
         loop {
             while self.consume_ws_and_comments() {}
-            if self.peek() == 0 { break; }
+            if self.peek() == 0 {
+                break;
+            }
             toks.push(self.next());
         }
 
-        toks.push(Token { loc: self.loc(), length: 0, kind: TokenKind::Eof });
+        toks.push(Token {
+            loc: self.loc(),
+            length: 0,
+            kind: TokenKind::Eof,
+        });
         toks
     }
 
@@ -130,17 +159,17 @@ impl<'a> Lexer<'a> {
                 length: count,
                 kind: TokenKind::Num(val),
             };
-        }
-        else if is_ident_start(c) {
+        } else if is_ident_start(c) {
             loop {
                 self.advance();
-                if !is_ident_cont(self.peek()) { break; }
+                if !is_ident_cont(self.peek()) {
+                    break;
+                }
             }
             let name = &self.ctx.src[loc.offset..self.offset];
             let kind = if KEYWORDS.contains(&name) {
                 TokenKind::Keyword
-            }
-            else {
+            } else {
                 TokenKind::Ident
             };
             return Token {
@@ -148,8 +177,7 @@ impl<'a> Lexer<'a> {
                 length: name.len(),
                 kind,
             };
-        }
-        else if c == b'"' {
+        } else if c == b'"' {
             self.advance();
 
             let mut str = Vec::new();
@@ -164,8 +192,7 @@ impl<'a> Lexer<'a> {
                     let (c, len) = self.read_escaped_char(self.rest(), &escape_loc);
                     str.push(c);
                     self.nadvance(len);
-                }
-                else {
+                } else {
                     str.push(self.peek());
                     self.advance();
                 }
@@ -178,8 +205,7 @@ impl<'a> Lexer<'a> {
                 length: self.len(&loc),
                 kind: TokenKind::Str(str),
             };
-        }
-        else if c == b'\'' {
+        } else if c == b'\'' {
             self.advance();
 
             if self.peek() == 0 {
@@ -192,8 +218,7 @@ impl<'a> Lexer<'a> {
                 let (v, len) = self.read_escaped_char(self.rest(), &escape_loc);
                 self.nadvance(len);
                 v
-            }
-            else {
+            } else {
                 let v = self.peek();
                 self.advance();
                 v
@@ -207,10 +232,9 @@ impl<'a> Lexer<'a> {
             return Token {
                 loc,
                 length: self.len(&loc),
-                kind: TokenKind::Num(v.into())
-            }
-        }
-        else {
+                kind: TokenKind::Num(v.into()),
+            };
+        } else {
             let punct_len = read_punct(self.rest());
             if punct_len > 0 {
                 self.nadvance(punct_len);
@@ -219,8 +243,7 @@ impl<'a> Lexer<'a> {
                     length: punct_len,
                     kind: TokenKind::Punct,
                 };
-            }
-            else {
+            } else {
                 self.ctx.error_at(&loc, "invalid token");
             }
         }
@@ -261,14 +284,12 @@ impl<'a> Lexer<'a> {
     fn read_escaped_char(&self, buf: &[u8], escape_loc: &SourceLocation) -> (u8, usize) {
         let mut oct = 0;
         let mut len = 0;
-        while (len < 3 && len < buf.len()) &&
-            (buf[len] >= b'0' && buf[len] <= b'7')
-        {
-            oct = 8*oct + (buf[len] - b'0');
+        while (len < 3 && len < buf.len()) && (buf[len] >= b'0' && buf[len] <= b'7') {
+            oct = 8 * oct + (buf[len] - b'0');
             len += 1;
         }
         if len > 0 {
-            return (oct, len)
+            return (oct, len);
         }
 
         if buf[0] == b'x' {
@@ -280,7 +301,7 @@ impl<'a> Lexer<'a> {
             // The standard supports only 2 hex digits max, but chibicc
             // does allow an arbitrary number
             while len < buf.len() && buf[len].is_ascii_hexdigit() {
-                hex = 16*hex + digit_to_number(buf[len]);
+                hex = 16 * hex + digit_to_number(buf[len]);
                 len += 1;
             }
             return (hex, len);
@@ -296,7 +317,7 @@ impl<'a> Lexer<'a> {
             b'r' => (0x0D, 1),
             // [GNU] \e for the ASCII escape character is a GNU C extension.
             b'e' => (0x1B, 1),
-            _ => (buf[0], 1)
+            _ => (buf[0], 1),
         }
     }
 }
@@ -309,8 +330,7 @@ fn read_int(buf: &[u8]) -> (i64, usize) {
         if b.is_ascii_digit() {
             offset += 1;
             acc = acc * 10 + i64::from(b - b'0');
-        }
-        else {
+        } else {
             break;
         }
     }
