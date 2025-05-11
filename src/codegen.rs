@@ -476,7 +476,10 @@ impl<'a> Codegen<'a> {
                 self.addr(expr);
                 wln!(self, "  add ${}, %rax", member.upgrade().unwrap().offset);
             }
-            _ => self.ctx.error_at(&expr.loc, "not an lvalue"),
+            _ => {
+                eprintln!("{:#?}", expr);
+                self.ctx.error_at(&expr.loc, "not an lvalue")
+            }
         };
     }
 

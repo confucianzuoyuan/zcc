@@ -1075,6 +1075,8 @@ impl<'a> Parser<'a> {
     fn assign(&mut self) -> ExprNode {
         let mut node = self.equality();
 
+        eprintln!("{:?}\n\n\n", node);
+
         if self.peek_is("=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
@@ -1082,6 +1084,24 @@ impl<'a> Parser<'a> {
         }
 
         if self.peek_is("+=") {
+            let loc = self.advance().loc;
+            let rhs = P::new(self.assign());
+            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
+        }
+
+        if self.peek_is("-=") {
+            let loc = self.advance().loc;
+            let rhs = P::new(self.assign());
+            node = self.to_assign(P::new(self.sub_overload(P::new(node), rhs, loc)));
+        }
+
+        if self.peek_is("*=") {
+            let loc = self.advance().loc;
+            let rhs = P::new(self.assign());
+            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
+        }
+
+        if self.peek_is("/=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
             node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
@@ -1099,7 +1119,6 @@ impl<'a> Parser<'a> {
             | ExprKind::Sub(lhs, rhs)
             | ExprKind::Div(lhs, rhs) => {
                 let var_ty = Ty::ptr(lhs.ty.clone());
-                eprintln!("{:?}", var_ty);
                 let lhs_ty = lhs.ty.clone();
                 let var_data = Rc::new(RefCell::new(Binding {
                     kind: BindingKind::LocalVar { stack_offset: -1 },
@@ -1161,12 +1180,17 @@ impl<'a> Parser<'a> {
                         }),
                     ),
                     loc,
-                    ty: lhs_ty,
+                    ty: Ty::unit(),
+                };
+
+                return ExprNode {
+                    kind: ExprKind::Comma(vec![P::new(expr1), P::new(expr2)]),
+                    loc,
+                    ty: Ty::unit(),
                 };
             }
             _ => panic!(),
         }
-        panic!("")
     }
 
     // equality = relational ("==" relational | "!=" relational)*

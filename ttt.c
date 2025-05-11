@@ -1,8 +1,7 @@
 int main() {
   return ({
-    int j = 0;
-    for (int i = 0; i <= 10; i = i + 1)
-      j = j + i;
-    j;
+    int i = 2;
+    i += 5;
+    i;
   });
 }
