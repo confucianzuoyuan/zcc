@@ -1075,8 +1075,6 @@ impl<'a> Parser<'a> {
     fn assign(&mut self) -> ExprNode {
         let mut node = self.equality();
 
-        eprintln!("{:?}\n\n\n", node);
-
         if self.peek_is("=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
@@ -1143,7 +1141,7 @@ impl<'a> Parser<'a> {
                         }),
                     ),
                     loc,
-                    ty: Ty::unit(),
+                    ty: var_ty.clone(),
                 };
 
                 // *tmp = *tmp op B
@@ -1180,13 +1178,13 @@ impl<'a> Parser<'a> {
                         }),
                     ),
                     loc,
-                    ty: Ty::unit(),
+                    ty: lhs_ty.clone(),
                 };
 
                 return ExprNode {
                     kind: ExprKind::Comma(vec![P::new(expr1), P::new(expr2)]),
                     loc,
-                    ty: Ty::unit(),
+                    ty: lhs_ty,
                 };
             }
             _ => panic!(),
@@ -1301,7 +1299,12 @@ impl<'a> Parser<'a> {
         }
 
         if lhs.ty.is_integer_like() && rhs.ty.is_integer_like() {
-            return synth_add(lhs, rhs, loc);
+            let ty = get_common_type(&lhs.ty, &rhs.ty);
+            return ExprNode {
+                kind: ExprKind::Add(lhs, rhs),
+                loc,
+                ty,
+            };
         }
 
         if lhs.ty.is_pointer_like() && rhs.ty.is_integer_like() {
