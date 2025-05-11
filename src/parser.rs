@@ -1826,7 +1826,7 @@ impl<'a> Parser<'a> {
 
     fn synth_assign(&self, lhs: P<ExprNode>, rhs: P<ExprNode>, loc: SourceLocation) -> ExprNode {
         let rhs = match lhs.ty.kind {
-            TyKind::Array(_, _) => self.ctx.error_at(&loc, "not an l value"),
+            TyKind::Array(_, _) => self.ctx.error_at(&loc, "not an lvalue"),
             TyKind::Struct(_) => rhs,
             _ => P::new(synth_cast(rhs, lhs.ty.clone())),
         };
