@@ -1084,32 +1084,44 @@ impl<'a> Parser<'a> {
         if self.peek_is("+=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
-            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
+            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)), "+");
         }
 
         if self.peek_is("-=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
-            node = self.to_assign(P::new(self.sub_overload(P::new(node), rhs, loc)));
+            node = self.to_assign(P::new(self.sub_overload(P::new(node), rhs, loc)), "-");
         }
 
         if self.peek_is("*=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
-            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
+            let ty = get_common_type(&node.ty, &rhs.ty);
+            let binary = ExprNode {
+                kind: ExprKind::Mul(P::new(node), rhs),
+                loc,
+                ty,
+            };
+            node = self.to_assign(P::new(binary), "*");
         }
 
         if self.peek_is("/=") {
             let loc = self.advance().loc;
             let rhs = P::new(self.assign());
-            node = self.to_assign(P::new(self.add_overload(P::new(node), rhs, loc)));
+            let ty = get_common_type(&node.ty, &rhs.ty);
+            let binary = ExprNode {
+                kind: ExprKind::Div(P::new(node), rhs),
+                loc,
+                ty,
+            };
+            node = self.to_assign(P::new(binary), "/");
         }
         node
     }
 
     // Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
     // where tmp is a fresh pointer variable.
-    fn to_assign(&mut self, binary: P<ExprNode>) -> ExprNode {
+    fn to_assign(&mut self, binary: P<ExprNode>, op: &'static str) -> ExprNode {
         let loc = binary.loc;
         match binary.kind {
             ExprKind::Add(lhs, rhs)
@@ -1159,20 +1171,65 @@ impl<'a> Parser<'a> {
                         }),
                         // *tmp op B
                         P::new(ExprNode {
-                            kind: ExprKind::Add(
-                                // *tmp
-                                P::new(ExprNode {
-                                    kind: ExprKind::Deref(P::new(ExprNode {
-                                        kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                            kind: match op {
+                                "+" => ExprKind::Add(
+                                    // *tmp
+                                    P::new(ExprNode {
+                                        kind: ExprKind::Deref(P::new(ExprNode {
+                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                                            loc,
+                                            ty: var_ty,
+                                        })),
                                         loc,
-                                        ty: var_ty,
-                                    })),
-                                    loc,
-                                    ty: lhs_ty.clone(),
-                                }),
-                                // B
-                                rhs,
-                            ),
+                                        ty: lhs_ty.clone(),
+                                    }),
+                                    // B
+                                    rhs,
+                                ),
+                                "-" => ExprKind::Sub(
+                                    // *tmp
+                                    P::new(ExprNode {
+                                        kind: ExprKind::Deref(P::new(ExprNode {
+                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                                            loc,
+                                            ty: var_ty,
+                                        })),
+                                        loc,
+                                        ty: lhs_ty.clone(),
+                                    }),
+                                    // B
+                                    rhs,
+                                ),
+                                "*" => ExprKind::Mul(
+                                    // *tmp
+                                    P::new(ExprNode {
+                                        kind: ExprKind::Deref(P::new(ExprNode {
+                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                                            loc,
+                                            ty: var_ty,
+                                        })),
+                                        loc,
+                                        ty: lhs_ty.clone(),
+                                    }),
+                                    // B
+                                    rhs,
+                                ),
+                                "/" => ExprKind::Div(
+                                    // *tmp
+                                    P::new(ExprNode {
+                                        kind: ExprKind::Deref(P::new(ExprNode {
+                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                                            loc,
+                                            ty: var_ty,
+                                        })),
+                                        loc,
+                                        ty: lhs_ty.clone(),
+                                    }),
+                                    // B
+                                    rhs,
+                                ),
+                                _ => panic!("not support arith assign"),
+                            },
                             loc,
                             ty: lhs_ty.clone(),
                         }),
@@ -1319,7 +1376,12 @@ impl<'a> Parser<'a> {
 
     fn sub_overload(&self, lhs: P<ExprNode>, rhs: P<ExprNode>, loc: SourceLocation) -> ExprNode {
         if lhs.ty.is_integer_like() && rhs.ty.is_integer_like() {
-            return synth_sub(lhs, rhs, loc);
+            let ty = get_common_type(&lhs.ty, &rhs.ty);
+            return ExprNode {
+                kind: ExprKind::Sub(lhs, rhs),
+                loc,
+                ty,
+            };
         }
 
         if lhs.ty.is_pointer_like() && rhs.ty.is_integer_like() {
