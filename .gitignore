@@ -8,5 +8,5 @@
 /test/*.exe
 target/
 Cargo.lock
-/zcc
+zcc
 *.ll
