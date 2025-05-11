@@ -1156,6 +1156,16 @@ impl<'a> Parser<'a> {
                     ty: var_ty.clone(),
                 };
 
+                let deref_tmp = P::new(ExprNode {
+                    kind: ExprKind::Deref(P::new(ExprNode {
+                        kind: ExprKind::Var(Rc::downgrade(&var_data)),
+                        loc,
+                        ty: var_ty.clone(),
+                    })),
+                    loc,
+                    ty: lhs_ty.clone(),
+                });
+
                 // *tmp = *tmp op B
                 let expr2 = ExprNode {
                     kind: ExprKind::Assign(
@@ -1173,60 +1183,20 @@ impl<'a> Parser<'a> {
                         P::new(ExprNode {
                             kind: match op {
                                 "+" => ExprKind::Add(
-                                    // *tmp
-                                    P::new(ExprNode {
-                                        kind: ExprKind::Deref(P::new(ExprNode {
-                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
-                                            loc,
-                                            ty: var_ty,
-                                        })),
-                                        loc,
-                                        ty: lhs_ty.clone(),
-                                    }),
-                                    // B
-                                    rhs,
+                                    deref_tmp, // *tmp
+                                    rhs,       // B
                                 ),
                                 "-" => ExprKind::Sub(
-                                    // *tmp
-                                    P::new(ExprNode {
-                                        kind: ExprKind::Deref(P::new(ExprNode {
-                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
-                                            loc,
-                                            ty: var_ty,
-                                        })),
-                                        loc,
-                                        ty: lhs_ty.clone(),
-                                    }),
-                                    // B
-                                    rhs,
+                                    deref_tmp, // *tmp
+                                    rhs,       // B
                                 ),
                                 "*" => ExprKind::Mul(
-                                    // *tmp
-                                    P::new(ExprNode {
-                                        kind: ExprKind::Deref(P::new(ExprNode {
-                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
-                                            loc,
-                                            ty: var_ty,
-                                        })),
-                                        loc,
-                                        ty: lhs_ty.clone(),
-                                    }),
-                                    // B
-                                    rhs,
+                                    deref_tmp, // *tmp
+                                    rhs,       // B
                                 ),
                                 "/" => ExprKind::Div(
-                                    // *tmp
-                                    P::new(ExprNode {
-                                        kind: ExprKind::Deref(P::new(ExprNode {
-                                            kind: ExprKind::Var(Rc::downgrade(&var_data)),
-                                            loc,
-                                            ty: var_ty,
-                                        })),
-                                        loc,
-                                        ty: lhs_ty.clone(),
-                                    }),
-                                    // B
-                                    rhs,
+                                    deref_tmp, // *tmp
+                                    rhs,       // B
                                 ),
                                 _ => panic!("not support arith assign"),
                             },
