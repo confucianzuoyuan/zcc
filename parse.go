@@ -232,14 +232,20 @@ func structDecl(rest **Token, tok *Token) *CType {
 		Kind: TY_STRUCT,
 	}
 	structMembers(rest, tok, ty)
+	ty.Align = 1
 
 	// Assign offsets within the struct to members.
 	offset := 0
 	for mem := ty.Members; mem != nil; mem = mem.Next {
+		offset = alignTo(offset, mem.Ty.Align)
 		mem.Offset = offset
 		offset += mem.Ty.Size
+
+		if ty.Align < mem.Ty.Align {
+			ty.Align = mem.Ty.Align
+		}
 	}
-	ty.Size = offset
+	ty.Size = alignTo(offset, ty.Align)
 	return ty
 }
 

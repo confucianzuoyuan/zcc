@@ -12,8 +12,9 @@ const (
 )
 
 type CType struct {
-	Kind CTypeKind
-	Size int
+	Kind  CTypeKind
+	Size  int // sizeof() value
+	Align int // alignment
 
 	Base *CType
 
@@ -36,13 +37,25 @@ func (ty *CType) copy() *CType {
 }
 
 var TyChar = &CType{
-	Kind: TY_CHAR,
-	Size: 1,
+	Kind:  TY_CHAR,
+	Size:  1,
+	Align: 1,
 }
 
 var TyInt = &CType{
-	Kind: TY_INT,
-	Size: 8,
+	Kind:  TY_INT,
+	Size:  8,
+	Align: 8,
+}
+
+func newType(kind CTypeKind, size int, align int) *CType {
+	ty := &CType{
+		Kind:  kind,
+		Size:  size,
+		Align: align,
+	}
+
+	return ty
 }
 
 func (t *CType) isInteger() bool {
@@ -50,10 +63,7 @@ func (t *CType) isInteger() bool {
 }
 
 func pointerTo(base *CType) *CType {
-	ty := &CType{
-		Kind: TY_PTR,
-		Size: 8,
-	}
+	ty := newType(TY_PTR, 8, 8) // Assuming pointer size is 8 bytes
 	ty.Base = base
 	return ty
 }
@@ -67,10 +77,7 @@ func funcType(returnTy *CType) *CType {
 }
 
 func arrayOf(base *CType, len int) *CType {
-	ty := &CType{
-		Kind: TY_ARRAY,
-		Size: base.Size * len,
-	}
+	ty := newType(TY_ARRAY, base.Size*len, base.Align)
 	ty.Base = base
 	ty.ArrayLength = len
 	return ty
