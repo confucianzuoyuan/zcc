@@ -15,6 +15,7 @@ const (
 	ND_LE                           // <=
 	ND_ASSIGN                       // =
 	ND_COMMA                        // ,
+	ND_MEMBER                       // . (struct member access)
 	ND_ADDR                         // unary &
 	ND_DEREF                        // unary *
 	ND_RETURN                       // "return"
@@ -46,6 +47,9 @@ type AstNode struct {
 	// Block or statement expression
 	Body *AstNode
 
+	// Struct member access
+	Member *Member
+
 	// Function call
 	FuncName string
 	Args     *AstNode
@@ -60,4 +64,12 @@ func (node *AstNode) String() string {
 		s = s + "var: " + string((*currentInput)[node.Tok.Location:node.Tok.Location+node.Tok.Length]) + "\n"
 	}
 	return s
+}
+
+// Struct member
+type Member struct {
+	Next   *Member
+	Ty     *CType
+	Name   *Token
+	Offset int // Offset from the beginning of the struct
 }

@@ -8,6 +8,7 @@ const (
 	TY_PTR
 	TY_FUNC
 	TY_ARRAY
+	TY_STRUCT
 )
 
 type CType struct {
@@ -19,6 +20,9 @@ type CType struct {
 	Name *Token
 
 	ArrayLength int
+
+	// Struct
+	Members *Member
 
 	ReturnType *CType
 	Params     *CType
@@ -110,6 +114,9 @@ func (node *AstNode) addType() {
 		return
 	case ND_COMMA:
 		node.Ty = node.Rhs.Ty
+		return
+	case ND_MEMBER:
+		node.Ty = node.Member.Ty
 		return
 	case ND_ADDR:
 		if node.Lhs.Ty.Kind == TY_ARRAY {

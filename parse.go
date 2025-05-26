@@ -176,15 +176,93 @@ func consume(rest **Token, tok *Token, str string) bool {
 	return false
 }
 
-// declspec = "char" | "int"
+// declspec = "char" | "int" | struct-decl
 func declspec(rest **Token, tok *Token) *CType {
 	if tok.isEqual("char") {
 		*rest = tok.Next
 		return TyChar
 	}
 
-	*rest = skip(tok, "int")
-	return TyInt
+	if tok.isEqual("int") {
+		*rest = tok.Next
+		return TyInt
+	}
+
+	if tok.isEqual("struct") {
+		return structDecl(rest, tok.Next)
+	}
+
+	errorTok(tok, "expected a typename")
+	return nil
+}
+
+// struct-members = (declspec declarator (","  declarator)* ";")*
+func structMembers(rest **Token, tok *Token, ty *CType) {
+	head := Member{}
+	cur := &head
+
+	for !tok.isEqual("}") {
+		basety := declspec(&tok, tok)
+		i := 0
+
+		for !consume(&tok, tok, ";") {
+			if i > 0 {
+				tok = skip(tok, ",")
+			}
+			i += 1
+
+			mem := &Member{}
+			mem.Ty = declarator(&tok, tok, basety)
+			mem.Name = mem.Ty.Name
+			cur.Next = mem
+			cur = cur.Next
+		}
+	}
+
+	*rest = tok.Next
+	ty.Members = head.Next
+}
+
+// struct-decl = "{" struct-members
+func structDecl(rest **Token, tok *Token) *CType {
+	tok = skip(tok, "{")
+
+	// Construct a struct object.
+	ty := &CType{
+		Kind: TY_STRUCT,
+	}
+	structMembers(rest, tok, ty)
+
+	// Assign offsets within the struct to members.
+	offset := 0
+	for mem := ty.Members; mem != nil; mem = mem.Next {
+		mem.Offset = offset
+		offset += mem.Ty.Size
+	}
+	ty.Size = offset
+	return ty
+}
+
+func getStructMember(ty *CType, tok *Token) *Member {
+	for mem := ty.Members; mem != nil; mem = mem.Next {
+		if mem.Name.isEqual(string((*currentInput)[tok.Location : tok.Location+tok.Length])) {
+			return mem
+		}
+	}
+
+	errorTok(tok, "unknown struct member")
+	return nil
+}
+
+func structRef(lhs *AstNode, tok *Token) *AstNode {
+	lhs.addType()
+	if lhs.Ty.Kind != TY_STRUCT {
+		errorTok(lhs.Tok, "not a struct")
+	}
+
+	node := newUnary(ND_MEMBER, lhs, tok)
+	node.Member = getStructMember(lhs.Ty, tok)
+	return node
 }
 
 // func-params = (param ("," param)*)? ")"
@@ -283,7 +361,7 @@ func declaration(rest **Token, tok *Token) *AstNode {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
-	return tok.isEqual("char") || tok.isEqual("int")
+	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct")
 }
 
 /*
@@ -598,20 +676,29 @@ func unary(rest **Token, tok *Token) *AstNode {
 	return postfix(rest, tok)
 }
 
-// postfix = primary ("[" expr "]")*
+// postfix = primary ("[" expr "]" | "." ident)*
 func postfix(rest **Token, tok *Token) *AstNode {
 	node := primary(&tok, tok)
 
-	for tok.isEqual("[") {
-		// x[y] is short for *(x+y)
-		start := tok
-		idx := expr(&tok, tok.Next)
-		tok = skip(tok, "]")
-		node = newUnary(ND_DEREF, newAdd(node, idx, start), start)
-	}
+	for {
+		if tok.isEqual(("[")) {
+			// x[y] is short for *(x+y)
+			start := tok
+			idx := expr(&tok, tok.Next)
+			tok = skip(tok, "]")
+			node = newUnary(ND_DEREF, newAdd(node, idx, start), start)
+			continue
+		}
 
-	*rest = tok
-	return node
+		if tok.isEqual(".") {
+			node = structRef(node, tok.Next)
+			tok = tok.Next.Next
+			continue
+		}
+
+		*rest = tok
+		return node
+	}
 }
 
 // funcall = ident "(" (assign ("," assign)*)? ")"

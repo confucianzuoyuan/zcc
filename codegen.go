@@ -65,6 +65,10 @@ func genAddr(node *AstNode) {
 		genExpr(node.Lhs)
 		genAddr(node.Rhs)
 		return
+	case ND_MEMBER:
+		genAddr(node.Lhs)
+		printlnToFile("  add $%d, %%rax", node.Member.Offset)
+		return
 	}
 
 	errorTok(node.Tok, "not an lvalue")
@@ -112,7 +116,7 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 		printlnToFile("  neg %%rax")
 		return
-	case ND_VAR:
+	case ND_VAR, ND_MEMBER:
 		genAddr(node)
 		load(node.Ty)
 		return
