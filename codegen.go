@@ -260,6 +260,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 		offset := 0
 		for v := fn.Locals; v != nil; v = v.Next {
 			offset += v.Ty.Size
+			offset = alignTo(offset, v.Ty.Align)
 			v.Offset = -offset
 		}
 		fn.StackSize = alignTo(offset, 16)
