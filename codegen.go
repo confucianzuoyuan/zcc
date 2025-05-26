@@ -61,6 +61,10 @@ func genAddr(node *AstNode) {
 	case ND_DEREF:
 		genExpr(node.Lhs)
 		return
+	case ND_COMMA:
+		genExpr(node.Lhs)
+		genAddr(node.Rhs)
+		return
 	}
 
 	errorTok(node.Tok, "not an lvalue")
@@ -129,6 +133,10 @@ func genExpr(node *AstNode) {
 		for n := node.Body; n != nil; n = n.Next {
 			genStmt(n)
 		}
+		return
+	case ND_COMMA:
+		genExpr(node.Lhs)
+		genExpr(node.Rhs)
 		return
 	case ND_FUNCALL:
 		nargs := 0

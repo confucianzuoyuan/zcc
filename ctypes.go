@@ -108,6 +108,9 @@ func (node *AstNode) addType() {
 	case ND_VAR:
 		node.Ty = node.Variable.Ty
 		return
+	case ND_COMMA:
+		node.Ty = node.Rhs.Ty
+		return
 	case ND_ADDR:
 		if node.Lhs.Ty.Kind == TY_ARRAY {
 			node.Ty = pointerTo(node.Lhs.Ty.Base)

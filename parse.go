@@ -392,9 +392,15 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// expr = assign
+// expr = assign ("," expr)?
 func expr(rest **Token, tok *Token) *AstNode {
-	return assign(rest, tok)
+	node := assign(&tok, tok)
+	if tok.isEqual(",") {
+		return newBinary(ND_COMMA, node, expr(rest, tok.Next), tok)
+	}
+
+	*rest = tok
+	return node
 }
 
 // assign = equality ("=" assign)?

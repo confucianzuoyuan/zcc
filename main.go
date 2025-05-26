@@ -7,10 +7,12 @@ import (
 )
 
 var opt_o string
+var dump_ir bool = false
 var inputPath string = ""
 
 func usage(status int) {
 	fmt.Fprintf(os.Stderr, "zcc [ -o <path> ] <file>\n")
+	fmt.Fprintf(os.Stderr, "      --dump-ir <file>\n")
 	os.Exit(status)
 }
 
@@ -18,6 +20,13 @@ func parseArgs(args []string) {
 	for idx, arg := range args {
 		if arg == "--help" {
 			usage(0)
+		}
+
+		if arg == "--dump-ir" {
+			if len(args) == 1 {
+				usage(1)
+			}
+			continue
 		}
 
 		if arg == "-o" {
@@ -69,7 +78,11 @@ func main() {
 	o := parse(tok)
 
 	// Traverse the AST to emit assembly.
-	out, _ := openFile(opt_o)
-	fmt.Fprintf(out, ".file 1 \"%s\"\n", inputPath)
-	codegen(o, out)
+	if dump_ir {
+		println("============")
+	} else {
+		out, _ := openFile(opt_o)
+		fmt.Fprintf(out, ".file 1 \"%s\"\n", inputPath)
+		codegen(o, out)
+	}
 }
