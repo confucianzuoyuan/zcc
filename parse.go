@@ -27,7 +27,7 @@ type VarScope struct {
 	Variable *Obj
 }
 
-// Scope for struct tags
+// Scope for struct or union tags.
 type TagScope struct {
 	Next *TagScope
 	Name string // Struct tag name
@@ -225,6 +225,10 @@ func declspec(rest **Token, tok *Token) *CType {
 		return structDecl(rest, tok.Next)
 	}
 
+	if tok.isEqual("union") {
+		return unionDecl(rest, tok.Next)
+	}
+
 	errorTok(tok, "expected a typename")
 	return nil
 }
@@ -256,8 +260,8 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-// struct-decl = ident? "{" struct-members
-func structDecl(rest **Token, tok *Token) *CType {
+// struct-union-decl = ident? ("{" struct-members)?
+func structUnionDecl(rest **Token, tok *Token) *CType {
 	// Read a struct tag.
 	var tag *Token = nil
 	if tok.Kind == TK_IDENT {
@@ -281,6 +285,18 @@ func structDecl(rest **Token, tok *Token) *CType {
 	structMembers(rest, tok.Next, ty)
 	ty.Align = 1
 
+	// Register the struct type if a name was given.
+	if tag != nil {
+		pushTagScope(tag, ty)
+	}
+	return ty
+}
+
+// struct-decl = struct-union-decl
+func structDecl(rest **Token, tok *Token) *CType {
+	ty := structUnionDecl(rest, tok)
+	ty.Kind = TY_STRUCT
+
 	// Assign offsets within the struct to members.
 	offset := 0
 	for mem := ty.Members; mem != nil; mem = mem.Next {
@@ -293,11 +309,27 @@ func structDecl(rest **Token, tok *Token) *CType {
 		}
 	}
 	ty.Size = alignTo(offset, ty.Align)
+	return ty
+}
 
-	// Register the struct type if a name was given.
-	if tag != nil {
-		pushTagScope(tag, ty)
+// union-decl = struct-union-decl
+func unionDecl(rest **Token, tok *Token) *CType {
+	ty := structUnionDecl(rest, tok)
+	ty.Kind = TY_UNION
+
+	// If union, we don't have to assign offsets because they
+	// are already initialized to zero. We need to compute the
+	// alignment and the size though.
+	for mem := ty.Members; mem != nil; mem = mem.Next {
+		if ty.Align < mem.Ty.Align {
+			ty.Align = mem.Ty.Align
+		}
+
+		if ty.Size < mem.Ty.Size {
+			ty.Size = mem.Ty.Size
+		}
 	}
+	ty.Size = alignTo(ty.Size, ty.Align)
 	return ty
 }
 
@@ -314,8 +346,8 @@ func getStructMember(ty *CType, tok *Token) *Member {
 
 func structRef(lhs *AstNode, tok *Token) *AstNode {
 	lhs.addType()
-	if lhs.Ty.Kind != TY_STRUCT {
-		errorTok(lhs.Tok, "not a struct")
+	if lhs.Ty.Kind != TY_STRUCT && lhs.Ty.Kind != TY_UNION {
+		errorTok(lhs.Tok, "not a struct not a union")
 	}
 
 	node := newUnary(ND_MEMBER, lhs, tok)
@@ -419,7 +451,7 @@ func declaration(rest **Token, tok *Token) *AstNode {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
-	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct")
+	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct") || tok.isEqual("union")
 }
 
 /*

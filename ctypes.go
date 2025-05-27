@@ -9,6 +9,7 @@ const (
 	TY_FUNC
 	TY_ARRAY
 	TY_STRUCT
+	TY_UNION
 )
 
 type CType struct {
