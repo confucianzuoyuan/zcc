@@ -45,8 +45,8 @@ var TyChar = &CType{
 
 var TyInt = &CType{
 	Kind:  TY_INT,
-	Size:  8,
-	Align: 8,
+	Size:  4,
+	Align: 4,
 }
 
 func newType(kind CTypeKind, size int, align int) *CType {

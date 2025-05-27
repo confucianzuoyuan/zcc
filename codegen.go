@@ -10,6 +10,9 @@ var depth int
 var argreg8 = []string{
 	"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b",
 }
+var argreg32 = []string{
+	"%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d",
+}
 var argreg64 = []string{
 	"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
 }
@@ -88,6 +91,8 @@ func load(ty *CType) {
 
 	if ty.Size == 1 {
 		printlnToFile("  movsbq (%%rax), %%rax")
+	} else if ty.Size == 4 {
+		printlnToFile("  movsxd (%%rax), %%rax")
 	} else {
 		printlnToFile("  mov (%%rax), %%rax")
 	}
@@ -107,9 +112,27 @@ func store(ty *CType) {
 
 	if ty.Size == 1 {
 		printlnToFile("  mov %%al, (%%rdi)")
+	} else if ty.Size == 4 {
+		printlnToFile("  mov %%eax, (%%rdi)")
 	} else {
 		printlnToFile("  mov %%rax, (%%rdi)")
 	}
+}
+
+func storeGp(r int, offset int, sz int) {
+	switch sz {
+	case 1:
+		printlnToFile("  mov %s, %d(%%rbp)", argreg8[r], offset)
+		return
+	case 4:
+		printlnToFile("  mov %s, %d(%%rbp)", argreg32[r], offset)
+		return
+	case 8:
+		printlnToFile("  mov %s, %d(%%rbp)", argreg64[r], offset)
+		return
+	}
+
+	panic("unreachable in store_gp")
 }
 
 // Generate code for a given node.
@@ -314,13 +337,8 @@ func emitText(prog *Obj) {
 		// Save passed-by-register arguments to the stack
 		i := 0
 		for v := fn.Params; v != nil; v = v.Next {
-			if v.Ty.Size == 1 {
-				printlnToFile("  mov %s, %d(%%rbp)", argreg8[i], v.Offset)
-				i += 1
-			} else {
-				printlnToFile("  mov %s, %d(%%rbp)", argreg64[i], v.Offset)
-				i += 1
-			}
+			storeGp(i, v.Offset, v.Ty.Size)
+			i += 1
 		}
 
 		// Emit code
