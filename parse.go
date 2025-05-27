@@ -27,10 +27,20 @@ type VarScope struct {
 	Variable *Obj
 }
 
+// Scope for struct tags
+type TagScope struct {
+	Next *TagScope
+	Name string // Struct tag name
+	Ty   *CType
+}
+
 // Represents a block scope.
 type Scope struct {
-	Next      *Scope
+	Next *Scope
+	// C has two block scopes; one is for variables and the other is
+	// for struct tags.
 	Variables *VarScope
+	Tags      *TagScope
 }
 
 var uniqueNameId int = 0
@@ -38,6 +48,8 @@ var uniqueNameId int = 0
 // All local variable instances created during parsing are
 // accumulated to this list.
 var locals *Obj
+
+// Likewise, global variables are accumulated to this list.
 var globals *Obj
 
 var scope *Scope = &Scope{}
@@ -65,12 +77,33 @@ func findVariable(tok *Token) *Obj {
 	return nil
 }
 
+func findTag(tok *Token) *CType {
+	for sc := scope; sc != nil; sc = sc.Next {
+		for sc2 := sc.Tags; sc2 != nil; sc2 = sc2.Next {
+			if tok.isEqual(sc2.Name) {
+				return sc2.Ty
+			}
+		}
+	}
+
+	return nil
+}
+
 func pushScope(name string, variable *Obj) *VarScope {
 	sc := &VarScope{}
 	sc.Name = name
 	sc.Variable = variable
 	sc.Next = scope.Variables
 	scope.Variables = sc
+	return sc
+}
+
+func pushTagScope(tok *Token, ty *CType) *TagScope {
+	sc := &TagScope{}
+	sc.Name = string((*currentInput)[tok.Location : tok.Location+tok.Length])
+	sc.Ty = ty
+	sc.Next = scope.Tags
+	scope.Tags = sc
 	return sc
 }
 
@@ -223,15 +256,29 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-// struct-decl = "{" struct-members
+// struct-decl = ident? "{" struct-members
 func structDecl(rest **Token, tok *Token) *CType {
-	tok = skip(tok, "{")
+	// Read a struct tag.
+	var tag *Token = nil
+	if tok.Kind == TK_IDENT {
+		tag = tok
+		tok = tok.Next
+	}
+
+	if tag != nil && !tok.isEqual("{") {
+		ty := findTag(tag)
+		if ty == nil {
+			errorTok(tag, "unknown struct type")
+		}
+		*rest = tok
+		return ty
+	}
 
 	// Construct a struct object.
 	ty := &CType{
 		Kind: TY_STRUCT,
 	}
-	structMembers(rest, tok, ty)
+	structMembers(rest, tok.Next, ty)
 	ty.Align = 1
 
 	// Assign offsets within the struct to members.
@@ -246,6 +293,11 @@ func structDecl(rest **Token, tok *Token) *CType {
 		}
 	}
 	ty.Size = alignTo(offset, ty.Align)
+
+	// Register the struct type if a name was given.
+	if tag != nil {
+		pushTagScope(tag, ty)
+	}
 	return ty
 }
 
