@@ -76,7 +76,7 @@ func genAddr(node *AstNode) {
 
 // Load a value from where %rax is pointing to.
 func load(ty *CType) {
-	if ty.Kind == TY_ARRAY {
+	if ty.Kind == TY_ARRAY || ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
 		// If it is an array, do not attempt to load a value to the
 		// register because in general we can't load an entire array to a
 		// register. As a result, the result of an evaluation of an array
@@ -96,6 +96,14 @@ func load(ty *CType) {
 // Store %rax to an address that the stack top is pointing to.
 func store(ty *CType) {
 	pop("%rdi")
+
+	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+		for i := 0; i < ty.Size; i += 1 {
+			printlnToFile("  mov %d(%%rax), %%r8b", i)
+			printlnToFile("  mov %%r8b, %d(%%rdi)", i)
+		}
+		return
+	}
 
 	if ty.Size == 1 {
 		printlnToFile("  mov %%al, (%%rdi)")
