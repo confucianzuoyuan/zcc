@@ -734,7 +734,7 @@ func unary(rest **Token, tok *Token) *AstNode {
 	return postfix(rest, tok)
 }
 
-// postfix = primary ("[" expr "]" | "." ident)*
+// postfix = primary ("[" expr "]" | "." ident | "->" ident)*
 func postfix(rest **Token, tok *Token) *AstNode {
 	node := primary(&tok, tok)
 
@@ -750,6 +750,13 @@ func postfix(rest **Token, tok *Token) *AstNode {
 
 		if tok.isEqual(".") {
 			node = structRef(node, tok.Next)
+			tok = tok.Next.Next
+			continue
+		}
+
+		if tok.isEqual("->") {
+			// x->y is short for (*x).y
+			node = structRef(newUnary(ND_DEREF, node, tok), tok.Next)
 			tok = tok.Next.Next
 			continue
 		}
