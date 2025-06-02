@@ -205,22 +205,34 @@ func genExpr(node *AstNode) {
 	genExpr(node.Lhs)
 	pop("%rdi")
 
+	ax := "%eax"
+	di := "%edi"
+
+	if node.Lhs.Ty.Kind == TY_LONG || node.Lhs.Ty.Base != nil {
+		ax = "%rax"
+		di = "%rdi"
+	}
+
 	switch node.Kind {
 	case ND_ADD:
-		printlnToFile("  add %%rdi, %%rax")
+		printlnToFile("  add %s, %s", di, ax)
 		return
 	case ND_SUB:
-		printlnToFile("  sub %%rdi, %%rax")
+		printlnToFile("  sub %s, %s", di, ax)
 		return
 	case ND_MUL:
-		printlnToFile("  imul %%rdi, %%rax")
+		printlnToFile("  imul %s, %s", di, ax)
 		return
 	case ND_DIV:
-		printlnToFile("  cqo")
-		printlnToFile("  idiv %%rdi")
+		if node.Lhs.Ty.Size == 8 {
+			printlnToFile("  cqo")
+		} else {
+			printlnToFile("  cdq")
+		}
+		printlnToFile("  idiv %s", di)
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
-		printlnToFile("  cmp %%rdi, %%rax")
+		printlnToFile("  cmp %s, %s", di, ax)
 
 		if node.Kind == ND_EQ {
 			printlnToFile("  sete %%al")
