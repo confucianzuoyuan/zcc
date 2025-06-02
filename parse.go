@@ -20,11 +20,12 @@ package main
 
 import "fmt"
 
-// Scope for local or global variables.
+// Scope for local, global variables or typedefs.
 type VarScope struct {
 	Next     *VarScope
 	Name     string
 	Variable *Obj
+	TypeDef  *CType
 }
 
 // Scope for struct or union tags.
@@ -41,6 +42,11 @@ type Scope struct {
 	// for struct tags.
 	Variables *VarScope
 	Tags      *TagScope
+}
+
+// Variable attributes such as typedef or extern.
+type VarAttr struct {
+	IsTypeDef bool // Is a typedef
 }
 
 var uniqueNameId int = 0
@@ -65,11 +71,11 @@ func leaveScope() {
 }
 
 // Find a variable by name.
-func findVariable(tok *Token) *Obj {
+func findVariable(tok *Token) *VarScope {
 	for sc := scope; sc != nil; sc = sc.Next {
 		for sc2 := sc.Variables; sc2 != nil; sc2 = sc2.Next {
 			if tok.isEqual(sc2.Name) {
-				return sc2.Variable
+				return sc2
 			}
 		}
 	}
@@ -89,10 +95,9 @@ func findTag(tok *Token) *CType {
 	return nil
 }
 
-func pushScope(name string, variable *Obj) *VarScope {
+func pushScope(name string) *VarScope {
 	sc := &VarScope{}
 	sc.Name = name
-	sc.Variable = variable
 	sc.Next = scope.Variables
 	scope.Variables = sc
 	return sc
@@ -143,7 +148,7 @@ func newVar(name string, ty *CType) *Obj {
 	variable := &Obj{}
 	variable.Name = name
 	variable.Ty = ty
-	pushScope(name, variable)
+	pushScope(name).Variable = variable
 	return variable
 }
 
@@ -185,6 +190,16 @@ func (tok *Token) getIdent() string {
 	return string((*currentInput)[tok.Location : tok.Location+tok.Length])
 }
 
+func findTypeDef(tok *Token) *CType {
+	if tok.Kind == TK_IDENT {
+		sc := findVariable(tok)
+		if sc != nil {
+			return sc.TypeDef
+		}
+	}
+	return nil
+}
+
 func (tok *Token) getNumber() int64 {
 	if tok.Kind != TK_NUM {
 		errorTok(tok, "expected a number")
@@ -211,7 +226,8 @@ func consume(rest **Token, tok *Token, str string) bool {
 
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long"
- *             | struct-decl | union-decl)+
+ *             | "typedef"
+ *             | struct-decl | union-decl | typedef-name)+
  *
  * The order of typenames in a type-specifier doesn't matter. For
  * example, `int long static` means the same as `static long int`.
@@ -225,7 +241,7 @@ func consume(rest **Token, tok *Token, str string) bool {
  * until that point represent. When we reach a non-typename token,
  * we returns the current type object.
  */
-func declspec(rest **Token, tok *Token) *CType {
+func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	// We use a single integer as counters for all typenames.
 	// For example, bits 0 and 1 represents how many times we saw the
 	// keyword "void" so far. With this, we can use a switch statement
@@ -243,13 +259,32 @@ func declspec(rest **Token, tok *Token) *CType {
 	counter := 0
 
 	for tok.isTypename() {
+		// Handle "typedef" keyword.
+		if tok.isEqual("typedef") {
+			if attr == nil {
+				errorTok(tok, "storage class specifier is not allowed in this context")
+			}
+			attr.IsTypeDef = true
+			tok = tok.Next
+			continue
+		}
+
 		// Handle user-defined types.
-		if tok.isEqual("struct") || tok.isEqual("union") {
+		ty2 := findTypeDef(tok)
+		if tok.isEqual("struct") || tok.isEqual("union") || ty2 != nil {
+			if counter != 0 {
+				break
+			}
+
 			if tok.isEqual("struct") {
 				ty = structDecl(&tok, tok.Next)
-			} else {
+			} else if tok.isEqual("union") {
 				ty = unionDecl(&tok, tok.Next)
+			} else {
+				ty = ty2
+				tok = tok.Next
 			}
+
 			counter += OTHER
 			continue
 		}
@@ -297,7 +332,7 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	cur := &head
 
 	for !tok.isEqual("}") {
-		basety := declspec(&tok, tok)
+		basety := declspec(&tok, tok, nil)
 		i := 0
 
 		for !consume(&tok, tok, ";") {
@@ -424,7 +459,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 			tok = skip(tok, ",")
 		}
 
-		basety := declspec(&tok, tok)
+		basety := declspec(&tok, tok, nil)
 		ty := declarator(&tok, tok, basety)
 		cur.Next = ty.copy()
 		cur = cur.Next
@@ -482,9 +517,7 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 }
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-func declaration(rest **Token, tok *Token) *AstNode {
-	basety := declspec(&tok, tok)
-
+func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 	head := AstNode{}
 	cur := &head
 	i := 0
@@ -522,7 +555,17 @@ func declaration(rest **Token, tok *Token) *AstNode {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
-	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("short") || tok.isEqual("long") || tok.isEqual("void")
+	kw := []string{
+		"void", "char", "short", "int", "long", "struct", "union", "typedef",
+	}
+
+	for _, k := range kw {
+		if tok.isEqual(k) {
+			return true
+		}
+	}
+
+	return findTypeDef(tok) != nil
 }
 
 /*
@@ -590,7 +633,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 	return exprStmt(rest, tok)
 }
 
-// compound-stmt = (declaration | stmt)* "}"
+// compound-stmt = (typedef | declaration | stmt)* "}"
 func compoundStmt(rest **Token, tok *Token) *AstNode {
 	node := newNode(ND_BLOCK, tok)
 	head := AstNode{}
@@ -600,7 +643,15 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 
 	for !tok.isEqual("}") {
 		if tok.isTypename() {
-			cur.Next = declaration(&tok, tok)
+			attr := VarAttr{}
+			basety := declspec(&tok, tok, &attr)
+
+			if attr.IsTypeDef {
+				tok = parseTypeDef(tok, basety)
+				continue
+			}
+
+			cur.Next = declaration(&tok, tok, basety)
 			cur = cur.Next
 		} else {
 			cur.Next = stmt(&tok, tok)
@@ -929,13 +980,13 @@ func primary(rest **Token, tok *Token) *AstNode {
 		}
 
 		// Variable
-		v := findVariable(tok)
-		if v == nil {
+		sc := findVariable(tok)
+		if sc == nil || sc.Variable == nil {
 			errorTok(tok, "undefined variable")
 		}
 
 		*rest = tok.Next
-		return newVarNode(v, tok)
+		return newVarNode(sc.Variable, tok)
 	}
 
 	if tok.Kind == TK_STR {
@@ -951,6 +1002,22 @@ func primary(rest **Token, tok *Token) *AstNode {
 	}
 	errorTok(tok, "expected an expression")
 	return nil
+}
+
+func parseTypeDef(tok *Token, basety *CType) *Token {
+	first := true
+
+	for !consume(&tok, tok, ";") {
+		if !first {
+			tok = skip(tok, ",")
+		}
+		first = false
+
+		ty := declarator(&tok, tok, basety)
+		pushScope(ty.Name.getIdent()).TypeDef = ty
+	}
+
+	return tok
 }
 
 func createParamLocalVars(param *CType) {
@@ -1017,7 +1084,14 @@ func parse(tok *Token) *Obj {
 	globals = nil
 
 	for tok.Kind != TK_EOF {
-		basety := declspec(&tok, tok)
+		attr := VarAttr{}
+		basety := declspec(&tok, tok, &attr)
+
+		// Typedef
+		if attr.IsTypeDef {
+			tok = parseTypeDef(tok, basety)
+			continue
+		}
 
 		// Function
 		if isFunction(tok) {
