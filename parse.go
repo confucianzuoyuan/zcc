@@ -913,6 +913,10 @@ func function(tok *Token, basety *CType) *Token {
 
 	fn := newGlobalVar(ty.Name.getIdent(), ty)
 	fn.IsFunction = true
+	fn.IsDefinition = !consume(&tok, tok, ";")
+	if !fn.IsDefinition {
+		return tok
+	}
 
 	locals = nil
 

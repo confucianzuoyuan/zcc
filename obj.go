@@ -11,7 +11,8 @@ type Obj struct {
 	Offset int64
 
 	// Global variable or function
-	IsFunction bool
+	IsFunction   bool
+	IsDefinition bool
 
 	// Global variable
 	InitData []uint8

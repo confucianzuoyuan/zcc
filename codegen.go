@@ -330,7 +330,7 @@ func emitData(prog *Obj) {
 
 func emitText(prog *Obj) {
 	for fn := prog; fn != nil; fn = fn.Next {
-		if !fn.IsFunction {
+		if !fn.IsFunction || !fn.IsDefinition {
 			continue
 		}
 
