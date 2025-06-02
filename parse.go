@@ -209,43 +209,86 @@ func consume(rest **Token, tok *Token, str string) bool {
 	return false
 }
 
-// declspec = "void" | "char" | "short" | "int" | "long" | struct-decl | union-decl
+/*
+ * declspec = ("void" | "char" | "short" | "int" | "long"
+ *             | struct-decl | union-decl)+
+ *
+ * The order of typenames in a type-specifier doesn't matter. For
+ * example, `int long static` means the same as `static long int`.
+ * That can also be written as `static long` because you can omit
+ * `int` if `long` or `short` are specified. However, something like
+ * `char int` is not a valid type specifier. We have to accept only a
+ * limited combinations of the typenames.
+ *
+ * In this function, we count the number of occurrences of each typename
+ * while keeping the "current" type object that the typenames up
+ * until that point represent. When we reach a non-typename token,
+ * we returns the current type object.
+ */
 func declspec(rest **Token, tok *Token) *CType {
-	if tok.isEqual("void") {
-		*rest = tok.Next
-		return TyVoid
+	// We use a single integer as counters for all typenames.
+	// For example, bits 0 and 1 represents how many times we saw the
+	// keyword "void" so far. With this, we can use a switch statement
+	// as you can see below.
+	const (
+		VOID  = 1 << 0
+		CHAR  = 1 << 2
+		SHORT = 1 << 4
+		INT   = 1 << 6
+		LONG  = 1 << 8
+		OTHER = 1 << 10 // struct or union
+	)
+
+	ty := TyInt
+	counter := 0
+
+	for tok.isTypename() {
+		// Handle user-defined types.
+		if tok.isEqual("struct") || tok.isEqual("union") {
+			if tok.isEqual("struct") {
+				ty = structDecl(&tok, tok.Next)
+			} else {
+				ty = unionDecl(&tok, tok.Next)
+			}
+			counter += OTHER
+			continue
+		}
+
+		// Handle built-in types.
+		if tok.isEqual("void") {
+			counter += VOID
+		} else if tok.isEqual("char") {
+			counter += CHAR
+		} else if tok.isEqual("short") {
+			counter += SHORT
+		} else if tok.isEqual("int") {
+			counter += INT
+		} else if tok.isEqual("long") {
+			counter += LONG
+		} else {
+			errorTok(tok, "expected a typename")
+		}
+
+		switch counter {
+		case VOID:
+			ty = TyVoid
+		case CHAR:
+			ty = TyChar
+		case SHORT, SHORT + INT:
+			ty = TyShort
+		case INT:
+			ty = TyInt
+		case LONG, LONG + INT:
+			ty = TyLong
+		default:
+			errorTok(tok, "invalid type")
+		}
+
+		tok = tok.Next
 	}
 
-	if tok.isEqual("char") {
-		*rest = tok.Next
-		return TyChar
-	}
-
-	if tok.isEqual("short") {
-		*rest = tok.Next
-		return TyShort
-	}
-
-	if tok.isEqual("int") {
-		*rest = tok.Next
-		return TyInt
-	}
-
-	if tok.isEqual("long") {
-		*rest = tok.Next
-		return TyLong
-	}
-
-	if tok.isEqual("struct") {
-		return structDecl(rest, tok.Next)
-	}
-
-	if tok.isEqual("union") {
-		return unionDecl(rest, tok.Next)
-	}
-
-	errorTok(tok, "expected a typename")
-	return nil
+	*rest = tok
+	return ty
 }
 
 // struct-members = (declspec declarator (","  declarator)* ";")*
