@@ -409,10 +409,19 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 	return ty
 }
 
-// declarator = "*"* ident type-suffix
+// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
 func declarator(rest **Token, tok *Token, ty *CType) *CType {
 	for consume(&tok, tok, "*") {
 		ty = pointerTo(ty)
+	}
+
+	if tok.isEqual("(") {
+		start := tok
+		dummy := CType{}
+		declarator(&tok, tok.Next, &dummy)
+		tok = skip(tok, ")")
+		ty = typeSuffix(rest, tok, ty)
+		return declarator(&tok, start.Next, ty)
 	}
 
 	if tok.Kind != TK_IDENT {
