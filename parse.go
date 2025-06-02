@@ -209,8 +209,13 @@ func consume(rest **Token, tok *Token, str string) bool {
 	return false
 }
 
-// declspec = "char" | "short" | "int" | "long" | struct-decl | union-decl
+// declspec = "void" | "char" | "short" | "int" | "long" | struct-decl | union-decl
 func declspec(rest **Token, tok *Token) *CType {
+	if tok.isEqual("void") {
+		*rest = tok.Next
+		return TyVoid
+	}
+
 	if tok.isEqual("char") {
 		*rest = tok.Next
 		return TyChar
@@ -449,6 +454,10 @@ func declaration(rest **Token, tok *Token) *AstNode {
 		i += 1
 
 		ty := declarator(&tok, tok, basety)
+		if ty.Kind == TY_VOID {
+			errorTok(tok, "variable declared as void")
+		}
+
 		variable := newLocalVar(ty.Name.getIdent(), ty)
 
 		if !tok.isEqual("=") {
@@ -470,7 +479,7 @@ func declaration(rest **Token, tok *Token) *AstNode {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
-	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("short") || tok.isEqual("long")
+	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("short") || tok.isEqual("long") || tok.isEqual("void")
 }
 
 /*

@@ -3,7 +3,8 @@ package main
 type CTypeKind uint8
 
 const (
-	TY_CHAR CTypeKind = iota
+	TY_VOID CTypeKind = iota
+	TY_CHAR
 	TY_INT
 	TY_SHORT
 	TY_LONG
@@ -37,6 +38,12 @@ func (ty *CType) copy() *CType {
 	ret := &CType{}
 	*ret = *ty
 	return ret
+}
+
+var TyVoid = &CType{
+	Kind:  TY_VOID,
+	Size:  1,
+	Align: 1,
 }
 
 var TyChar = &CType{
@@ -150,6 +157,9 @@ func (node *AstNode) addType() {
 	case ND_DEREF:
 		if node.Lhs.Ty.Base == nil {
 			errorTok(node.Tok, "invalid pointer dereference")
+		}
+		if node.Lhs.Ty.Base.Kind == TY_VOID {
+			errorTok(node.Tok, "dereferencing a void pointer")
 		}
 		node.Ty = node.Lhs.Ty.Base
 		return
