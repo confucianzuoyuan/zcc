@@ -516,6 +516,31 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 	return ty
 }
 
+// abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
+func abstractDeclarator(rest **Token, tok *Token, ty *CType) *CType {
+	for tok.isEqual("*") {
+		ty = pointerTo(ty)
+		tok = tok.Next
+	}
+
+	if tok.isEqual("(") {
+		start := tok
+		dummy := CType{}
+		abstractDeclarator(&tok, tok.Next, &dummy)
+		tok = skip(tok, ")")
+		ty = typeSuffix(rest, tok, ty)
+		return abstractDeclarator(&tok, start.Next, ty)
+	}
+
+	return typeSuffix(rest, tok, ty)
+}
+
+// type-name = declspec abstract-declarator
+func typeName(rest **Token, tok *Token) *CType {
+	ty := declspec(&tok, tok, nil)
+	return abstractDeclarator(rest, tok, ty)
+}
+
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 	head := AstNode{}
@@ -947,18 +972,27 @@ func funcall(rest **Token, tok *Token) *AstNode {
 /*
  * primary = "(" "{" stmt+ "}" ")"
  *         | "(" expr ")"
+ *         | "sizeof" "(" type-name ")"
  *         | "sizeof" unary
  *         | ident func-args?
  *         | str
  *         | num
  */
 func primary(rest **Token, tok *Token) *AstNode {
+	start := tok
+
 	if tok.isEqual("(") && tok.Next.isEqual("{") {
 		// This is a GNU statement expresssion.
 		node := newNode(ND_STMT_EXPR, tok)
 		node.Body = compoundStmt(&tok, tok.Next.Next).Body
 		*rest = skip(tok, ")")
 		return node
+	}
+
+	if tok.isEqual("sizeof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
+		ty := typeName(&tok, tok.Next.Next)
+		*rest = skip(tok, ")")
+		return newNum(ty.Size, start)
 	}
 
 	if tok.isEqual("(") {
