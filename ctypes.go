@@ -5,6 +5,7 @@ type CTypeKind uint8
 const (
 	TY_CHAR CTypeKind = iota
 	TY_INT
+	TY_LONG
 	TY_PTR
 	TY_FUNC
 	TY_ARRAY
@@ -14,14 +15,14 @@ const (
 
 type CType struct {
 	Kind  CTypeKind
-	Size  int // sizeof() value
-	Align int // alignment
+	Size  int64 // sizeof() value
+	Align int64 // alignment
 
 	Base *CType
 
 	Name *Token
 
-	ArrayLength int
+	ArrayLength int64
 
 	// Struct
 	Members *Member
@@ -49,7 +50,13 @@ var TyInt = &CType{
 	Align: 4,
 }
 
-func newType(kind CTypeKind, size int, align int) *CType {
+var TyLong = &CType{
+	Kind:  TY_LONG,
+	Size:  8,
+	Align: 8,
+}
+
+func newType(kind CTypeKind, size int64, align int64) *CType {
 	ty := &CType{
 		Kind:  kind,
 		Size:  size,
@@ -60,7 +67,7 @@ func newType(kind CTypeKind, size int, align int) *CType {
 }
 
 func (t *CType) isInteger() bool {
-	return t.Kind == TY_CHAR || t.Kind == TY_INT
+	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG
 }
 
 func pointerTo(base *CType) *CType {
@@ -77,7 +84,7 @@ func funcType(returnTy *CType) *CType {
 	return ty
 }
 
-func arrayOf(base *CType, len int) *CType {
+func arrayOf(base *CType, len int64) *CType {
 	ty := newType(TY_ARRAY, base.Size*len, base.Align)
 	ty.Base = base
 	ty.ArrayLength = len
@@ -115,7 +122,7 @@ func (node *AstNode) addType() {
 		node.Ty = node.Lhs.Ty
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE, ND_NUM, ND_FUNCALL:
-		node.Ty = TyInt
+		node.Ty = TyLong
 		return
 	case ND_VAR:
 		node.Ty = node.Variable.Ty

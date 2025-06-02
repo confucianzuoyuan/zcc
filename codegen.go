@@ -44,7 +44,7 @@ func count() int {
 
 // Round up `n` to the nearest multiple of `align`. For instance,
 // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
-func alignTo(n int, align int) int {
+func alignTo(n int64, align int64) int64 {
 	return (n + align - 1) / align * align
 }
 
@@ -103,7 +103,7 @@ func store(ty *CType) {
 	pop("%rdi")
 
 	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
-		for i := 0; i < ty.Size; i += 1 {
+		for i := int64(0); i < ty.Size; i += 1 {
 			printlnToFile("  mov %d(%%rax), %%r8b", i)
 			printlnToFile("  mov %%r8b, %d(%%rdi)", i)
 		}
@@ -119,7 +119,7 @@ func store(ty *CType) {
 	}
 }
 
-func storeGp(r int, offset int, sz int) {
+func storeGp(r int, offset int64, sz int64) {
 	switch sz {
 	case 1:
 		printlnToFile("  mov %s, %d(%%rbp)", argreg8[r], offset)
@@ -288,7 +288,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 			continue
 		}
 
-		offset := 0
+		offset := int64(0)
 		for v := fn.Locals; v != nil; v = v.Next {
 			offset += v.Ty.Size
 			offset = alignTo(offset, v.Ty.Align)
@@ -309,7 +309,7 @@ func emitData(prog *Obj) {
 		printlnToFile("%s:", v.Name)
 
 		if v.InitData != nil {
-			for i := 0; i < v.Ty.Size; i += 1 {
+			for i := int64(0); i < v.Ty.Size; i += 1 {
 				printlnToFile("  .byte %d", v.InitData[i])
 			}
 		} else {

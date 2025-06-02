@@ -232,7 +232,7 @@ func readStringLiteral(start int) *Token {
 	buf := currentInput
 	end := stringLiteralEnd(start + 1)
 	str := make([]uint8, end-start)
-	len := 0
+	var len int64 = 0
 
 	for p := start + 1; p < end; {
 		if (*buf)[p] == '\\' {

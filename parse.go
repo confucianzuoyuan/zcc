@@ -127,7 +127,7 @@ func newUnary(kind AstNodeKind, expr *AstNode, tok *Token) *AstNode {
 	return node
 }
 
-func newNum(value int, tok *Token) *AstNode {
+func newNum(value int64, tok *Token) *AstNode {
 	node := newNode(ND_NUM, tok)
 	node.Value = value
 	return node
@@ -185,11 +185,11 @@ func (tok *Token) getIdent() string {
 	return string((*currentInput)[tok.Location : tok.Location+tok.Length])
 }
 
-func (tok *Token) getNumber() int {
+func (tok *Token) getNumber() int64 {
 	if tok.Kind != TK_NUM {
 		errorTok(tok, "expected a number")
 	}
-	return int(tok.Value)
+	return tok.Value
 }
 
 func skip(tok *Token, op string) *Token {
@@ -209,7 +209,7 @@ func consume(rest **Token, tok *Token, str string) bool {
 	return false
 }
 
-// declspec = "char" | "int" | struct-decl
+// declspec = "char" | "short" | "int" | "long" | struct-decl | union-decl
 func declspec(rest **Token, tok *Token) *CType {
 	if tok.isEqual("char") {
 		*rest = tok.Next
@@ -219,6 +219,11 @@ func declspec(rest **Token, tok *Token) *CType {
 	if tok.isEqual("int") {
 		*rest = tok.Next
 		return TyInt
+	}
+
+	if tok.isEqual("long") {
+		*rest = tok.Next
+		return TyLong
 	}
 
 	if tok.isEqual("struct") {
@@ -298,7 +303,7 @@ func structDecl(rest **Token, tok *Token) *CType {
 	ty.Kind = TY_STRUCT
 
 	// Assign offsets within the struct to members.
-	offset := 0
+	var offset int64 = 0
 	for mem := ty.Members; mem != nil; mem = mem.Next {
 		offset = alignTo(offset, mem.Ty.Align)
 		mem.Offset = offset
@@ -451,7 +456,7 @@ func declaration(rest **Token, tok *Token) *AstNode {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
-	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct") || tok.isEqual("union")
+	return tok.isEqual("char") || tok.isEqual("int") || tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("short") || tok.isEqual("long")
 }
 
 /*
@@ -874,7 +879,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.Kind == TK_NUM {
-		node := newNum(int(tok.Value), tok)
+		node := newNum(tok.Value, tok)
 		*rest = tok.Next
 		return node
 	}

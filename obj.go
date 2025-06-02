@@ -8,7 +8,7 @@ type Obj struct {
 	IsLocal bool
 
 	// Local variable
-	Offset int
+	Offset int64
 
 	// Global variable or function
 	IsFunction bool
@@ -20,5 +20,5 @@ type Obj struct {
 	Params    *Obj
 	Body      *AstNode
 	Locals    *Obj
-	StackSize int
+	StackSize int64
 }

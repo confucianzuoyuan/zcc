@@ -54,8 +54,8 @@ type AstNode struct {
 	FuncName string
 	Args     *AstNode
 
-	Variable *Obj // Used if kind == ND_VAR
-	Value    int  // Used if kind == ND_NUM
+	Variable *Obj  // Used if kind == ND_VAR
+	Value    int64 // Used if kind == ND_NUM
 }
 
 func (node *AstNode) String() string {
@@ -71,5 +71,5 @@ type Member struct {
 	Next   *Member
 	Ty     *CType
 	Name   *Token
-	Offset int // Offset from the beginning of the struct
+	Offset int64 // Offset from the beginning of the struct
 }
