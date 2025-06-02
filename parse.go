@@ -95,6 +95,17 @@ func findTag(tok *Token) *CType {
 	return nil
 }
 
+func newCast(expr *AstNode, ty *CType) *AstNode {
+	expr.addType()
+
+	node := &AstNode{}
+	node.Kind = ND_CAST
+	node.Tok = expr.Tok
+	node.Lhs = expr
+	node.Ty = ty.copy()
+	return node
+}
+
 func pushScope(name string) *VarScope {
 	sc := &VarScope{}
 	sc.Name = name
@@ -867,20 +878,20 @@ func add(rest **Token, tok *Token) *AstNode {
 	}
 }
 
-// mul = unary ("*" unary | "/" unary)*
+// mul = unary ("*" cast | "/" cast)*
 func mul(rest **Token, tok *Token) *AstNode {
-	node := unary(&tok, tok)
+	node := castExpr(&tok, tok)
 
 	for {
 		start := tok
 
 		if tok.isEqual("*") {
-			node = newBinary(ND_MUL, node, unary(&tok, tok.Next), start)
+			node = newBinary(ND_MUL, node, castExpr(&tok, tok.Next), start)
 			continue
 		}
 
 		if tok.isEqual("/") {
-			node = newBinary(ND_DIV, node, unary(&tok, tok.Next), start)
+			node = newBinary(ND_DIV, node, castExpr(&tok, tok.Next), start)
 			continue
 		}
 
@@ -889,25 +900,39 @@ func mul(rest **Token, tok *Token) *AstNode {
 	}
 }
 
+// cast = "(" type-name ")" cast | unary
+func castExpr(rest **Token, tok *Token) *AstNode {
+	if tok.isEqual("(") && tok.Next.isTypename() {
+		start := tok
+		ty := typeName(&tok, tok.Next)
+		tok = skip(tok, ")")
+		node := newCast(castExpr(rest, tok), ty)
+		node.Tok = start
+		return node
+	}
+
+	return unary(rest, tok)
+}
+
 /*
- * unary = ("+" | "-" | "*" | "&") unary
+ * unary = ("+" | "-" | "*" | "&") cast
  *       | postfix
  */
 func unary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("+") {
-		return unary(rest, tok.Next)
+		return castExpr(rest, tok.Next)
 	}
 
 	if tok.isEqual("-") {
-		return newUnary(ND_NEG, unary(rest, tok.Next), tok)
+		return newUnary(ND_NEG, castExpr(rest, tok.Next), tok)
 	}
 
 	if tok.isEqual("&") {
-		return newUnary(ND_ADDR, unary(rest, tok.Next), tok)
+		return newUnary(ND_ADDR, castExpr(rest, tok.Next), tok)
 	}
 
 	if tok.isEqual("*") {
-		return newUnary(ND_DEREF, unary(rest, tok.Next), tok)
+		return newUnary(ND_DEREF, castExpr(rest, tok.Next), tok)
 	}
 
 	return postfix(rest, tok)

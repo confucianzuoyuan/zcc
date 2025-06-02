@@ -126,6 +126,53 @@ func store(ty *CType) {
 	}
 }
 
+const (
+	I8 = iota
+	I16
+	I32
+	I64
+)
+
+func getTypeId(ty *CType) int {
+	switch ty.Kind {
+	case TY_CHAR:
+		return I8
+	case TY_SHORT:
+		return I16
+	case TY_INT:
+		return I32
+	}
+	return I64
+}
+
+// The table for type casts
+const I32I8 = "movsbl %al, %eax"
+const I32I16 = "movswl %ax, %eax"
+const I32I64 = "movsxd %eax, %rax"
+
+var CastTable = [][]string{
+	// I8
+	[]string{"", "", "", I32I64},
+	// I16
+	[]string{I32I8, "", "", I32I64},
+	// I32
+	[]string{I32I8, I32I16, "", I32I64},
+	// I64
+	[]string{I32I8, I32I16, "", ""},
+}
+
+func cast(from *CType, to *CType) {
+	if to.Kind == TY_VOID {
+		return
+	}
+
+	t1 := getTypeId(from)
+	t2 := getTypeId(to)
+	if CastTable[t1][t2] != "" {
+		printlnToFile("  %s", CastTable[t1][t2])
+	}
+}
+
 func storeGp(r int, offset int64, sz int64) {
 	switch sz {
 	case 1:
@@ -182,6 +229,10 @@ func genExpr(node *AstNode) {
 	case ND_COMMA:
 		genExpr(node.Lhs)
 		genExpr(node.Rhs)
+		return
+	case ND_CAST:
+		genExpr(node.Lhs)
+		cast(node.Lhs.Ty, node.Ty)
 		return
 	case ND_FUNCALL:
 		nargs := 0
