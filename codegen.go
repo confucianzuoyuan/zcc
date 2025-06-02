@@ -10,6 +10,9 @@ var depth int
 var argreg8 = []string{
 	"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b",
 }
+var argreg16 = []string{
+	"%di", "%si", "%dx", "%cx", "%r8w", "%r9w",
+}
 var argreg32 = []string{
 	"%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d",
 }
@@ -91,6 +94,8 @@ func load(ty *CType) {
 
 	if ty.Size == 1 {
 		printlnToFile("  movsbq (%%rax), %%rax")
+	} else if ty.Size == 2 {
+		printlnToFile("  movswq (%%rax), %%rax")
 	} else if ty.Size == 4 {
 		printlnToFile("  movsxd (%%rax), %%rax")
 	} else {
@@ -112,6 +117,8 @@ func store(ty *CType) {
 
 	if ty.Size == 1 {
 		printlnToFile("  mov %%al, (%%rdi)")
+	} else if ty.Size == 2 {
+		printlnToFile("  mov %%ax, (%%rdi)")
 	} else if ty.Size == 4 {
 		printlnToFile("  mov %%eax, (%%rdi)")
 	} else {
@@ -123,6 +130,9 @@ func storeGp(r int, offset int64, sz int64) {
 	switch sz {
 	case 1:
 		printlnToFile("  mov %s, %d(%%rbp)", argreg8[r], offset)
+		return
+	case 2:
+		printlnToFile("  mov %s, %d(%%rbp)", argreg16[r], offset)
 		return
 	case 4:
 		printlnToFile("  mov %s, %d(%%rbp)", argreg32[r], offset)

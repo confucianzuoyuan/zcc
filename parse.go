@@ -216,6 +216,11 @@ func declspec(rest **Token, tok *Token) *CType {
 		return TyChar
 	}
 
+	if tok.isEqual("short") {
+		*rest = tok.Next
+		return TyShort
+	}
+
 	if tok.isEqual("int") {
 		*rest = tok.Next
 		return TyInt

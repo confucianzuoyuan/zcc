@@ -5,6 +5,7 @@ type CTypeKind uint8
 const (
 	TY_CHAR CTypeKind = iota
 	TY_INT
+	TY_SHORT
 	TY_LONG
 	TY_PTR
 	TY_FUNC
@@ -44,6 +45,12 @@ var TyChar = &CType{
 	Align: 1,
 }
 
+var TyShort = &CType{
+	Kind:  TY_SHORT,
+	Size:  2,
+	Align: 2,
+}
+
 var TyInt = &CType{
 	Kind:  TY_INT,
 	Size:  4,
@@ -67,7 +74,7 @@ func newType(kind CTypeKind, size int64, align int64) *CType {
 }
 
 func (t *CType) isInteger() bool {
-	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG
+	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT
 }
 
 func pointerTo(base *CType) *CType {
