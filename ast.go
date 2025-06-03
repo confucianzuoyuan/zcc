@@ -30,6 +30,8 @@ const (
 	ND_IF                           // "if"
 	ND_FOR                          // "for" or "while"
 	ND_BLOCK                        // { ... }
+	ND_GOTO                         // "goto"
+	ND_LABEL                        // Labeled statement
 	ND_FUNCALL                      // Function call
 	ND_EXPR_STMT                    // Expression statement
 	ND_STMT_EXPR                    // Statement expression
@@ -63,6 +65,11 @@ type AstNode struct {
 	FuncName string
 	FuncType *CType
 	Args     *AstNode
+
+	// Goto or labeled statement
+	Label       string
+	UniqueLabel string
+	GotoNext    *AstNode
 
 	Variable *Obj  // Used if kind == ND_VAR
 	Value    int64 // Used if kind == ND_NUM

@@ -67,6 +67,10 @@ var scope *Scope = &Scope{}
 // Points to the function object the parser is currently parsing.
 var currentFunction *Obj
 
+// Lists of all goto statements and labels in the curent function.
+var gotos *AstNode
+var labels *AstNode
+
 func enterScope() {
 	sc := &Scope{}
 	sc.Next = scope
@@ -743,6 +747,8 @@ func (tok *Token) isTypename() bool {
  *	    | "if" "(" expr ")" stmt ("else" stmt)?
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
+ *      | "goto" ident ";"
+ *	    | ident ":" stmt
  *	    | "{" compound-stmt
  *	    | expr-stmt
  */
@@ -811,7 +817,52 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		return compoundStmt(rest, tok.Next)
 	}
 
+	if tok.isEqual("goto") {
+		node := newNode(ND_GOTO, tok)
+		node.Label = tok.Next.getIdent()
+		node.GotoNext = gotos
+		gotos = node
+		*rest = skip(tok.Next.Next, ";")
+		return node
+	}
+
+	if tok.Kind == TK_IDENT && tok.Next.isEqual(":") {
+		node := newNode(ND_LABEL, tok)
+		node.Label = tok.getIdent()
+		node.UniqueLabel = newUniqueName()
+		node.Lhs = stmt(rest, tok.Next.Next)
+		node.GotoNext = labels
+		labels = node
+
+		return node
+	}
+
 	return exprStmt(rest, tok)
+}
+
+/*
+ * This function matches gotos with labels.
+ *
+ * We cannot resolve gotos as we parse a function because gotos
+ * can refer a label that appears later in the function.
+ * So, we need to do this after we parse the entire function.
+ */
+func resolveGotoLabels() {
+	for x := gotos; x != nil; x = x.GotoNext {
+		for y := labels; y != nil; y = y.GotoNext {
+			if x.Label == y.Label {
+				x.UniqueLabel = y.UniqueLabel
+				break
+			}
+		}
+
+		if x.UniqueLabel == "" {
+			errorTok(x.Tok.Next, "use of undeclared label")
+		}
+	}
+
+	labels = nil
+	gotos = nil
 }
 
 // compound-stmt = (typedef | declaration | stmt)* "}"
@@ -1435,6 +1486,7 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	fn.Body = compoundStmt(&tok, tok)
 	fn.Locals = locals
 	leaveScope()
+	resolveGotoLabels()
 	return tok
 }
 

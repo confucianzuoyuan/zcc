@@ -413,6 +413,13 @@ func genStmt(node *AstNode) {
 			genStmt(n)
 		}
 		return
+	case ND_GOTO:
+		printlnToFile("  jmp %s", node.UniqueLabel)
+		return
+	case ND_LABEL:
+		printlnToFile("%s:", node.UniqueLabel)
+		genStmt(node.Lhs)
+		return
 	case ND_RETURN:
 		genExpr(node.Lhs)
 		printlnToFile("  jmp .L.return.%s", currentFn.Name)
