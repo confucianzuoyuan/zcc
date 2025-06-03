@@ -18,7 +18,9 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Scope for local, global variables or typedefs
 // or enum constants
@@ -230,26 +232,46 @@ func skipExcessElement(tok *Token) *Token {
 	return tok
 }
 
+// string-initializer = string-literal
+func stringInitializer(rest **Token, tok *Token, init *Initializer) {
+	length := init.Ty.ArrayLength
+	if init.Ty.ArrayLength > tok.Ty.ArrayLength {
+		length = tok.Ty.ArrayLength
+	}
+	for i := int64(0); i < length; i++ {
+		init.Children[i].Expr = newNum(int64(tok.StringLiteral[i]), tok)
+	}
+	*rest = tok.Next
+}
+
+func arrayInitializer(rest **Token, tok *Token, init *Initializer) {
+	tok = skip(tok, "{")
+
+	for i := int64(0); !consume(rest, tok, "}"); i++ {
+		if i > 0 {
+			tok = skip(tok, ",")
+		}
+
+		if i < init.Ty.ArrayLength {
+			initializer2(&tok, tok, init.Children[i])
+		} else {
+			tok = skipExcessElement(tok)
+		}
+	}
+}
+
 /*
  * initializer = "{" initializer ("," initializer)* "}"
  * 			   | assign
  */
 func initializer2(rest **Token, tok *Token, init *Initializer) {
+	if init.Ty.Kind == TY_ARRAY && tok.Kind == TK_STR {
+		stringInitializer(rest, tok, init)
+		return
+	}
+
 	if init.Ty.Kind == TY_ARRAY {
-		tok = skip(tok, "{")
-
-		for i := int64(0); !consume(rest, tok, "}"); i++ {
-			if i > 0 {
-				tok = skip(tok, ",")
-			}
-
-			if i < init.Ty.ArrayLength {
-				initializer2(&tok, tok, init.Children[i])
-			} else {
-				tok = skipExcessElement(tok)
-			}
-		}
-
+		arrayInitializer(rest, tok, init)
 		return
 	}
 
