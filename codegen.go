@@ -131,6 +131,14 @@ func store(ty *CType) {
 	}
 }
 
+func cmpZero(ty *CType) {
+	if ty.isInteger() && ty.Size <= 4 {
+		printlnToFile("  cmp $0, %%eax")
+	} else {
+		printlnToFile("  cmp $0, %%rax")
+	}
+}
+
 const (
 	I8 = iota
 	I16
@@ -157,17 +165,24 @@ const I32I64 = "movsxd %eax, %rax"
 
 var CastTable = [][]string{
 	// I8
-	[]string{"", "", "", I32I64},
+	{"", "", "", I32I64},
 	// I16
-	[]string{I32I8, "", "", I32I64},
+	{I32I8, "", "", I32I64},
 	// I32
-	[]string{I32I8, I32I16, "", I32I64},
+	{I32I8, I32I16, "", I32I64},
 	// I64
-	[]string{I32I8, I32I16, "", ""},
+	{I32I8, I32I16, "", ""},
 }
 
 func cast(from *CType, to *CType) {
 	if to.Kind == TY_VOID {
+		return
+	}
+
+	if to.Kind == TY_BOOL {
+		cmpZero(from)
+		printlnToFile("  setne %%al")
+		printlnToFile("  movzx %%al, %%eax")
 		return
 	}
 

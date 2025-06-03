@@ -246,7 +246,7 @@ func consume(rest **Token, tok *Token, str string) bool {
 }
 
 /*
- * declspec = ("void" | "char" | "short" | "int" | "long"
+ * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef"
  *             | struct-decl | union-decl | typedef-name)+
  *
@@ -269,11 +269,12 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	// as you can see below.
 	const (
 		VOID  = 1 << 0
-		CHAR  = 1 << 2
-		SHORT = 1 << 4
-		INT   = 1 << 6
-		LONG  = 1 << 8
-		OTHER = 1 << 10 // struct or union
+		BOOL  = 1 << 2
+		CHAR  = 1 << 4
+		SHORT = 1 << 6
+		INT   = 1 << 8
+		LONG  = 1 << 10
+		OTHER = 1 << 12 // struct or union
 	)
 
 	ty := TyInt
@@ -313,6 +314,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		// Handle built-in types.
 		if tok.isEqual("void") {
 			counter += VOID
+		} else if tok.isEqual("_Bool") {
+			counter += BOOL
 		} else if tok.isEqual("char") {
 			counter += CHAR
 		} else if tok.isEqual("short") {
@@ -328,6 +331,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		switch counter {
 		case VOID:
 			ty = TyVoid
+		case BOOL:
+			ty = TyBool
 		case CHAR:
 			ty = TyChar
 		case SHORT, SHORT + INT:
@@ -602,7 +607,7 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool",
 	}
 
 	for _, k := range kw {
