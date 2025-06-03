@@ -1043,13 +1043,30 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
+// conditional = logor ("?" expr ":" conditional)?
+func conditional(rest **Token, tok *Token) *AstNode {
+	cond := logor(&tok, tok)
+
+	if !tok.isEqual("?") {
+		*rest = tok
+		return cond
+	}
+
+	node := newNode(ND_COND, tok)
+	node.Cond = cond
+	node.Then = expr(&tok, tok.Next)
+	tok = skip(tok, ":")
+	node.Else = conditional(rest, tok)
+	return node
+}
+
 /*
- * assign = logor (assign-op assign)?
+ * assign = conditional (assign-op assign)?
  * assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
  *           | "<<= | ">>="
  */
 func assign(rest **Token, tok *Token) *AstNode {
-	node := logor(&tok, tok)
+	node := conditional(&tok, tok)
 
 	if tok.isEqual("=") {
 		return newBinary(ND_ASSIGN, node, assign(rest, tok.Next), tok)

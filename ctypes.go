@@ -208,6 +208,14 @@ func (node *AstNode) addType() {
 	case ND_VAR:
 		node.Ty = node.Variable.Ty
 		return
+	case ND_COND:
+		if node.Then.Ty.Kind == TY_VOID || node.Else.Ty.Kind == TY_VOID {
+			node.Ty = TyVoid
+		} else {
+			usualArithConv(&node.Then, &node.Else)
+			node.Ty = node.Then.Ty
+		}
+		return
 	case ND_COMMA:
 		node.Ty = node.Rhs.Ty
 		return

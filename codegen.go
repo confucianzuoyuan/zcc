@@ -254,6 +254,17 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 		cast(node.Lhs.Ty, node.Ty)
 		return
+	case ND_COND:
+		c := count()
+		genExpr(node.Cond)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  je .L.else.%d", c)
+		genExpr(node.Then)
+		printlnToFile("  jmp .L.end.%d", c)
+		printlnToFile(".L.else.%d:", c)
+		genExpr(node.Else)
+		printlnToFile(".L.end.%d:", c)
+		return
 	case ND_NOT:
 		genExpr(node.Lhs)
 		printlnToFile("  cmp $0, %%rax")

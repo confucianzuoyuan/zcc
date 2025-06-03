@@ -14,6 +14,7 @@ const (
 	ND_LT                           // <
 	ND_LE                           // <=
 	ND_ASSIGN                       // =
+	ND_COND                         // Ternary conditional (?:)
 	ND_COMMA                        // ,
 	ND_MEMBER                       // . (struct member access)
 	ND_ADDR                         // unary &
