@@ -20,15 +20,18 @@ package main
 
 import "fmt"
 
-// Scope for local, global variables or typedefs.
+// Scope for local, global variables or typedefs
+// or enum constants
 type VarScope struct {
-	Next     *VarScope
-	Name     string
-	Variable *Obj
-	TypeDef  *CType
+	Next      *VarScope
+	Name      string
+	Variable  *Obj
+	TypeDef   *CType
+	EnumType  *CType
+	EnumValue int
 }
 
-// Scope for struct or union tags.
+// Scope for struct, union or enum tags
 type TagScope struct {
 	Next *TagScope
 	Name string // Struct tag name
@@ -38,8 +41,8 @@ type TagScope struct {
 // Represents a block scope.
 type Scope struct {
 	Next *Scope
-	// C has two block scopes; one is for variables and the other is
-	// for struct tags.
+	// C has two block scopes; one is for variables/typedefs and the other is
+	// for struct/union/enum tags.
 	Variables *VarScope
 	Tags      *TagScope
 }
@@ -248,7 +251,8 @@ func consume(rest **Token, tok *Token, str string) bool {
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef"
- *             | struct-decl | union-decl | typedef-name)+
+ *             | struct-decl | union-decl | typedef-name
+ *             | enum-specifier)+
  *
  * The order of typenames in a type-specifier doesn't matter. For
  * example, `int long static` means the same as `static long int`.
@@ -293,7 +297,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 		// Handle user-defined types.
 		ty2 := findTypeDef(tok)
-		if tok.isEqual("struct") || tok.isEqual("union") || ty2 != nil {
+		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || ty2 != nil {
 			if counter != 0 {
 				break
 			}
@@ -302,6 +306,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				ty = structDecl(&tok, tok.Next)
 			} else if tok.isEqual("union") {
 				ty = unionDecl(&tok, tok.Next)
+			} else if tok.isEqual("enum") {
+				ty = enumSpecifier(&tok, tok.Next)
 			} else {
 				ty = ty2
 				tok = tok.Next
@@ -349,6 +355,69 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	}
 
 	*rest = tok
+	return ty
+}
+
+/*
+ * enum-specifier = ident? "{" enum-list? "}"
+ *                | ident ("{" enum-list? "}")?
+ *
+ * enum-list      = ident ("=" num)? ("," ident ("=" num)?)*
+ */
+func enumSpecifier(rest **Token, tok *Token) *CType {
+	ty := enumType()
+
+	// Read a struct tag.
+	var tag *Token = nil
+	if tok.Kind == TK_IDENT {
+		tag = tok
+		tok = tok.Next
+	}
+
+	if tag != nil && !tok.isEqual("{") {
+		ty := findTag(tag)
+		if ty == nil {
+			errorTok(tag, "unknown enum type")
+		}
+		if ty.Kind != TY_ENUM {
+			errorTok(tag, "not an enum tag")
+		}
+
+		*rest = tok
+		return ty
+	}
+
+	tok = skip(tok, "{")
+
+	// Read an enum-list.
+	var i int = 0
+	var val int64 = 0
+	for !tok.isEqual("}") {
+		if i > 0 {
+			tok = skip(tok, ",")
+		}
+		i += 1
+
+		name := tok.getIdent()
+		tok = tok.Next
+
+		if tok.isEqual("=") {
+			val = tok.Next.getNumber()
+			tok = tok.Next.Next
+		}
+
+		sc := pushScope(name)
+		sc.EnumType = ty
+		sc.EnumValue = int(val)
+		val += 1
+	}
+
+	*rest = tok.Next
+
+	if tag != nil {
+		pushTagScope(tag, ty)
+	}
+
 	return ty
 }
 
@@ -607,7 +676,7 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum",
 	}
 
 	for _, k := range kw {
@@ -1082,14 +1151,21 @@ func primary(rest **Token, tok *Token) *AstNode {
 			return funcall(rest, tok)
 		}
 
-		// Variable
+		// Variable or enum constant
 		sc := findVariable(tok)
-		if sc == nil || sc.Variable == nil {
+		if sc == nil || (sc.Variable == nil && sc.EnumType == nil) {
 			errorTok(tok, "undefined variable")
 		}
 
+		var node *AstNode
+		if sc.Variable != nil {
+			node = newVarNode(sc.Variable, tok)
+		} else {
+			node = newNum(int64(sc.EnumValue), tok)
+		}
+
 		*rest = tok.Next
-		return newVarNode(sc.Variable, tok)
+		return node
 	}
 
 	if tok.Kind == TK_STR {

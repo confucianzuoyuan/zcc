@@ -9,6 +9,7 @@ const (
 	TY_INT
 	TY_SHORT
 	TY_LONG
+	TY_ENUM
 	TY_PTR
 	TY_FUNC
 	TY_ARRAY
@@ -88,7 +89,7 @@ func newType(kind CTypeKind, size int64, align int64) *CType {
 }
 
 func (t *CType) isInteger() bool {
-	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL
+	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL || t.Kind == TY_ENUM
 }
 
 func pointerTo(base *CType) *CType {
@@ -110,6 +111,10 @@ func arrayOf(base *CType, len int64) *CType {
 	ty.Base = base
 	ty.ArrayLength = len
 	return ty
+}
+
+func enumType() *CType {
+	return newType(TY_ENUM, 4, 4)
 }
 
 func (ty *CType) getCommonType(other *CType) *CType {
