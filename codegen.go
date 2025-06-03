@@ -256,6 +256,13 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 		cast(node.Lhs.Ty, node.Ty)
 		return
+	case ND_MEMZERO:
+		// `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.
+		printlnToFile("  mov $%d, %%rcx", node.Variable.Ty.Size)
+		printlnToFile("  lea %d(%%rbp), %%rdi", node.Variable.Offset)
+		printlnToFile("  xor %%al, %%al")
+		printlnToFile("  rep stosb")
+		return
 	case ND_COND:
 		c := count()
 		genExpr(node.Cond)

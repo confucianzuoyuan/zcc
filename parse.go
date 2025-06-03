@@ -228,7 +228,7 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 	if init.Ty.Kind == TY_ARRAY {
 		tok = skip(tok, "{")
 
-		for i := int64(0); i < init.Ty.ArrayLength; i++ {
+		for i := int64(0); i < init.Ty.ArrayLength && !tok.isEqual("}"); i++ {
 			if i > 0 {
 				tok = skip(tok, ",")
 			}
@@ -270,9 +270,12 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 		return node
 	}
 
+	if init.Expr == nil {
+		return newNode(ND_NULL_EXPR, tok)
+	}
+
 	lhs := initDesgExpr(desg, tok)
-	rhs := init.Expr
-	return newBinary(ND_ASSIGN, lhs, rhs, tok)
+	return newBinary(ND_ASSIGN, lhs, init.Expr, tok)
 }
 
 /*
@@ -290,7 +293,16 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 func localVarInitializer(rest **Token, tok *Token, variable *Obj) *AstNode {
 	init := initializer(rest, tok, variable.Ty)
 	desg := InitDesg{nil, 0, variable}
-	return createLocalVarInit(init, variable.Ty, &desg, tok)
+
+	// If a partial initializer list is given, the standard requires
+	// that unspecified elements are set to 0. Here, we simply
+	// zero-initialize the entire memory region of a variable before
+	// initializing it with user-supplied values.
+	lhs := newNode(ND_MEMZERO, tok)
+	lhs.Variable = variable
+
+	rhs := createLocalVarInit(init, variable.Ty, &desg, tok)
+	return newBinary(ND_COMMA, lhs, rhs, tok)
 }
 
 func newVar(name string, ty *CType) *Obj {
