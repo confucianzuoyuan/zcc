@@ -60,6 +60,9 @@ var globals *Obj
 
 var scope *Scope = &Scope{}
 
+// Points to the function object the parser is currently parsing.
+var currentFunction *Obj
+
 func enterScope() {
 	sc := &Scope{}
 	sc.Next = scope
@@ -622,8 +625,11 @@ func (tok *Token) isTypename() bool {
 func stmt(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("return") {
 		node := newNode(ND_RETURN, tok)
-		node.Lhs = expr(&tok, tok.Next)
+		exp := expr(&tok, tok.Next)
 		*rest = skip(tok, ";")
+
+		exp.addType()
+		node.Lhs = newCast(exp, currentFunction.Ty.ReturnType)
 		return node
 	}
 
@@ -1114,6 +1120,7 @@ func function(tok *Token, basety *CType) *Token {
 		return tok
 	}
 
+	currentFunction = fn
 	locals = nil
 
 	enterScope()
