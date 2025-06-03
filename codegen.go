@@ -402,6 +402,7 @@ func genStmt(node *AstNode) {
 			printlnToFile("  je %s", node.BreakLabel)
 		}
 		genStmt(node.Then)
+		printlnToFile("%s:", node.ContinueLabel)
 		if node.Inc != nil {
 			genExpr(node.Inc)
 		}

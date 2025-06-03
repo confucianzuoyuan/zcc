@@ -71,8 +71,9 @@ var currentFunction *Obj
 var gotos *AstNode
 var labels *AstNode
 
-// Current "goto" jump target.
+// Current "goto" and "continue" jump targets.
 var breakLabel string
+var continueLabel string
 
 func enterScope() {
 	sc := &Scope{}
@@ -752,6 +753,7 @@ func (tok *Token) isTypename() bool {
  *	    | "while" "(" expr ")" stmt
  *      | "goto" ident ";"
  *      | "break" ";"
+ *	    | "continue" ";"
  *	    | ident ":" stmt
  *	    | "{" compound-stmt
  *	    | expr-stmt
@@ -787,8 +789,11 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		enterScope()
 
 		brk := breakLabel
+		cont := continueLabel
 		node.BreakLabel = newUniqueName()
 		breakLabel = node.BreakLabel
+		node.ContinueLabel = newUniqueName()
+		continueLabel = node.ContinueLabel
 
 		if tok.isTypename() {
 			basety := declspec(&tok, tok, nil)
@@ -810,6 +815,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node.Then = stmt(rest, tok)
 		leaveScope()
 		breakLabel = brk
+		continueLabel = cont
 		return node
 	}
 
@@ -820,11 +826,15 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		tok = skip(tok, ")")
 
 		brk := breakLabel
+		cont := continueLabel
 		node.BreakLabel = newUniqueName()
 		breakLabel = node.BreakLabel
+		node.ContinueLabel = newUniqueName()
+		continueLabel = node.ContinueLabel
 
 		node.Then = stmt(rest, tok)
 		breakLabel = brk
+		continueLabel = cont
 		return node
 	}
 
@@ -847,6 +857,16 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 		node := newNode(ND_GOTO, tok)
 		node.UniqueLabel = breakLabel
+		*rest = skip(tok.Next, ";")
+		return node
+	}
+
+	if tok.isEqual("continue") {
+		if continueLabel == "" {
+			errorTok(tok, "stray continue")
+		}
+		node := newNode(ND_GOTO, tok)
+		node.UniqueLabel = continueLabel
 		*rest = skip(tok.Next, ";")
 		return node
 	}

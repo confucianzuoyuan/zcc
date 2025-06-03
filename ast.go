@@ -55,8 +55,9 @@ type AstNode struct {
 	Init *AstNode
 	Inc  *AstNode
 
-	// "break" label
-	BreakLabel string
+	// "break" and "continue" labels
+	BreakLabel    string
+	ContinueLabel string
 
 	// Block or statement expression
 	Body *AstNode
