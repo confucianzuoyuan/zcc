@@ -850,10 +850,10 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// assign = bitor (assign-op assign)?
+// assign = logor (assign-op assign)?
 // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
 func assign(rest **Token, tok *Token) *AstNode {
-	node := bitor(&tok, tok)
+	node := logor(&tok, tok)
 
 	if tok.isEqual("=") {
 		return newBinary(ND_ASSIGN, node, assign(rest, tok.Next), tok)
@@ -891,6 +891,28 @@ func assign(rest **Token, tok *Token) *AstNode {
 		return toAssign(newBinary(ND_BITXOR, node, assign(rest, tok.Next), tok))
 	}
 
+	*rest = tok
+	return node
+}
+
+// logor = logand ("||" logand)*
+func logor(rest **Token, tok *Token) *AstNode {
+	node := logand(&tok, tok)
+	for tok.isEqual("||") {
+		start := tok
+		node = newBinary(ND_LOGOR, node, logand(&tok, tok.Next), start)
+	}
+	*rest = tok
+	return node
+}
+
+// logand = bitor ("&&" bitor)*
+func logand(rest **Token, tok *Token) *AstNode {
+	node := bitor(&tok, tok)
+	for tok.isEqual("&&") {
+		start := tok
+		node = newBinary(ND_LOGAND, node, bitor(&tok, tok.Next), start)
+	}
 	*rest = tok
 	return node
 }

@@ -264,6 +264,34 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 		printlnToFile("  not %%rax")
 		return
+	case ND_LOGAND:
+		c := count()
+		genExpr(node.Lhs)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  je  .L.false.%d", c)
+		genExpr(node.Rhs)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  je  .L.false.%d", c)
+		printlnToFile("  mov $1, %%rax")
+		printlnToFile("  jmp .L.end.%d", c)
+		printlnToFile(".L.false.%d:", c)
+		printlnToFile("  mov $0, %%rax")
+		printlnToFile(".L.end.%d:", c)
+		return
+	case ND_LOGOR:
+		c := count()
+		genExpr(node.Lhs)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  jne .L.true.%d", c)
+		genExpr(node.Rhs)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  jne .L.true.%d", c)
+		printlnToFile("  mov $0, %%rax")
+		printlnToFile("  jmp .L.end.%d", c)
+		printlnToFile(".L.true.%d:", c)
+		printlnToFile("  mov $1, %%rax")
+		printlnToFile(".L.end.%d:", c)
+		return
 	case ND_FUNCALL:
 		nargs := 0
 		for arg := node.Args; arg != nil; arg = arg.Next {
