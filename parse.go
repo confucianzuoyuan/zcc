@@ -50,6 +50,7 @@ type Scope struct {
 // Variable attributes such as typedef or extern.
 type VarAttr struct {
 	IsTypeDef bool // Is a typedef
+	IsStatic  bool
 }
 
 var uniqueNameId int = 0
@@ -250,7 +251,7 @@ func consume(rest **Token, tok *Token, str string) bool {
 
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
- *             | "typedef"
+ *             | "typedef" | "static"
  *             | struct-decl | union-decl | typedef-name
  *             | enum-specifier)+
  *
@@ -285,12 +286,20 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	counter := 0
 
 	for tok.isTypename() {
-		// Handle "typedef" keyword.
-		if tok.isEqual("typedef") {
+		// Handle storage class specifiers.
+		if tok.isEqual("typedef") || tok.isEqual("static") {
 			if attr == nil {
 				errorTok(tok, "storage class specifier is not allowed in this context")
 			}
-			attr.IsTypeDef = true
+			if tok.isEqual("typedef") {
+				attr.IsTypeDef = true
+			} else {
+				attr.IsStatic = true
+			}
+
+			if attr.IsTypeDef && attr.IsStatic {
+				errorTok(tok, "typedef and static may not be used together")
+			}
 			tok = tok.Next
 			continue
 		}
@@ -676,7 +685,7 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static",
 	}
 
 	for _, k := range kw {
@@ -1206,12 +1215,14 @@ func createParamLocalVars(param *CType) {
 	}
 }
 
-func function(tok *Token, basety *CType) *Token {
+func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	ty := declarator(&tok, tok, basety)
 
 	fn := newGlobalVar(ty.Name.getIdent(), ty)
 	fn.IsFunction = true
 	fn.IsDefinition = !consume(&tok, tok, ";")
+	fn.IsStatic = attr.IsStatic
+
 	if !fn.IsDefinition {
 		return tok
 	}
@@ -1275,7 +1286,7 @@ func parse(tok *Token) *Obj {
 
 		// Function
 		if isFunction(tok) {
-			tok = function(tok, basety)
+			tok = function(tok, basety, &attr)
 			continue
 		}
 

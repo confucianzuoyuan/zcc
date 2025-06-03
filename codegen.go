@@ -417,7 +417,12 @@ func emitText(prog *Obj) {
 			continue
 		}
 
-		printlnToFile("  .globl %s", fn.Name)
+		if fn.IsStatic {
+			printlnToFile("  .local %s", fn.Name)
+		} else {
+			printlnToFile("  .globl %s", fn.Name)
+		}
+
 		printlnToFile("  .text")
 		printlnToFile("%s:", fn.Name)
 		currentFn = fn

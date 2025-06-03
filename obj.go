@@ -13,6 +13,7 @@ type Obj struct {
 	// Global variable or function
 	IsFunction   bool
 	IsDefinition bool
+	IsStatic     bool
 
 	// Global variable
 	InitData []uint8
