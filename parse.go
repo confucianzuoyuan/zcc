@@ -1009,6 +1009,63 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 	return node
 }
 
+func writeBuf(buf *[]uint8, offset int64, val uint64, sz int64) {
+	if sz == 1 {
+		(*buf)[offset] = uint8(val)
+		return
+	}
+
+	if sz == 2 {
+		(*buf)[offset] = uint8(val)
+		(*buf)[offset+1] = uint8(val >> 8)
+		return
+	}
+
+	if sz == 4 {
+		(*buf)[offset] = uint8(val)
+		(*buf)[offset+1] = uint8(val >> 8)
+		(*buf)[offset+2] = uint8(val >> 16)
+		(*buf)[offset+3] = uint8(val >> 24)
+		return
+	}
+
+	if sz == 8 {
+		for i := int64(0); i < 8; i++ {
+			(*buf)[offset+i] = uint8(val >> (i * 8))
+		}
+		return
+	}
+
+	panic("writeBuf: unsupported size")
+}
+
+func writeGlobalVarData(init *Initializer, ty *CType, buf *[]uint8, offset int64) {
+	if ty.Kind == TY_ARRAY {
+		sz := ty.Base.Size
+		for i := int64(0); i < ty.ArrayLength; i++ {
+			writeGlobalVarData(init.Children[i], ty.Base, buf, offset+sz*i)
+		}
+		return
+	}
+
+	if init.Expr != nil {
+		writeBuf(buf, offset, uint64(eval(init.Expr)), ty.Size)
+	}
+}
+
+// Initializers for global variables are evaluated at compile-time and
+// embedded to .data section. This function serializes Initializer
+// objects to a flat byte array. It is a compile error if an
+// initializer list contains a non-constant expression.
+func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
+	init := initializer(rest, tok, variable.Ty, &variable.Ty)
+
+	// char *buf = calloc(1, var->ty->size);
+	buf := make([]uint8, variable.Ty.Size)
+	writeGlobalVarData(init, variable.Ty, &buf, 0)
+	variable.InitData = buf
+}
+
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
@@ -2021,7 +2078,10 @@ func globalVariable(tok *Token, basety *CType) *Token {
 		first = false
 
 		ty := declarator(&tok, tok, basety)
-		newGlobalVar(ty.Name.getIdent(), ty)
+		variable := newGlobalVar(ty.Name.getIdent(), ty)
+		if tok.isEqual("=") {
+			globalVarInitializer(&tok, tok.Next, variable)
+		}
 	}
 
 	return tok
