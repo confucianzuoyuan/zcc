@@ -4,7 +4,8 @@ type AstNodeKind uint8
 
 // AST Type
 const (
-	ND_ADD       AstNodeKind = iota // +
+	ND_NULL_EXPR AstNodeKind = iota // Do nothing
+	ND_ADD                          // +
 	ND_SUB                          // -
 	ND_MUL                          // *
 	ND_DIV                          // /

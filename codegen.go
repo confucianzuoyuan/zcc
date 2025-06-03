@@ -217,6 +217,8 @@ func genExpr(node *AstNode) {
 	printlnToFile("  .loc 1 %d", node.Tok.LineNo)
 
 	switch node.Kind {
+	case ND_NULL_EXPR:
+		return
 	case ND_NUM:
 		printlnToFile("  mov $%d, %%rax", node.Value)
 		return

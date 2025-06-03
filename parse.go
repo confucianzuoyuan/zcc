@@ -53,6 +53,30 @@ type VarAttr struct {
 	IsStatic  bool
 }
 
+// This struct represents a variable initializer. Since initializers
+// can be nested (e.g. `int x[2][2] = {{1, 2}, {3, 4}}`), this struct
+// is a tree data structure.
+type Initializer struct {
+	Next *Initializer // Next initializer
+	Ty   *CType       // Type of the initializer
+	Tok  *Token       // Representative token
+
+	// If it's not an aggregate type and has an initializer,
+	// `expr` has an initialization expression.
+	Expr *AstNode
+
+	// If it's an initializer for an aggregate type (e.g. array or struct),
+	// `children` has initializers for its children.
+	Children []*Initializer // Initializers for children
+}
+
+// For local variable initializer.
+type InitDesg struct {
+	Next     *InitDesg // Next initializer
+	Index    int
+	Variable *Obj // Variable to initialize
+}
+
 var uniqueNameId int = 0
 
 // All local variable instances created during parsing are
@@ -179,6 +203,94 @@ func newVarNode(variable *Obj, tok *Token) *AstNode {
 	node := newNode(ND_VAR, tok)
 	node.Variable = variable
 	return node
+}
+
+func newInitializer(ty *CType) *Initializer {
+	init := &Initializer{}
+	init.Ty = ty
+
+	if ty.Kind == TY_ARRAY {
+		// init->children = calloc(ty->array_len, sizeof(Initializer *));
+		init.Children = make([]*Initializer, ty.ArrayLength)
+		for i := int64(0); i < ty.ArrayLength; i++ {
+			init.Children[i] = newInitializer(ty.Base)
+		}
+	}
+
+	return init
+}
+
+/*
+ * initializer = "{" initializer ("," initializer)* "}"
+ * 			   | assign
+ */
+func initializer2(rest **Token, tok *Token, init *Initializer) {
+	if init.Ty.Kind == TY_ARRAY {
+		tok = skip(tok, "{")
+
+		for i := int64(0); i < init.Ty.ArrayLength; i++ {
+			if i > 0 {
+				tok = skip(tok, ",")
+			}
+
+			initializer2(&tok, tok, init.Children[i])
+		}
+
+		*rest = skip(tok, "}")
+		return
+	}
+
+	init.Expr = assign(rest, tok)
+}
+
+func initializer(rest **Token, tok *Token, ty *CType) *Initializer {
+	init := newInitializer(ty)
+	initializer2(rest, tok, init)
+	return init
+}
+
+func initDesgExpr(desg *InitDesg, tok *Token) *AstNode {
+	if desg.Variable != nil {
+		return newVarNode(desg.Variable, tok)
+	}
+
+	lhs := initDesgExpr(desg.Next, tok)
+	rhs := newNum(int64(desg.Index), tok)
+	return newUnary(ND_DEREF, newAdd(lhs, rhs, tok), tok)
+}
+
+func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token) *AstNode {
+	if ty.Kind == TY_ARRAY {
+		node := newNode(ND_NULL_EXPR, tok)
+		for i := int64(0); i < ty.ArrayLength; i++ {
+			desg2 := InitDesg{Next: desg, Index: int(i)}
+			rhs := createLocalVarInit(init.Children[i], ty.Base, &desg2, tok)
+			node = newBinary(ND_COMMA, node, rhs, tok)
+		}
+		return node
+	}
+
+	lhs := initDesgExpr(desg, tok)
+	rhs := init.Expr
+	return newBinary(ND_ASSIGN, lhs, rhs, tok)
+}
+
+/*
+ * A variable definition with an initializer is a shorthand notation
+ * for a variable definition followed by assignments. This function
+ * generates assignment expressions for an initializer. For example,
+ * `int x[2][2] = {{6, 7}, {8, 9}}` is converted to the following
+ * expressions:
+ *
+ *   x[0][0] = 6;
+ *   x[0][1] = 7;
+ *   x[1][0] = 8;
+ *   x[1][1] = 9;
+ */
+func localVarInitializer(rest **Token, tok *Token, variable *Obj) *AstNode {
+	init := initializer(rest, tok, variable.Ty)
+	desg := InitDesg{nil, 0, variable}
+	return createLocalVarInit(init, variable.Ty, &desg, tok)
 }
 
 func newVar(name string, ty *CType) *Obj {
@@ -710,15 +822,11 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 
 		variable := newLocalVar(ty.Name.getIdent(), ty)
 
-		if !tok.isEqual("=") {
-			continue
+		if tok.isEqual("=") {
+			expr := localVarInitializer(&tok, tok.Next, variable)
+			cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
+			cur = cur.Next
 		}
-
-		lhs := newVarNode(variable, ty.Name)
-		rhs := assign(&tok, tok.Next)
-		node := newBinary(ND_ASSIGN, lhs, rhs, tok)
-		cur.Next = newUnary(ND_EXPR_STMT, node, tok)
-		cur = cur.Next
 	}
 
 	node := newNode(ND_BLOCK, tok)
