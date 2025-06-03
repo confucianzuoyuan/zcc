@@ -137,10 +137,6 @@ func (tok *Token) isKeyword() bool {
 	return false
 }
 
-func startswith(p int, q string) bool {
-	return string((*currentInput)[p:p+len(q)]) == q
-}
-
 func isHexDigit(c uint8) bool {
 	if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
 		return true
@@ -149,7 +145,7 @@ func isHexDigit(c uint8) bool {
 }
 
 // 返回：(读取的值, new_pos)
-func readEscapedChar(p int) (uint8, int) {
+func readEscapedChar(p int) (int8, int) {
 	buf := currentInput
 	if '0' <= (*buf)[p] && (*buf)[p] <= '7' {
 		// Read an octal number.
@@ -164,7 +160,7 @@ func readEscapedChar(p int) (uint8, int) {
 			}
 		}
 
-		return uint8(c), p
+		return int8(c), p
 	}
 
 	if (*buf)[p] == 'x' {
@@ -178,7 +174,7 @@ func readEscapedChar(p int) (uint8, int) {
 		for ; isHexDigit((*buf)[p]); p += 1 {
 			c = (c << 4) + int(fromHex((*buf)[p]))
 		}
-		return uint8(c), p
+		return int8(c), p
 	}
 
 	// Escape sequences are defined using themselves here. E.g.
@@ -211,7 +207,7 @@ func readEscapedChar(p int) (uint8, int) {
 		// [GNU] \e for the ASCII escape character is a GNU C extension.
 		return 27, p + 1
 	default:
-		return (*buf)[p], p + 1
+		return int8((*buf)[p]), p + 1
 	}
 }
 
@@ -239,7 +235,7 @@ func readStringLiteral(start int) *Token {
 	for p := start + 1; p < end; {
 		if (*buf)[p] == '\\' {
 			c, new_pos := readEscapedChar(p + 1)
-			str[len] = c
+			str[len] = uint8(c)
 			len += 1
 			p = new_pos
 		} else {
@@ -252,6 +248,33 @@ func readStringLiteral(start int) *Token {
 	tok := newToken(TK_STR, start, end+1)
 	tok.Ty = arrayOf(TyChar, len+1)
 	tok.StringLiteral = string(str)
+	return tok
+}
+
+func readCharLiteral(start int) *Token {
+	p := start + 1
+	if (*currentInput)[p] == 0 {
+		errorAt(start, "unclosed char literal")
+	}
+
+	var c int8
+	if (*currentInput)[p] == '\\' {
+		c, p = readEscapedChar(p + 1)
+	} else {
+		c = int8((*currentInput)[p])
+		p += 1
+	}
+
+	end := p
+	for (*currentInput)[end] != '\'' && end < len(*currentInput) {
+		end += 1
+	}
+	if end == len(*currentInput) {
+		errorAt(p, "unclosed char literal")
+	}
+
+	tok := newToken(TK_NUM, start, end+1)
+	tok.Value = int64(c)
 	return tok
 }
 
@@ -312,6 +335,14 @@ func tokenize(filename string, src *[]uint8) *Token {
 			for (*src)[p] != '\n' {
 				p += 1
 			}
+			continue
+		}
+
+		// Character literal
+		if (*src)[p] == '\'' {
+			cur.Next = readCharLiteral(p)
+			cur = cur.Next
+			p += cur.Length
 			continue
 		}
 
