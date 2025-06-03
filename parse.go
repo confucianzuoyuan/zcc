@@ -344,6 +344,17 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	if init.Ty.Kind == TY_STRUCT {
+		// A struct can be initialized with another struct. E.g.
+		// `struct T x = y;` where y is a variable of type `struct T`.
+		// Handle that case first.
+		if !tok.isEqual("{") {
+			expr := assign(rest, tok)
+			expr.addType()
+			if expr.Ty.Kind == TY_STRUCT {
+				init.Expr = expr
+				return
+			}
+		}
 		structInitializer(rest, tok, init)
 		return
 	}
@@ -385,7 +396,7 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 		return node
 	}
 
-	if ty.Kind == TY_STRUCT {
+	if ty.Kind == TY_STRUCT && init.Expr == nil {
 		node := newNode(ND_NULL_EXPR, tok)
 		for mem := ty.Members; mem != nil; mem = mem.Next {
 			desg2 := InitDesg{desg, 0, mem, nil}
