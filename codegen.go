@@ -316,6 +316,15 @@ func genExpr(node *AstNode) {
 			printlnToFile("  mov %%rdx, %%rax")
 		}
 		return
+	case ND_BITAND:
+		printlnToFile("  and %%rdi, %%rax")
+		return
+	case ND_BITOR:
+		printlnToFile("  or %%rdi, %%rax")
+		return
+	case ND_BITXOR:
+		printlnToFile("  xor %%rdi, %%rax")
+		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
 		printlnToFile("  cmp %s, %s", di, ax)
 

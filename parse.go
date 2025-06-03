@@ -850,10 +850,10 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// assign = equality (assign-op assign)?
-// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+// assign = bitor (assign-op assign)?
+// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
 func assign(rest **Token, tok *Token) *AstNode {
-	node := equality(&tok, tok)
+	node := bitor(&tok, tok)
 
 	if tok.isEqual("=") {
 		return newBinary(ND_ASSIGN, node, assign(rest, tok.Next), tok)
@@ -879,6 +879,51 @@ func assign(rest **Token, tok *Token) *AstNode {
 		return toAssign(newBinary(ND_MOD, node, assign(rest, tok.Next), tok))
 	}
 
+	if tok.isEqual("&=") {
+		return toAssign(newBinary(ND_BITAND, node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("|=") {
+		return toAssign(newBinary(ND_BITOR, node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("^=") {
+		return toAssign(newBinary(ND_BITXOR, node, assign(rest, tok.Next), tok))
+	}
+
+	*rest = tok
+	return node
+}
+
+// bitor = bitxor ("|" bitxor)*
+func bitor(rest **Token, tok *Token) *AstNode {
+	node := bitxor(&tok, tok)
+	for tok.isEqual("|") {
+		start := tok
+		node = newBinary(ND_BITOR, node, bitxor(&tok, tok.Next), start)
+	}
+	*rest = tok
+	return node
+}
+
+// bitxor = bitand ("^" bitand)*
+func bitxor(rest **Token, tok *Token) *AstNode {
+	node := bitand(&tok, tok)
+	for tok.isEqual("^") {
+		start := tok
+		node = newBinary(ND_BITXOR, node, bitand(&tok, tok.Next), start)
+	}
+	*rest = tok
+	return node
+}
+
+// bitand = equality ("&" equality)*
+func bitand(rest **Token, tok *Token) *AstNode {
+	node := equality(&tok, tok)
+	for tok.isEqual("&") {
+		start := tok
+		node = newBinary(ND_BITAND, node, equality(&tok, tok.Next), start)
+	}
 	*rest = tok
 	return node
 }
