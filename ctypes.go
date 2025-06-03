@@ -170,7 +170,7 @@ func (node *AstNode) addType() {
 			node.Ty = TyLong
 		}
 		return
-	case ND_ADD, ND_SUB, ND_MUL, ND_DIV:
+	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD:
 		usualArithConv(&node.Lhs, &node.Rhs)
 		node.Ty = node.Lhs.Ty
 		return

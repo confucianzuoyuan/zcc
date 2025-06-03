@@ -851,7 +851,7 @@ func expr(rest **Token, tok *Token) *AstNode {
 }
 
 // assign = equality (assign-op assign)?
-// assign-op = "=" | "+=" | "-=" | "*=" | "/="
+// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
 func assign(rest **Token, tok *Token) *AstNode {
 	node := equality(&tok, tok)
 
@@ -873,6 +873,10 @@ func assign(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("/=") {
 		return toAssign(newBinary(ND_DIV, node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("%=") {
+		return toAssign(newBinary(ND_MOD, node, assign(rest, tok.Next), tok))
 	}
 
 	*rest = tok
@@ -1016,7 +1020,7 @@ func add(rest **Token, tok *Token) *AstNode {
 	}
 }
 
-// mul = unary ("*" cast | "/" cast)*
+// mul = unary ("*" cast | "/" cast | "%" cast)*
 func mul(rest **Token, tok *Token) *AstNode {
 	node := castExpr(&tok, tok)
 
@@ -1030,6 +1034,11 @@ func mul(rest **Token, tok *Token) *AstNode {
 
 		if tok.isEqual("/") {
 			node = newBinary(ND_DIV, node, castExpr(&tok, tok.Next), start)
+			continue
+		}
+
+		if tok.isEqual("%") {
+			node = newBinary(ND_MOD, node, castExpr(&tok, tok.Next), start)
 			continue
 		}
 

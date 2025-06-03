@@ -304,13 +304,17 @@ func genExpr(node *AstNode) {
 	case ND_MUL:
 		printlnToFile("  imul %s, %s", di, ax)
 		return
-	case ND_DIV:
+	case ND_DIV, ND_MOD:
 		if node.Lhs.Ty.Size == 8 {
 			printlnToFile("  cqo")
 		} else {
 			printlnToFile("  cdq")
 		}
 		printlnToFile("  idiv %s", di)
+
+		if node.Kind == ND_MOD {
+			printlnToFile("  mov %%rdx, %%rax")
+		}
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
 		printlnToFile("  cmp %s, %s", di, ax)
