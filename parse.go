@@ -1048,6 +1048,13 @@ func writeGlobalVarData(init *Initializer, ty *CType, buf *[]uint8, offset int64
 		return
 	}
 
+	if ty.Kind == TY_STRUCT {
+		for mem := ty.Members; mem != nil; mem = mem.Next {
+			writeGlobalVarData(init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset)
+		}
+		return
+	}
+
 	if init.Expr != nil {
 		writeBuf(buf, offset, uint64(eval(init.Expr)), ty.Size)
 	}
