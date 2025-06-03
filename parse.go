@@ -1087,7 +1087,13 @@ func unary(rest **Token, tok *Token) *AstNode {
 	return postfix(rest, tok)
 }
 
-// postfix = primary ("[" expr "]" | "." ident | "->" ident)*
+// Convert A++ to `(typeof A)((A += 1) - 1)`
+func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
+	node.addType()
+	return newCast(newAdd(toAssign(newAdd(node, newNum(int64(addend), tok), tok)), newNum(-int64(addend), tok), tok), node.Ty)
+}
+
+// postfix = primary ("[" expr "]" | "." ident | "->" ident | "++" | "--")*
 func postfix(rest **Token, tok *Token) *AstNode {
 	node := primary(&tok, tok)
 
@@ -1111,6 +1117,18 @@ func postfix(rest **Token, tok *Token) *AstNode {
 			// x->y is short for (*x).y
 			node = structRef(newUnary(ND_DEREF, node, tok), tok.Next)
 			tok = tok.Next.Next
+			continue
+		}
+
+		if tok.isEqual("++") {
+			node = newIncDec(node, tok, 1)
+			tok = tok.Next
+			continue
+		}
+
+		if tok.isEqual("--") {
+			node = newIncDec(node, tok, -1)
+			tok = tok.Next
 			continue
 		}
 
