@@ -105,6 +105,31 @@ func arrayOf(base *CType, len int64) *CType {
 	return ty
 }
 
+func (ty *CType) getCommonType(other *CType) *CType {
+	if ty.Base != nil {
+		return pointerTo(ty.Base)
+	}
+
+	if ty.Size == 8 || other.Size == 8 {
+		return TyLong
+	}
+
+	return TyInt
+}
+
+// For many binary operators, we implicitly promote operands so that
+// both operands have the same type. Any integral type smaller than
+// int is always promoted to int. If the type of one operand is larger
+// than the other's (e.g. "long" vs. "int"), the smaller operand will
+// be promoted to match with the other.
+//
+// This operation is called the "usual arithmetic conversion".
+func usualArithConv(lhs **AstNode, rhs **AstNode) {
+	ty := (*lhs).Ty.getCommonType((*rhs).Ty)
+	*lhs = newCast(*lhs, ty)
+	*rhs = newCast(*rhs, ty)
+}
+
 func (node *AstNode) addType() {
 	if node == nil || node.Ty != nil {
 		return
@@ -126,16 +151,36 @@ func (node *AstNode) addType() {
 	}
 
 	switch node.Kind {
-	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_NEG:
+	case ND_NUM:
+		if node.Value == int64(int(node.Value)) {
+			node.Ty = TyInt
+		} else {
+			node.Ty = TyLong
+		}
+		return
+	case ND_ADD, ND_SUB, ND_MUL, ND_DIV:
+		usualArithConv(&node.Lhs, &node.Rhs)
 		node.Ty = node.Lhs.Ty
+		return
+	case ND_NEG:
+		ty := TyInt.getCommonType(node.Lhs.Ty)
+		node.Lhs = newCast(node.Lhs, ty)
+		node.Ty = ty
 		return
 	case ND_ASSIGN:
 		if node.Lhs.Ty.Kind == TY_ARRAY {
 			errorTok(node.Lhs.Tok, "not an lvalue")
 		}
+		if node.Lhs.Ty.Kind != TY_STRUCT {
+			node.Rhs = newCast(node.Rhs, node.Lhs.Ty)
+		}
 		node.Ty = node.Lhs.Ty
 		return
-	case ND_EQ, ND_NE, ND_LT, ND_LE, ND_NUM, ND_FUNCALL:
+	case ND_EQ, ND_NE, ND_LT, ND_LE:
+		usualArithConv(&node.Lhs, &node.Rhs)
+		node.Ty = TyInt
+		return
+	case ND_FUNCALL:
 		node.Ty = TyLong
 		return
 	case ND_VAR:

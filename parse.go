@@ -149,6 +149,13 @@ func newNum(value int64, tok *Token) *AstNode {
 	return node
 }
 
+func newLong(value int64, tok *Token) *AstNode {
+	node := newNum(value, tok)
+	node.Value = value
+	node.Ty = TyLong
+	return node
+}
+
 func newVarNode(variable *Obj, tok *Token) *AstNode {
 	node := newNode(ND_VAR, tok)
 	node.Variable = variable
@@ -821,7 +828,7 @@ func newAdd(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 	}
 
 	// ptr + num
-	rhs = newBinary(ND_MUL, rhs, newNum(lhs.Ty.Base.Size, tok), tok)
+	rhs = newBinary(ND_MUL, rhs, newLong(lhs.Ty.Base.Size, tok), tok)
 	return newBinary(ND_ADD, lhs, rhs, tok)
 }
 
@@ -837,7 +844,7 @@ func newSub(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 
 	// ptr - num
 	if lhs.Ty.Base != nil && rhs.Ty.isInteger() {
-		rhs = newBinary(ND_MUL, rhs, newNum(lhs.Ty.Base.Size, tok), tok)
+		rhs = newBinary(ND_MUL, rhs, newLong(lhs.Ty.Base.Size, tok), tok)
 		rhs.addType()
 		node := newBinary(ND_SUB, lhs, rhs, tok)
 		node.Ty = lhs.Ty
