@@ -996,7 +996,9 @@ func funcall(rest **Token, tok *Token) *AstNode {
 		errorTok(start, "not a function")
 	}
 
-	ty := sc.Variable.Ty.ReturnType
+	ty := sc.Variable.Ty
+	paramTy := ty.Params
+
 	head := AstNode{}
 	cur := &head
 
@@ -1004,16 +1006,29 @@ func funcall(rest **Token, tok *Token) *AstNode {
 		if cur != &head {
 			tok = skip(tok, ",")
 		}
-		cur.Next = assign(&tok, tok)
+
+		arg := assign(&tok, tok)
+		arg.addType()
+
+		if paramTy != nil {
+			if paramTy.Kind == TY_STRUCT || paramTy.Kind == TY_UNION {
+				errorTok(arg.Tok, "passing struct or union is not supported yet")
+			}
+
+			arg = newCast(arg, paramTy)
+			paramTy = paramTy.Next
+		}
+
+		cur.Next = arg
 		cur = cur.Next
-		cur.addType()
 	}
 
 	*rest = skip(tok, ")")
 
 	node := newNode(ND_FUNCALL, start)
 	node.FuncName = string((*currentInput)[start.Location : start.Location+start.Length])
-	node.Ty = ty
+	node.FuncType = ty
+	node.Ty = ty.ReturnType
 	node.Args = head.Next
 	return node
 }

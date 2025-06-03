@@ -53,6 +53,7 @@ type AstNode struct {
 
 	// Function call
 	FuncName string
+	FuncType *CType
 	Args     *AstNode
 
 	Variable *Obj  // Used if kind == ND_VAR
