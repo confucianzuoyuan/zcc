@@ -733,7 +733,14 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node := newNode(ND_FOR, tok)
 		tok = skip(tok.Next, "(")
 
-		node.Init = exprStmt(&tok, tok)
+		enterScope()
+
+		if tok.isTypename() {
+			basety := declspec(&tok, tok, nil)
+			node.Init = declaration(&tok, tok, basety)
+		} else {
+			node.Init = exprStmt(&tok, tok)
+		}
 
 		if !tok.isEqual(";") {
 			node.Cond = expr(&tok, tok)
@@ -746,6 +753,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		tok = skip(tok, ")")
 
 		node.Then = stmt(rest, tok)
+		leaveScope()
 		return node
 	}
 
