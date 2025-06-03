@@ -144,6 +144,14 @@ func isHexDigit(c uint8) bool {
 	return false
 }
 
+func isBinDigit(c uint8) bool {
+	return c == '0' || c == '1'
+}
+
+func isOctalDigit(c uint8) bool {
+	return c >= '0' && c <= '7'
+}
+
 // 返回：(读取的值, new_pos)
 func readEscapedChar(p int) (int8, int) {
 	buf := currentInput
@@ -278,6 +286,62 @@ func readCharLiteral(start int) *Token {
 	return tok
 }
 
+func readIntLiteral(start int) *Token {
+	p := start
+
+	base := 10
+	if ((*currentInput)[p] == '0' && ((*currentInput)[p+1] == 'x' || (*currentInput)[p+1] == 'X')) && isHexDigit((*currentInput)[p+2]) {
+		p += 2
+		base = 16
+	} else if ((*currentInput)[p] == '0' && ((*currentInput)[p+1] == 'b' || (*currentInput)[p+1] == 'B')) && isBinDigit((*currentInput)[p+2]) {
+		p += 2
+		base = 2
+	} else if (*currentInput)[p] == '0' {
+		base = 8
+	}
+
+	var val uint64
+	if base == 10 {
+		end := p
+		for isDecimalDigit((*currentInput)[end]) {
+			end += 1
+		}
+		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 10, 64)
+		p = end
+	} else if base == 2 {
+		end := p
+		for isBinDigit((*currentInput)[end]) {
+			end += 1
+		}
+		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 2, 64)
+		p = end
+	} else if base == 16 {
+		end := p
+		for isHexDigit((*currentInput)[end]) {
+			end += 1
+		}
+		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 16, 64)
+		p = end
+	} else if base == 8 {
+		end := p
+		for isOctalDigit((*currentInput)[end]) {
+			end += 1
+		}
+		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 8, 64)
+		p = end
+	} else {
+		errorAt(p, "invalid base")
+	}
+
+	if isAlphaNumber((*currentInput)[p]) {
+		errorAt(p, "invalid digit")
+	}
+
+	tok := newToken(TK_NUM, start, p)
+	tok.Value = int64(val)
+	return tok
+}
+
 func convertKeywords(tok *Token) {
 	for t := tok; t.Kind != TK_EOF; t = t.Next {
 		if t.isKeyword() {
@@ -316,6 +380,10 @@ func isDecimalDigit(c uint8) bool {
 		return true
 	}
 	return false
+}
+
+func isAlphaNumber(c uint8) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // Tokenize a given string and returns new tokens.
@@ -370,14 +438,9 @@ func tokenize(filename string, src *[]uint8) *Token {
 
 		// Numeric literal
 		if isDecimalDigit((*src)[p]) {
-			cur.Next = newToken(TK_NUM, p, p)
+			cur.Next = readIntLiteral(p)
 			cur = cur.Next
-			q := p
-			for isDecimalDigit((*src)[p]) {
-				p += 1
-			}
-			cur.Value, _ = strconv.ParseInt(string((*src)[q:p]), 10, 64)
-			cur.Length = p - q
+			p += cur.Length
 			continue
 		}
 
