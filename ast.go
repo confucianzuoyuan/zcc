@@ -80,6 +80,7 @@ func (node *AstNode) String() string {
 type Member struct {
 	Next   *Member
 	Ty     *CType
+	Tok    *Token // for error messages
 	Name   *Token
 	Offset int64 // Offset from the beginning of the struct
 }

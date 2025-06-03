@@ -575,9 +575,22 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	return ty
 }
 
+// array-dimensions = num? "]" type-suffix
+func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
+	if tok.isEqual("]") {
+		ty = typeSuffix(rest, tok.Next, ty)
+		return arrayOf(ty, -1)
+	}
+
+	sz := tok.getNumber()
+	tok = skip(tok.Next, "]")
+	ty = typeSuffix(rest, tok, ty)
+	return arrayOf(ty, sz)
+}
+
 /*
  * type-suffix = "(" func-params
- *	           | "[" num "]" type-suffix
+ *	           | "[" array-dimensions
  *	           | ε
  */
 func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
@@ -586,10 +599,7 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 	}
 
 	if tok.isEqual("[") {
-		sz := tok.Next.getNumber()
-		tok = skip(tok.Next.Next, "]")
-		ty = typeSuffix(rest, tok, ty)
-		return arrayOf(ty, sz)
+		return arrayDimensions(rest, tok.Next, ty)
 	}
 
 	*rest = tok
@@ -659,6 +669,9 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 		i += 1
 
 		ty := declarator(&tok, tok, basety)
+		if ty.Size < 0 {
+			errorTok(tok, "variable has incomplete type")
+		}
 		if ty.Kind == TY_VOID {
 			errorTok(tok, "variable declared as void")
 		}
