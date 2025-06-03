@@ -220,6 +220,16 @@ func newInitializer(ty *CType) *Initializer {
 	return init
 }
 
+func skipExcessElement(tok *Token) *Token {
+	if tok.isEqual("{") {
+		tok = skipExcessElement(tok.Next)
+		return skip(tok, "}")
+	}
+
+	assign(&tok, tok)
+	return tok
+}
+
 /*
  * initializer = "{" initializer ("," initializer)* "}"
  * 			   | assign
@@ -228,15 +238,18 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 	if init.Ty.Kind == TY_ARRAY {
 		tok = skip(tok, "{")
 
-		for i := int64(0); i < init.Ty.ArrayLength && !tok.isEqual("}"); i++ {
+		for i := int64(0); !consume(rest, tok, "}"); i++ {
 			if i > 0 {
 				tok = skip(tok, ",")
 			}
 
-			initializer2(&tok, tok, init.Children[i])
+			if i < init.Ty.ArrayLength {
+				initializer2(&tok, tok, init.Children[i])
+			} else {
+				tok = skipExcessElement(tok)
+			}
 		}
 
-		*rest = skip(tok, "}")
 		return
 	}
 
