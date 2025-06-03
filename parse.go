@@ -1043,8 +1043,11 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// assign = logor (assign-op assign)?
-// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
+/*
+ * assign = logor (assign-op assign)?
+ * assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^="
+ *           | "<<= | ">>="
+ */
 func assign(rest **Token, tok *Token) *AstNode {
 	node := logor(&tok, tok)
 
@@ -1082,6 +1085,14 @@ func assign(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("^=") {
 		return toAssign(newBinary(ND_BITXOR, node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("<<=") {
+		return toAssign(newBinary(ND_SHL, node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual(">>=") {
+		return toAssign(newBinary(ND_SHR, node, assign(rest, tok.Next), tok))
 	}
 
 	*rest = tok
@@ -1165,30 +1176,52 @@ func equality(rest **Token, tok *Token) *AstNode {
 	}
 }
 
-// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+// relational = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
 func relational(rest **Token, tok *Token) *AstNode {
-	node := add(&tok, tok)
+	node := shift(&tok, tok)
 
 	for {
 		start := tok
 
 		if tok.isEqual("<") {
-			node = newBinary(ND_LT, node, add(&tok, tok.Next), start)
+			node = newBinary(ND_LT, node, shift(&tok, tok.Next), start)
 			continue
 		}
 
 		if tok.isEqual("<=") {
-			node = newBinary(ND_LE, node, add(&tok, tok.Next), start)
+			node = newBinary(ND_LE, node, shift(&tok, tok.Next), start)
 			continue
 		}
 
 		if tok.isEqual(">") {
-			node = newBinary(ND_LT, add(&tok, tok.Next), node, start)
+			node = newBinary(ND_LT, shift(&tok, tok.Next), node, start)
 			continue
 		}
 
 		if tok.isEqual(">=") {
-			node = newBinary(ND_LE, add(&tok, tok.Next), node, start)
+			node = newBinary(ND_LE, shift(&tok, tok.Next), node, start)
+			continue
+		}
+
+		*rest = tok
+		return node
+	}
+}
+
+// shift = add ("<<" add | ">>" add)*
+func shift(rest **Token, tok *Token) *AstNode {
+	node := add(&tok, tok)
+
+	for {
+		start := tok
+
+		if tok.isEqual("<<") {
+			node = newBinary(ND_SHL, node, add(&tok, tok.Next), start)
+			continue
+		}
+
+		if tok.isEqual(">>") {
+			node = newBinary(ND_SHR, node, add(&tok, tok.Next), start)
 			continue
 		}
 

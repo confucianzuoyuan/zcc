@@ -24,6 +24,8 @@ const (
 	ND_BITAND                       // &
 	ND_BITOR                        // |
 	ND_BITXOR                       // ^
+	ND_SHL                          // <<
+	ND_SHR                          // >>
 	ND_LOGAND                       // &&
 	ND_LOGOR                        // ||
 	ND_RETURN                       // "return"

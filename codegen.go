@@ -368,6 +368,18 @@ func genExpr(node *AstNode) {
 
 		printlnToFile("  movzb %%al, %%rax")
 		return
+	case ND_SHL:
+		printlnToFile("  mov %%rdi, %%rcx")
+		printlnToFile("  shl %%cl, %s", ax)
+		return
+	case ND_SHR:
+		printlnToFile("  mov %%rdi, %%rcx")
+		if node.Ty.Size == 8 {
+			printlnToFile("  sar %%cl, %s", ax)
+		} else {
+			printlnToFile("  sar %%cl, %s", ax)
+		}
+		return
 	}
 
 	errorTok(node.Tok, "invalid expression")
