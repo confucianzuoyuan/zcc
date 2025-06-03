@@ -822,6 +822,23 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
+// Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
+// where tmp is a fresh pointer variable
+func toAssign(binary *AstNode) *AstNode {
+	binary.Lhs.addType()
+	binary.Rhs.addType()
+
+	tok := binary.Tok
+
+	variable := newLocalVar("", pointerTo(binary.Lhs.Ty))
+
+	expr1 := newBinary(ND_ASSIGN, newVarNode(variable, tok), newUnary(ND_ADDR, binary.Lhs, tok), tok)
+
+	expr2 := newBinary(ND_ASSIGN, newUnary(ND_DEREF, newVarNode(variable, tok), tok), newBinary(binary.Kind, newUnary(ND_DEREF, newVarNode(variable, tok), tok), binary.Rhs, tok), tok)
+
+	return newBinary(ND_COMMA, expr1, expr2, tok)
+}
+
 // expr = assign ("," expr)?
 func expr(rest **Token, tok *Token) *AstNode {
 	node := assign(&tok, tok)
@@ -833,12 +850,29 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// assign = equality ("=" assign)?
+// assign = equality (assign-op assign)?
+// assign-op = "=" | "+=" | "-=" | "*=" | "/="
 func assign(rest **Token, tok *Token) *AstNode {
 	node := equality(&tok, tok)
 
 	if tok.isEqual("=") {
 		return newBinary(ND_ASSIGN, node, assign(rest, tok.Next), tok)
+	}
+
+	if tok.isEqual("+=") {
+		return toAssign(newAdd(node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("-=") {
+		return toAssign(newSub(node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("*=") {
+		return toAssign(newBinary(ND_MUL, node, assign(rest, tok.Next), tok))
+	}
+
+	if tok.isEqual("/=") {
+		return toAssign(newBinary(ND_DIV, node, assign(rest, tok.Next), tok))
 	}
 
 	*rest = tok
