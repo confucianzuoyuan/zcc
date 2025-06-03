@@ -399,14 +399,14 @@ func genStmt(node *AstNode) {
 		if node.Cond != nil {
 			genExpr(node.Cond)
 			printlnToFile("  cmp $0, %%rax")
-			printlnToFile("  je  .L.end.%d", c)
+			printlnToFile("  je %s", node.BreakLabel)
 		}
 		genStmt(node.Then)
 		if node.Inc != nil {
 			genExpr(node.Inc)
 		}
 		printlnToFile("  jmp .L.begin.%d", c)
-		printlnToFile(".L.end.%d:", c)
+		printlnToFile("%s:", node.BreakLabel)
 		return
 	case ND_BLOCK:
 		for n := node.Body; n != nil; n = n.Next {

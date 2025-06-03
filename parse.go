@@ -71,6 +71,9 @@ var currentFunction *Obj
 var gotos *AstNode
 var labels *AstNode
 
+// Current "goto" jump target.
+var breakLabel string
+
 func enterScope() {
 	sc := &Scope{}
 	sc.Next = scope
@@ -748,6 +751,7 @@ func (tok *Token) isTypename() bool {
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
  *      | "goto" ident ";"
+ *      | "break" ";"
  *	    | ident ":" stmt
  *	    | "{" compound-stmt
  *	    | expr-stmt
@@ -782,6 +786,10 @@ func stmt(rest **Token, tok *Token) *AstNode {
 
 		enterScope()
 
+		brk := breakLabel
+		node.BreakLabel = newUniqueName()
+		breakLabel = node.BreakLabel
+
 		if tok.isTypename() {
 			basety := declspec(&tok, tok, nil)
 			node.Init = declaration(&tok, tok, basety)
@@ -801,6 +809,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 
 		node.Then = stmt(rest, tok)
 		leaveScope()
+		breakLabel = brk
 		return node
 	}
 
@@ -809,7 +818,13 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		tok = skip(tok.Next, "(")
 		node.Cond = expr(&tok, tok)
 		tok = skip(tok, ")")
+
+		brk := breakLabel
+		node.BreakLabel = newUniqueName()
+		breakLabel = node.BreakLabel
+
 		node.Then = stmt(rest, tok)
+		breakLabel = brk
 		return node
 	}
 
@@ -823,6 +838,16 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node.GotoNext = gotos
 		gotos = node
 		*rest = skip(tok.Next.Next, ";")
+		return node
+	}
+
+	if tok.isEqual("break") {
+		if breakLabel == "" {
+			errorTok(tok, "stray break")
+		}
+		node := newNode(ND_GOTO, tok)
+		node.UniqueLabel = breakLabel
+		*rest = skip(tok.Next, ";")
 		return node
 	}
 
