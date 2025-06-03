@@ -237,13 +237,6 @@ func findTypeDef(tok *Token) *CType {
 	return nil
 }
 
-func (tok *Token) getNumber() int64 {
-	if tok.Kind != TK_NUM {
-		errorTok(tok, "expected a number")
-	}
-	return tok.Value
-}
-
 func skip(tok *Token, op string) *Token {
 	if !tok.isEqual(op) {
 		e := fmt.Sprintf("expected '%s'", op)
@@ -423,8 +416,7 @@ func enumSpecifier(rest **Token, tok *Token) *CType {
 		tok = tok.Next
 
 		if tok.isEqual("=") {
-			val = tok.Next.getNumber()
-			tok = tok.Next.Next
+			val = constExpr(&tok, tok.Next)
 		}
 
 		sc := pushScope(name)
@@ -615,15 +607,15 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	return ty
 }
 
-// array-dimensions = num? "]" type-suffix
+// array-dimensions = const-expr? "]" type-suffix
 func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 	if tok.isEqual("]") {
 		ty = typeSuffix(rest, tok.Next, ty)
 		return arrayOf(ty, -1)
 	}
 
-	sz := tok.getNumber()
-	tok = skip(tok.Next, "]")
+	sz := constExpr(&tok, tok)
+	tok = skip(tok, "]")
 	ty = typeSuffix(rest, tok, ty)
 	return arrayOf(ty, sz)
 }
@@ -754,7 +746,7 @@ func (tok *Token) isTypename() bool {
  * stmt = "return" expr ";"
  *	    | "if" "(" expr ")" stmt ("else" stmt)?
  *      | "switch" "(" expr ")" stmt
- *	    | "case" num ":" stmt
+ *	    | "case" const-expr ":" stmt
  *	    | "default" ":" stmt
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
@@ -814,10 +806,9 @@ func stmt(rest **Token, tok *Token) *AstNode {
 			errorTok(tok, "stray case")
 		}
 
-		val := tok.Next.getNumber()
-
 		node := newNode(ND_CASE, tok)
-		tok = skip(tok.Next.Next, ":")
+		val := constExpr(&tok, tok.Next)
+		tok = skip(tok, ":")
 		node.Label = newUniqueName()
 		node.Lhs = stmt(rest, tok)
 		node.Value = val
@@ -1013,6 +1004,103 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 	node.Lhs = expr(&tok, tok)
 	*rest = skip(tok, ";")
 	return node
+}
+
+// Evaluate a given node as a constant expression.
+func eval(node *AstNode) int64 {
+	node.addType()
+
+	switch node.Kind {
+	case ND_ADD:
+		return eval(node.Lhs) + eval(node.Rhs)
+	case ND_SUB:
+		return eval(node.Lhs) - eval(node.Rhs)
+	case ND_MUL:
+		return eval(node.Lhs) * eval(node.Rhs)
+	case ND_DIV:
+		return eval(node.Lhs) / eval(node.Rhs)
+	case ND_NEG:
+		return -eval(node.Lhs)
+	case ND_MOD:
+		return eval(node.Lhs) % eval(node.Rhs)
+	case ND_BITAND:
+		return eval(node.Lhs) & eval(node.Rhs)
+	case ND_BITOR:
+		return eval(node.Lhs) | eval(node.Rhs)
+	case ND_BITXOR:
+		return eval(node.Lhs) ^ eval(node.Rhs)
+	case ND_SHL:
+		return eval(node.Lhs) << eval(node.Rhs)
+	case ND_SHR:
+		return eval(node.Lhs) >> eval(node.Rhs)
+	case ND_EQ:
+		if eval(node.Lhs) == eval(node.Rhs) {
+			return 1
+		}
+		return 0
+	case ND_NE:
+		if eval(node.Lhs) != eval(node.Rhs) {
+			return 1
+		}
+		return 0
+	case ND_LT:
+		if eval(node.Lhs) < eval(node.Rhs) {
+			return 1
+		}
+		return 0
+	case ND_LE:
+		if eval(node.Lhs) <= eval(node.Rhs) {
+			return 1
+		}
+		return 0
+	case ND_COND:
+		if eval(node.Cond) != 0 {
+			return eval(node.Then)
+		} else {
+			return eval(node.Else)
+		}
+	case ND_COMMA:
+		return eval(node.Rhs)
+	case ND_NOT:
+		if eval(node.Lhs) == 0 {
+			return 1
+		}
+		return 0
+	case ND_BITNOT:
+		return ^eval(node.Lhs)
+	case ND_LOGAND:
+		if eval(node.Lhs) != 0 && eval(node.Rhs) != 0 {
+			return 1
+		}
+		return 0
+	case ND_LOGOR:
+		if eval(node.Lhs) != 0 || eval(node.Rhs) != 0 {
+			return 1
+		}
+		return 0
+	case ND_CAST:
+		if node.Ty.isInteger() {
+			switch node.Ty.Size {
+			case 1:
+				return int64(int8(eval(node.Lhs)))
+			case 2:
+				return int64(int16(eval(node.Lhs)))
+			case 4:
+				return int64(int32(eval(node.Lhs)))
+			}
+		}
+		return eval(node.Lhs)
+	case ND_NUM:
+		return node.Value
+	}
+
+	errorTok(node.Tok, "not a compile-time constant")
+	panic("unreachable")
+}
+
+func constExpr(rest **Token, tok *Token) int64 {
+	node := conditional(rest, tok)
+	return eval(node)
 }
 
 // Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
