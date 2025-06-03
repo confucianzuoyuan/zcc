@@ -29,6 +29,8 @@ const (
 	ND_RETURN                       // "return"
 	ND_IF                           // "if"
 	ND_FOR                          // "for" or "while"
+	ND_SWITCH                       // "switch"
+	ND_CASE                         // "case"
 	ND_BLOCK                        // { ... }
 	ND_GOTO                         // "goto"
 	ND_LABEL                        // Labeled statement
@@ -75,8 +77,15 @@ type AstNode struct {
 	UniqueLabel string
 	GotoNext    *AstNode
 
-	Variable *Obj  // Used if kind == ND_VAR
-	Value    int64 // Used if kind == ND_NUM
+	// Switch-cases
+	CaseNext    *AstNode
+	DefaultCase *AstNode
+
+	// Variable
+	Variable *Obj
+
+	// Numeric literal
+	Value int64
 }
 
 func (node *AstNode) String() string {

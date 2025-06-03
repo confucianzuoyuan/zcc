@@ -75,6 +75,10 @@ var labels *AstNode
 var breakLabel string
 var continueLabel string
 
+// Points to a node representing a switch if we are parsing
+// a switch statement. Otherwise, NULL.
+var currentSwitch *AstNode
+
 func enterScope() {
 	sc := &Scope{}
 	sc.Next = scope
@@ -749,6 +753,9 @@ func (tok *Token) isTypename() bool {
 /*
  * stmt = "return" expr ";"
  *	    | "if" "(" expr ")" stmt ("else" stmt)?
+ *      | "switch" "(" expr ")" stmt
+ *	    | "case" num ":" stmt
+ *	    | "default" ":" stmt
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
  *      | "goto" ident ";"
@@ -779,6 +786,55 @@ func stmt(rest **Token, tok *Token) *AstNode {
 			node.Else = stmt(&tok, tok.Next)
 		}
 		*rest = tok
+		return node
+	}
+
+	if tok.isEqual("switch") {
+		node := newNode(ND_SWITCH, tok)
+		tok = skip(tok.Next, "(")
+		node.Cond = expr(&tok, tok)
+		tok = skip(tok, ")")
+
+		sw := currentSwitch
+		currentSwitch = node
+
+		brk := breakLabel
+		node.BreakLabel = newUniqueName()
+		breakLabel = node.BreakLabel
+
+		node.Then = stmt(rest, tok)
+
+		currentSwitch = sw
+		breakLabel = brk
+		return node
+	}
+
+	if tok.isEqual("case") {
+		if currentSwitch == nil {
+			errorTok(tok, "stray case")
+		}
+
+		val := tok.Next.getNumber()
+
+		node := newNode(ND_CASE, tok)
+		tok = skip(tok.Next.Next, ":")
+		node.Label = newUniqueName()
+		node.Lhs = stmt(rest, tok)
+		node.Value = val
+		node.CaseNext = currentSwitch.CaseNext
+		currentSwitch.CaseNext = node
+		return node
+	}
+
+	if tok.isEqual("default") {
+		if currentSwitch == nil {
+			errorTok(tok, "stray default")
+		}
+		node := newNode(ND_CASE, tok)
+		tok = skip(tok.Next, ":")
+		node.Label = newUniqueName()
+		node.Lhs = stmt(rest, tok)
+		currentSwitch.DefaultCase = node
 		return node
 	}
 

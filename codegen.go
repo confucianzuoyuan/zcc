@@ -409,6 +409,30 @@ func genStmt(node *AstNode) {
 		printlnToFile("  jmp .L.begin.%d", c)
 		printlnToFile("%s:", node.BreakLabel)
 		return
+	case ND_SWITCH:
+		genExpr(node.Cond)
+
+		for n := node.CaseNext; n != nil; n = n.CaseNext {
+			reg := "%eax"
+			if node.Cond.Ty.Size == 8 {
+				reg = "%rax"
+			}
+			printlnToFile("  cmp $%d, %s", n.Value, reg)
+			printlnToFile("  je %s", n.Label)
+		}
+
+		if node.DefaultCase != nil {
+			printlnToFile("  jmp %s", node.DefaultCase.Label)
+		}
+
+		printlnToFile("  jmp %s", node.BreakLabel)
+		genStmt(node.Then)
+		printlnToFile("%s:", node.BreakLabel)
+		return
+	case ND_CASE:
+		printlnToFile("%s:", node.Label)
+		genStmt(node.Lhs)
+		return
 	case ND_BLOCK:
 		for n := node.Body; n != nil; n = n.Next {
 			genStmt(n)
