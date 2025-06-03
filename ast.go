@@ -18,6 +18,7 @@ const (
 	ND_MEMBER                       // . (struct member access)
 	ND_ADDR                         // unary &
 	ND_DEREF                        // unary *
+	ND_NOT                          // !
 	ND_RETURN                       // "return"
 	ND_IF                           // "if"
 	ND_FOR                          // "for" or "while"

@@ -195,6 +195,9 @@ func (node *AstNode) addType() {
 	case ND_FUNCALL:
 		node.Ty = TyLong
 		return
+	case ND_NOT:
+		node.Ty = TyInt
+		return
 	case ND_VAR:
 		node.Ty = node.Variable.Ty
 		return

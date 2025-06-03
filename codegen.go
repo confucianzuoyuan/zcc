@@ -254,6 +254,12 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 		cast(node.Lhs.Ty, node.Ty)
 		return
+	case ND_NOT:
+		genExpr(node.Lhs)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  sete %%al")
+		printlnToFile("  movzx %%al, %%rax")
+		return
 	case ND_FUNCALL:
 		nargs := 0
 		for arg := node.Args; arg != nil; arg = arg.Next {
