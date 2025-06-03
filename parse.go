@@ -59,9 +59,10 @@ type VarAttr struct {
 // can be nested (e.g. `int x[2][2] = {{1, 2}, {3, 4}}`), this struct
 // is a tree data structure.
 type Initializer struct {
-	Next *Initializer // Next initializer
-	Ty   *CType       // Type of the initializer
-	Tok  *Token       // Representative token
+	Next       *Initializer // Next initializer
+	Ty         *CType       // Type of the initializer
+	Tok        *Token       // Representative token
+	IsFlexible bool
 
 	// If it's not an aggregate type and has an initializer,
 	// `expr` has an initialization expression.
@@ -207,15 +208,19 @@ func newVarNode(variable *Obj, tok *Token) *AstNode {
 	return node
 }
 
-func newInitializer(ty *CType) *Initializer {
+func newInitializer(ty *CType, isFlexible bool) *Initializer {
 	init := &Initializer{}
 	init.Ty = ty
 
 	if ty.Kind == TY_ARRAY {
+		if isFlexible && ty.Size < 0 {
+			init.IsFlexible = true
+			return init
+		}
 		// init->children = calloc(ty->array_len, sizeof(Initializer *));
 		init.Children = make([]*Initializer, ty.ArrayLength)
 		for i := int64(0); i < ty.ArrayLength; i++ {
-			init.Children[i] = newInitializer(ty.Base)
+			init.Children[i] = newInitializer(ty.Base, false)
 		}
 	}
 
@@ -234,6 +239,10 @@ func skipExcessElement(tok *Token) *Token {
 
 // string-initializer = string-literal
 func stringInitializer(rest **Token, tok *Token, init *Initializer) {
+	if init.IsFlexible {
+		*init = *newInitializer(arrayOf(init.Ty.Base, tok.Ty.ArrayLength), false)
+	}
+
 	length := init.Ty.ArrayLength
 	if init.Ty.ArrayLength > tok.Ty.ArrayLength {
 		length = tok.Ty.ArrayLength
@@ -244,8 +253,28 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 	*rest = tok.Next
 }
 
+func countArrayInitElements(tok *Token, ty *CType) int {
+	dummy := newInitializer(ty.Base, false)
+	i := 0
+
+	for ; !tok.isEqual("}"); i++ {
+		if i > 0 {
+			tok = skip(tok, ",")
+		}
+
+		initializer2(&tok, tok, dummy)
+	}
+
+	return i
+}
+
 func arrayInitializer(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
+
+	if init.IsFlexible {
+		length := countArrayInitElements(tok, init.Ty)
+		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
+	}
 
 	for i := int64(0); !consume(rest, tok, "}"); i++ {
 		if i > 0 {
@@ -278,9 +307,10 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 	init.Expr = assign(rest, tok)
 }
 
-func initializer(rest **Token, tok *Token, ty *CType) *Initializer {
-	init := newInitializer(ty)
+func initializer(rest **Token, tok *Token, ty *CType, newTy **CType) *Initializer {
+	init := newInitializer(ty, true)
 	initializer2(rest, tok, init)
+	*newTy = init.Ty
 	return init
 }
 
@@ -326,7 +356,7 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
  *   x[1][1] = 9;
  */
 func localVarInitializer(rest **Token, tok *Token, variable *Obj) *AstNode {
-	init := initializer(rest, tok, variable.Ty)
+	init := initializer(rest, tok, variable.Ty, &variable.Ty)
 	desg := InitDesg{nil, 0, variable}
 
 	// If a partial initializer list is given, the standard requires
@@ -860,9 +890,6 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 		i += 1
 
 		ty := declarator(&tok, tok, basety)
-		if ty.Size < 0 {
-			errorTok(tok, "variable has incomplete type")
-		}
 		if ty.Kind == TY_VOID {
 			errorTok(tok, "variable declared as void")
 		}
@@ -873,6 +900,13 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 			expr := localVarInitializer(&tok, tok.Next, variable)
 			cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
 			cur = cur.Next
+		}
+
+		if variable.Ty.Size < 0 {
+			errorTok(tok, "variable has incomplete type")
+		}
+		if variable.Ty.Kind == TY_VOID {
+			errorTok(tok, "variable declared as void")
 		}
 	}
 
