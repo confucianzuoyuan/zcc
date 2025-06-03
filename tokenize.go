@@ -44,7 +44,7 @@ func newToken(kind TokenKind, start int, end int) *Token {
 }
 
 /*
- * Reports an error message in the following format.
+ * Reports an error message in the following format and exit.
  *
  * foo.c:10: x = y + 1;
  *               ^ <error message here>
@@ -83,10 +83,12 @@ func errorAt(loc int, msg string) {
 	}
 
 	verrorAt(buf, line_no, loc, msg)
+	os.Exit(1)
 }
 
 func errorTok(tok *Token, msg string) {
 	verrorAt(currentInput, tok.LineNo, tok.Location, msg)
+	os.Exit(1)
 }
 
 func (t *Token) isEqual(s string) bool {

@@ -982,6 +982,15 @@ func funcall(rest **Token, tok *Token) *AstNode {
 	start := tok
 	tok = tok.Next.Next
 
+	sc := findVariable(start)
+	if sc == nil {
+		errorTok(start, "implicit declaration of a function")
+	}
+	if sc.Variable == nil || sc.Variable.Ty.Kind != TY_FUNC {
+		errorTok(start, "not a function")
+	}
+
+	ty := sc.Variable.Ty.ReturnType
 	head := AstNode{}
 	cur := &head
 
@@ -991,12 +1000,14 @@ func funcall(rest **Token, tok *Token) *AstNode {
 		}
 		cur.Next = assign(&tok, tok)
 		cur = cur.Next
+		cur.addType()
 	}
 
 	*rest = skip(tok, ")")
 
 	node := newNode(ND_FUNCALL, start)
 	node.FuncName = string((*currentInput)[start.Location : start.Location+start.Length])
+	node.Ty = ty
 	node.Args = head.Next
 	return node
 }
