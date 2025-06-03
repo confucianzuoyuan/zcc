@@ -260,6 +260,10 @@ func genExpr(node *AstNode) {
 		printlnToFile("  sete %%al")
 		printlnToFile("  movzx %%al, %%rax")
 		return
+	case ND_BITNOT:
+		genExpr(node.Lhs)
+		printlnToFile("  not %%rax")
+		return
 	case ND_FUNCALL:
 		nargs := 0
 		for arg := node.Args; arg != nil; arg = arg.Next {

@@ -198,6 +198,9 @@ func (node *AstNode) addType() {
 	case ND_NOT:
 		node.Ty = TyInt
 		return
+	case ND_BITNOT:
+		node.Ty = node.Lhs.Ty
+		return
 	case ND_VAR:
 		node.Ty = node.Variable.Ty
 		return

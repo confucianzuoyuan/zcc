@@ -1053,7 +1053,7 @@ func castExpr(rest **Token, tok *Token) *AstNode {
 }
 
 /*
- * unary = ("+" | "-" | "*" | "&" | "!") cast
+ * unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
  *       | ("++" | "--") unary
  *       | postfix
  */
@@ -1076,6 +1076,10 @@ func unary(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("!") {
 		return newUnary(ND_NOT, castExpr(rest, tok.Next), tok)
+	}
+
+	if tok.isEqual("~") {
+		return newUnary(ND_BITNOT, castExpr(rest, tok.Next), tok)
 	}
 
 	// Read ++i as i+=1
