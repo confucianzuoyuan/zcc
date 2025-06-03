@@ -107,5 +107,6 @@ type Member struct {
 	Ty     *CType
 	Tok    *Token // for error messages
 	Name   *Token
+	Index  int
 	Offset int64 // Offset from the beginning of the struct
 }
