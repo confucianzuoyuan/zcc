@@ -227,7 +227,7 @@ func newInitializer(ty *CType, isFlexible bool) *Initializer {
 		return init
 	}
 
-	if ty.Kind == TY_STRUCT {
+	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
 		// Count the number of struct members.
 		length := 0
 		for mem := ty.Members; mem != nil; mem = mem.Next {
@@ -328,9 +328,18 @@ func structInitializer(rest **Token, tok *Token, init *Initializer) {
 	}
 }
 
+func unionInitializer(rest **Token, tok *Token, init *Initializer) {
+	// Unlike structs, union initializers take only one initializer,
+	// and that initializes the first union member.
+	tok = skip(tok, "{")
+	initializer2(&tok, tok, init.Children[0])
+	*rest = skip(tok, "}")
+}
+
 /*
  * initializer = string-initializer | array-initializer
- * 			   | struct-initializer | assign
+ * 			   | struct-initializer | union-initializer
+ *             | assign
  */
 func initializer2(rest **Token, tok *Token, init *Initializer) {
 	if init.Ty.Kind == TY_ARRAY && tok.Kind == TK_STR {
@@ -356,6 +365,11 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 			}
 		}
 		structInitializer(rest, tok, init)
+		return
+	}
+
+	if init.Ty.Kind == TY_UNION {
+		unionInitializer(rest, tok, init)
 		return
 	}
 
@@ -404,6 +418,11 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 			node = newBinary(ND_COMMA, node, rhs, tok)
 		}
 		return node
+	}
+
+	if ty.Kind == TY_UNION {
+		desg2 := InitDesg{desg, 0, init.Ty.Members, nil}
+		return createLocalVarInit(init.Children[0], ty.Members.Ty, &desg2, tok)
 	}
 
 	if init.Expr == nil {
