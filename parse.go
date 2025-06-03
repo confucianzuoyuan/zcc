@@ -1054,6 +1054,7 @@ func castExpr(rest **Token, tok *Token) *AstNode {
 
 /*
  * unary = ("+" | "-" | "*" | "&") cast
+ *       | ("++" | "--") unary
  *       | postfix
  */
 func unary(rest **Token, tok *Token) *AstNode {
@@ -1071,6 +1072,16 @@ func unary(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("*") {
 		return newUnary(ND_DEREF, castExpr(rest, tok.Next), tok)
+	}
+
+	// Read ++i as i+=1
+	if tok.isEqual("++") {
+		return toAssign(newAdd(unary(rest, tok.Next), newNum(1, tok), tok))
+	}
+
+	// Read --i as i-=1
+	if tok.isEqual("--") {
+		return toAssign(newSub(unary(rest, tok.Next), newNum(1, tok), tok))
 	}
 
 	return postfix(rest, tok)
