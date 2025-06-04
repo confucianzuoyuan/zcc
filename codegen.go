@@ -517,8 +517,17 @@ func emitData(prog *Obj) {
 		printlnToFile("%s:", v.Name)
 
 		if v.InitData != nil {
-			for i := int64(0); i < v.Ty.Size; i += 1 {
-				printlnToFile("  .byte %d", v.InitData[i])
+			rel := v.Rel
+			pos := 0
+			for pos < int(v.Ty.Size) {
+				if rel != nil && rel.Offset == int64(pos) {
+					printlnToFile("  .quad %s%+d", rel.Label, rel.Addend)
+					rel = rel.Next
+					pos += 8
+				} else {
+					printlnToFile("  .byte %d", v.InitData[pos])
+					pos += 1
+				}
 			}
 		} else {
 			printlnToFile("  .zero %d", v.Ty.Size)

@@ -1039,25 +1039,44 @@ func writeBuf(buf *[]uint8, offset int64, val uint64, sz int64) {
 	panic("writeBuf: unsupported size")
 }
 
-func writeGlobalVarData(init *Initializer, ty *CType, buf *[]uint8, offset int64) {
+func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]uint8, offset int64) *Relocation {
 	if ty.Kind == TY_ARRAY {
 		sz := ty.Base.Size
 		for i := int64(0); i < ty.ArrayLength; i++ {
-			writeGlobalVarData(init.Children[i], ty.Base, buf, offset+sz*i)
+			cur = writeGlobalVarData(cur, init.Children[i], ty.Base, buf, offset+sz*i)
 		}
-		return
+		return cur
 	}
 
 	if ty.Kind == TY_STRUCT {
 		for mem := ty.Members; mem != nil; mem = mem.Next {
-			writeGlobalVarData(init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset)
+			cur = writeGlobalVarData(cur, init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset)
 		}
-		return
+		return cur
 	}
 
-	if init.Expr != nil {
-		writeBuf(buf, offset, uint64(eval(init.Expr)), ty.Size)
+	if ty.Kind == TY_UNION {
+		return writeGlobalVarData(cur, init.Children[0], ty.Members.Ty, buf, offset)
 	}
+
+	if init.Expr == nil {
+		return cur
+	}
+
+	label := ""
+	val := eval2(init.Expr, &label)
+
+	if label == "" {
+		writeBuf(buf, offset, uint64(val), ty.Size)
+		return cur
+	}
+
+	rel := &Relocation{}
+	rel.Offset = offset
+	rel.Label = label
+	rel.Addend = val
+	cur.Next = rel
+	return cur.Next
 }
 
 // Initializers for global variables are evaluated at compile-time and
@@ -1067,10 +1086,12 @@ func writeGlobalVarData(init *Initializer, ty *CType, buf *[]uint8, offset int64
 func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 	init := initializer(rest, tok, variable.Ty, &variable.Ty)
 
+	head := Relocation{}
 	// char *buf = calloc(1, var->ty->size);
 	buf := make([]uint8, variable.Ty.Size)
-	writeGlobalVarData(init, variable.Ty, &buf, 0)
+	writeGlobalVarData(&head, init, variable.Ty, &buf, 0)
 	variable.InitData = buf
+	variable.Rel = head.Next
 }
 
 // Returns true if a given token represents a type.
@@ -1353,14 +1374,19 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 }
 
 // Evaluate a given node as a constant expression.
-func eval(node *AstNode) int64 {
+//
+// A constant expression is either just a number or ptr+n where ptr
+// is a pointer to a global variable and n is a postiive/negative
+// number. The latter form is accepted only as an initialization
+// expression for a global variable.
+func eval2(node *AstNode, label *string) int64 {
 	node.addType()
 
 	switch node.Kind {
 	case ND_ADD:
-		return eval(node.Lhs) + eval(node.Rhs)
+		return eval2(node.Lhs, label) + eval(node.Rhs)
 	case ND_SUB:
-		return eval(node.Lhs) - eval(node.Rhs)
+		return eval2(node.Lhs, label) - eval(node.Rhs)
 	case ND_MUL:
 		return eval(node.Lhs) * eval(node.Rhs)
 	case ND_DIV:
@@ -1401,12 +1427,12 @@ func eval(node *AstNode) int64 {
 		return 0
 	case ND_COND:
 		if eval(node.Cond) != 0 {
-			return eval(node.Then)
+			return eval2(node.Then, label)
 		} else {
-			return eval(node.Else)
+			return eval2(node.Else, label)
 		}
 	case ND_COMMA:
-		return eval(node.Rhs)
+		return eval2(node.Rhs, label)
 	case ND_NOT:
 		if eval(node.Lhs) == 0 {
 			return 1
@@ -1425,22 +1451,64 @@ func eval(node *AstNode) int64 {
 		}
 		return 0
 	case ND_CAST:
+		val := eval2(node.Lhs, label)
 		if node.Ty.isInteger() {
 			switch node.Ty.Size {
 			case 1:
-				return int64(int8(eval(node.Lhs)))
+				return int64(int8(val))
 			case 2:
-				return int64(int16(eval(node.Lhs)))
+				return int64(int16(val))
 			case 4:
-				return int64(int32(eval(node.Lhs)))
+				return int64(int32(val))
 			}
 		}
-		return eval(node.Lhs)
+		return val
+	case ND_ADDR:
+		return evalRval(node.Lhs, label)
+	case ND_MEMBER:
+		if label == nil {
+			errorTok(node.Tok, "not a compile-time constant")
+		}
+		if node.Ty.Kind != TY_ARRAY {
+			errorTok(node.Tok, "invalid initializer")
+		}
+		return evalRval(node.Lhs, label) + node.Member.Offset
+	case ND_VAR:
+		if label == nil {
+			errorTok(node.Tok, "not a compile-time constant")
+		}
+		if node.Variable.Ty.Kind != TY_ARRAY && node.Variable.Ty.Kind != TY_FUNC {
+			errorTok(node.Tok, "invalid initializer")
+		}
+		*label = node.Variable.Name
+		return 0
 	case ND_NUM:
 		return node.Value
 	}
 
 	errorTok(node.Tok, "not a compile-time constant")
+	panic("unreachable")
+}
+
+func eval(node *AstNode) int64 {
+	return eval2(node, nil)
+}
+
+func evalRval(node *AstNode, label *string) int64 {
+	switch node.Kind {
+	case ND_VAR:
+		if node.Variable.IsLocal {
+			errorTok(node.Tok, "not a compile-time constant")
+		}
+		*label = node.Variable.Name
+		return 0
+	case ND_DEREF:
+		return eval2(node.Lhs, label)
+	case ND_MEMBER:
+		return evalRval(node.Lhs, label) + node.Member.Offset
+	}
+
+	errorTok(node.Tok, "invalid initializer")
 	panic("unreachable")
 }
 
