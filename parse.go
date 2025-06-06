@@ -53,6 +53,7 @@ type Scope struct {
 type VarAttr struct {
 	IsTypeDef bool // Is a typedef
 	IsStatic  bool
+	IsExtern  bool
 }
 
 // This struct represents a variable initializer. Since initializers
@@ -555,6 +556,7 @@ func newLocalVar(name string, ty *CType) *Obj {
 func newGlobalVar(name string, ty *CType) *Obj {
 	variable := newVar(name, ty)
 	variable.Next = globals
+	variable.IsDefinition = true
 	globals = variable
 	return variable
 }
@@ -611,7 +613,7 @@ func consume(rest **Token, tok *Token, str string) bool {
 
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
- *             | "typedef" | "static"
+ *             | "typedef" | "static" | "extern"
  *             | struct-decl | union-decl | typedef-name
  *             | enum-specifier)+
  *
@@ -647,18 +649,22 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 	for tok.isTypename() {
 		// Handle storage class specifiers.
-		if tok.isEqual("typedef") || tok.isEqual("static") {
+		if tok.isEqual("typedef") || tok.isEqual("static") || tok.isEqual("extern") {
 			if attr == nil {
 				errorTok(tok, "storage class specifier is not allowed in this context")
 			}
 			if tok.isEqual("typedef") {
 				attr.IsTypeDef = true
-			} else {
+			} else if tok.isEqual("static") {
 				attr.IsStatic = true
+			} else {
+				attr.IsExtern = true
 			}
 
-			if attr.IsTypeDef && attr.IsStatic {
-				errorTok(tok, "typedef and static may not be used together")
+			if attr.IsTypeDef {
+				if attr.IsExtern || attr.IsStatic {
+					errorTok(tok, "typedef may not be used together with static or extern")
+				}
 			}
 			tok = tok.Next
 			continue
@@ -1202,7 +1208,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern",
 	}
 
 	for _, k := range kw {
@@ -2248,7 +2254,7 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	return tok
 }
 
-func globalVariable(tok *Token, basety *CType) *Token {
+func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 	first := true
 
 	for !consume(&tok, tok, ";") {
@@ -2259,6 +2265,7 @@ func globalVariable(tok *Token, basety *CType) *Token {
 
 		ty := declarator(&tok, tok, basety)
 		variable := newGlobalVar(ty.Name.getIdent(), ty)
+		variable.IsDefinition = !attr.IsExtern
 		if tok.isEqual("=") {
 			globalVarInitializer(&tok, tok.Next, variable)
 		}
@@ -2300,7 +2307,7 @@ func parse(tok *Token) *Obj {
 		}
 
 		// Global variable
-		tok = globalVariable(tok, basety)
+		tok = globalVariable(tok, basety, &attr)
 	}
 
 	return globals

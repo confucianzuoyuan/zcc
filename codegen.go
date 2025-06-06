@@ -508,7 +508,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 
 func emitData(prog *Obj) {
 	for v := prog; v != nil; v = v.Next {
-		if v.IsFunction {
+		if v.IsFunction || !v.IsDefinition {
 			continue
 		}
 
