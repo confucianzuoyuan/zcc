@@ -1257,7 +1257,7 @@ func (tok *Token) isTypename() bool {
 }
 
 /*
- * stmt = "return" expr ";"
+ * stmt = "return" expr? ";"
  *	    | "if" "(" expr ")" stmt ("else" stmt)?
  *      | "switch" "(" expr ")" stmt
  *	    | "case" const-expr ":" stmt
@@ -1274,6 +1274,9 @@ func (tok *Token) isTypename() bool {
 func stmt(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("return") {
 		node := newNode(ND_RETURN, tok)
+		if consume(rest, tok.Next, ";") {
+			return node
+		}
 		exp := expr(&tok, tok.Next)
 		*rest = skip(tok, ";")
 

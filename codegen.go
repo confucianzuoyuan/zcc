@@ -478,7 +478,9 @@ func genStmt(node *AstNode) {
 		genStmt(node.Lhs)
 		return
 	case ND_RETURN:
-		genExpr(node.Lhs)
+		if node.Lhs != nil {
+			genExpr(node.Lhs)
+		}
 		printlnToFile("  jmp .L.return.%s", currentFn.Name)
 		return
 	case ND_EXPR_STMT:
