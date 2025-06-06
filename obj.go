@@ -3,9 +3,10 @@ package main
 // Variable or function
 type Obj struct {
 	Next    *Obj
-	Name    string
-	Ty      *CType
-	IsLocal bool
+	Name    string // Variable name
+	Ty      *CType // Type
+	IsLocal bool   // local or global/function
+	Align   int64  // alignment
 
 	// Local variable
 	Offset int64

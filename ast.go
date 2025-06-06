@@ -108,5 +108,6 @@ type Member struct {
 	Tok    *Token // for error messages
 	Name   *Token
 	Index  int
+	Align  int64
 	Offset int64 // Offset from the beginning of the struct
 }

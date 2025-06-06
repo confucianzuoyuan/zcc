@@ -54,6 +54,7 @@ type VarAttr struct {
 	IsTypeDef bool // Is a typedef
 	IsStatic  bool
 	IsExtern  bool
+	Align     int64
 }
 
 // This struct represents a variable initializer. Since initializers
@@ -541,6 +542,7 @@ func newVar(name string, ty *CType) *Obj {
 	variable := &Obj{}
 	variable.Name = name
 	variable.Ty = ty
+	variable.Align = ty.Align
 	pushScope(name).Variable = variable
 	return variable
 }
@@ -667,6 +669,21 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				}
 			}
 			tok = tok.Next
+			continue
+		}
+
+		if tok.isEqual("_Alignas") {
+			if attr == nil {
+				errorTok(tok, "_Alignas is not allowed in this context")
+			}
+			tok = skip(tok.Next, "(")
+
+			if tok.isTypename() {
+				attr.Align = typeName(&tok, tok).Align
+			} else {
+				attr.Align = constExpr(&tok, tok)
+			}
+			tok = skip(tok, ")")
 			continue
 		}
 
@@ -800,7 +817,8 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	idx := 0
 
 	for !tok.isEqual("}") {
-		basety := declspec(&tok, tok, nil)
+		attr := VarAttr{}
+		basety := declspec(&tok, tok, &attr)
 		first := true
 
 		for !consume(&tok, tok, ";") {
@@ -814,6 +832,11 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 			mem.Name = mem.Ty.Name
 			mem.Index = idx
 			idx += 1
+			if attr.Align > 0 {
+				mem.Align = attr.Align
+			} else {
+				mem.Align = mem.Ty.Align
+			}
 			cur.Next = mem
 			cur = cur.Next
 		}
@@ -886,12 +909,12 @@ func structDecl(rest **Token, tok *Token) *CType {
 	// Assign offsets within the struct to members.
 	var offset int64 = 0
 	for mem := ty.Members; mem != nil; mem = mem.Next {
-		offset = alignTo(offset, mem.Ty.Align)
+		offset = alignTo(offset, mem.Align)
 		mem.Offset = offset
 		offset += mem.Ty.Size
 
-		if ty.Align < mem.Ty.Align {
-			ty.Align = mem.Ty.Align
+		if ty.Align < mem.Align {
+			ty.Align = mem.Align
 		}
 	}
 	ty.Size = alignTo(offset, ty.Align)
@@ -912,7 +935,7 @@ func unionDecl(rest **Token, tok *Token) *CType {
 	// alignment and the size though.
 	for mem := ty.Members; mem != nil; mem = mem.Next {
 		if ty.Align < mem.Ty.Align {
-			ty.Align = mem.Ty.Align
+			ty.Align = mem.Align
 		}
 
 		if ty.Size < mem.Ty.Size {
@@ -1081,7 +1104,7 @@ func typeName(rest **Token, tok *Token) *CType {
 }
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
+func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNode {
 	head := AstNode{}
 	cur := &head
 	i := 0
@@ -1099,6 +1122,9 @@ func declaration(rest **Token, tok *Token, basety *CType) *AstNode {
 		}
 
 		variable := newLocalVar(ty.Name.getIdent(), ty)
+		if attr != nil && attr.Align > 0 {
+			variable.Align = attr.Align
+		}
 
 		if tok.isEqual("=") {
 			expr := localVarInitializer(&tok, tok.Next, variable)
@@ -1208,7 +1234,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas",
 	}
 
 	for _, k := range kw {
@@ -1322,7 +1348,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 
 		if tok.isTypename() {
 			basety := declspec(&tok, tok, nil)
-			node.Init = declaration(&tok, tok, basety)
+			node.Init = declaration(&tok, tok, basety, nil)
 		} else {
 			node.Init = exprStmt(&tok, tok)
 		}
@@ -1463,7 +1489,7 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 				continue
 			}
 
-			cur.Next = declaration(&tok, tok, basety)
+			cur.Next = declaration(&tok, tok, basety, &attr)
 			cur = cur.Next
 		} else {
 			cur.Next = stmt(&tok, tok)
@@ -2142,6 +2168,7 @@ func funcall(rest **Token, tok *Token) *AstNode {
  *         | "(" expr ")"
  *         | "sizeof" "(" type-name ")"
  *         | "sizeof" unary
+ *         | "_Alignof" "(" type-name ")"
  *         | ident func-args?
  *         | str
  *         | num
@@ -2173,6 +2200,13 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node := unary(rest, tok.Next)
 		node.addType()
 		return newNum(node.Ty.Size, tok)
+	}
+
+	if tok.isEqual("_Alignof") {
+		tok = skip(tok.Next, "(")
+		ty := typeName(&tok, tok)
+		*rest = skip(tok, ")")
+		return newNum(ty.Align, tok)
 	}
 
 	if tok.Kind == TK_IDENT {
@@ -2276,6 +2310,9 @@ func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 		ty := declarator(&tok, tok, basety)
 		variable := newGlobalVar(ty.Name.getIdent(), ty)
 		variable.IsDefinition = !attr.IsExtern
+		if attr.Align > 0 {
+			variable.Align = attr.Align
+		}
 		if tok.isEqual("=") {
 			globalVarInitializer(&tok, tok.Next, variable)
 		}

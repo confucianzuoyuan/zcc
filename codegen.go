@@ -499,7 +499,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 		offset := int64(0)
 		for v := fn.Locals; v != nil; v = v.Next {
 			offset += v.Ty.Size
-			offset = alignTo(offset, v.Ty.Align)
+			offset = alignTo(offset, v.Align)
 			v.Offset = -offset
 		}
 		fn.StackSize = alignTo(offset, 16)
@@ -513,7 +513,7 @@ func emitData(prog *Obj) {
 		}
 
 		printlnToFile("  .globl %s", v.Name)
-		printlnToFile("  .align %d", v.Ty.Align)
+		printlnToFile("  .align %d", v.Align)
 
 		if v.InitData != nil {
 			printlnToFile("  .data")
