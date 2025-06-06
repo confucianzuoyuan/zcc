@@ -512,11 +512,12 @@ func emitData(prog *Obj) {
 			continue
 		}
 
-		printlnToFile("  .data")
 		printlnToFile("  .globl %s", v.Name)
-		printlnToFile("%s:", v.Name)
 
 		if v.InitData != nil {
+			printlnToFile("  .data")
+			printlnToFile("%s:", v.Name)
+
 			rel := v.Rel
 			pos := 0
 			for pos < int(v.Ty.Size) {
@@ -529,9 +530,13 @@ func emitData(prog *Obj) {
 					pos += 1
 				}
 			}
-		} else {
-			printlnToFile("  .zero %d", v.Ty.Size)
+
+			continue
 		}
+
+		printlnToFile("  .bss")
+		printlnToFile("%s:", v.Name)
+		printlnToFile("  .zero %d", v.Ty.Size)
 	}
 }
 
