@@ -276,7 +276,7 @@ func countArrayInitElements(tok *Token, ty *CType) int {
 	dummy := newInitializer(ty.Base, false)
 	i := 0
 
-	for ; !tok.isEqual("}"); i++ {
+	for ; !consumeEnd(&tok, tok); i++ {
 		if i > 0 {
 			tok = skip(tok, ",")
 		}
@@ -291,7 +291,7 @@ func debugToken(tok *Token) {
 	fmt.Printf("%s\r\n", string((*currentInput)[tok.Location:tok.Location+tok.Length]))
 }
 
-// array-initializer1 = "{" initializer ("," initializer)* "}"
+// array-initializer1 = "{" initializer ("," initializer)* ","? "}"
 func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
 
@@ -300,7 +300,7 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
 	}
 
-	for i := int64(0); !consume(rest, tok, "}"); i++ {
+	for i := int64(0); !consumeEnd(rest, tok); i++ {
 		if i > 0 {
 			tok = skip(tok, ",")
 		}
@@ -320,7 +320,7 @@ func arrayInitializer2(rest **Token, tok *Token, init *Initializer) {
 		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
 	}
 
-	for i := 0; i < int(init.Ty.ArrayLength) && !tok.isEqual("}"); i += 1 {
+	for i := 0; i < int(init.Ty.ArrayLength) && !tok.isEnd(); i += 1 {
 		if i > 0 {
 			tok = skip(tok, ",")
 		}
@@ -329,13 +329,13 @@ func arrayInitializer2(rest **Token, tok *Token, init *Initializer) {
 	*rest = tok
 }
 
-// struct-initializer1 = "{" initializer ("," initializer)* "}"
+// struct-initializer1 = "{" initializer ("," initializer)* ","? "}"
 func structInitializer1(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
 
 	mem := init.Ty.Members
 
-	for !consume(rest, tok, "}") {
+	for !consumeEnd(rest, tok) {
 		if mem != init.Ty.Members {
 			tok = skip(tok, ",")
 		}
@@ -353,7 +353,7 @@ func structInitializer1(rest **Token, tok *Token, init *Initializer) {
 func structInitializer2(rest **Token, tok *Token, init *Initializer) {
 	first := true
 
-	for mem := init.Ty.Members; mem != nil && !tok.isEqual("}"); mem = mem.Next {
+	for mem := init.Ty.Members; mem != nil && !tok.isEnd(); mem = mem.Next {
 		if !first {
 			tok = skip(tok, ",")
 		}
@@ -368,6 +368,7 @@ func unionInitializer(rest **Token, tok *Token, init *Initializer) {
 	// and that initializes the first union member.
 	if tok.isEqual("{") {
 		initializer2(&tok, tok.Next, init.Children[0])
+		consume(&tok, tok, ",")
 		*rest = skip(tok, "}")
 	} else {
 		initializer2(rest, tok, init.Children[0])
@@ -709,7 +710,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
  * enum-specifier = ident? "{" enum-list? "}"
  *                | ident ("{" enum-list? "}")?
  *
- * enum-list      = ident ("=" num)? ("," ident ("=" num)?)*
+ * enum-list      = ident ("=" num)? ("," ident ("=" num)?)* ","?
  */
 func enumSpecifier(rest **Token, tok *Token) *CType {
 	ty := enumType()
@@ -739,7 +740,7 @@ func enumSpecifier(rest **Token, tok *Token) *CType {
 	// Read an enum-list.
 	var i int = 0
 	var val int64 = 0
-	for !tok.isEqual("}") {
+	for !consumeEnd(rest, tok) {
 		if i > 0 {
 			tok = skip(tok, ",")
 		}
@@ -757,8 +758,6 @@ func enumSpecifier(rest **Token, tok *Token) *CType {
 		sc.EnumValue = int(val)
 		val += 1
 	}
-
-	*rest = tok.Next
 
 	if tag != nil {
 		pushTagScope(tag, ty)
@@ -1015,6 +1014,24 @@ func abstractDeclarator(rest **Token, tok *Token, ty *CType) *CType {
 	}
 
 	return typeSuffix(rest, tok, ty)
+}
+
+func (tok *Token) isEnd() bool {
+	return tok.isEqual("}") || (tok.isEqual(",") && tok.Next.isEqual("}"))
+}
+
+func consumeEnd(rest **Token, tok *Token) bool {
+	if tok.isEqual("}") {
+		*rest = tok.Next
+		return true
+	}
+
+	if tok.isEqual(",") && tok.Next.isEqual("}") {
+		*rest = tok.Next.Next
+		return true
+	}
+
+	return false
 }
 
 // type-name = declspec abstract-declarator
