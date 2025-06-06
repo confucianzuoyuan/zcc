@@ -939,9 +939,14 @@ func structRef(lhs *AstNode, tok *Token) *AstNode {
 	return node
 }
 
-// func-params = (param ("," param)*)? ")"
+// func-params = ("void" | param ("," param)*)? ")"
 // param       = declspec declarator
 func funcParams(rest **Token, tok *Token, ty *CType) *CType {
+	if tok.isEqual("void") && tok.Next.isEqual(")") {
+		*rest = tok.Next.Next
+		return funcType(ty)
+	}
+
 	head := CType{}
 	cur := &head
 
