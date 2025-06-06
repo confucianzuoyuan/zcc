@@ -441,6 +441,16 @@ func genStmt(node *AstNode) {
 		printlnToFile("  jmp .L.begin.%d", c)
 		printlnToFile("%s:", node.BreakLabel)
 		return
+	case ND_DO:
+		c := count()
+		printlnToFile(".L.begin.%d:", c)
+		genStmt(node.Then)
+		printlnToFile("%s:", node.ContinueLabel)
+		genExpr(node.Cond)
+		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  jne .L.begin.%d", c)
+		printlnToFile("%s:", node.BreakLabel)
+		return
 	case ND_SWITCH:
 		genExpr(node.Cond)
 

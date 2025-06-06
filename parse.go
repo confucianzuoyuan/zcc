@@ -1265,6 +1265,7 @@ func (tok *Token) isTypename() bool {
  *	    | "default" ":" stmt
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
+ *	    | "do" stmt "while" "(" expr ")" ";"
  *      | "goto" ident ";"
  *      | "break" ";"
  *	    | "continue" ";"
@@ -1405,6 +1406,29 @@ func stmt(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("{") {
 		return compoundStmt(rest, tok.Next)
+	}
+
+	if tok.isEqual("do") {
+		node := newNode(ND_DO, tok)
+
+		brk := breakLabel
+		cont := continueLabel
+		node.BreakLabel = newUniqueName()
+		breakLabel = node.BreakLabel
+		node.ContinueLabel = newUniqueName()
+		continueLabel = node.ContinueLabel
+
+		node.Then = stmt(&tok, tok.Next)
+
+		breakLabel = brk
+		continueLabel = cont
+
+		tok = skip(tok, "while")
+		tok = skip(tok, "(")
+		node.Cond = expr(&tok, tok)
+		tok = skip(tok, ")")
+		*rest = skip(tok, ";")
+		return node
 	}
 
 	if tok.isEqual("goto") {
