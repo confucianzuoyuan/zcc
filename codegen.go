@@ -333,6 +333,21 @@ func genExpr(node *AstNode) {
 			printlnToFile("  call %s", node.FuncName)
 			printlnToFile("  add $8, %%rsp")
 		}
+
+		// It looks like the most significant 48 or 56 bits in RAX may
+		// contain garbage if a function return type is short or bool/char,
+		// respectively. We clear the upper bits here.
+		switch node.Ty.Kind {
+		case TY_BOOL:
+			printlnToFile("  movzx %%al, %%eax")
+			return
+		case TY_CHAR:
+			printlnToFile("  movsbl %%al, %%eax")
+			return
+		case TY_SHORT:
+			printlnToFile("  movswl %%ax, %%eax")
+			return
+		}
 		return
 	}
 
