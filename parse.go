@@ -1453,6 +1453,16 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 				continue
 			}
 
+			if isFunction(tok) {
+				tok = function(tok, basety, &attr)
+				continue
+			}
+
+			if attr.IsExtern {
+				tok = globalVariable(tok, basety, &attr)
+				continue
+			}
+
 			cur.Next = declaration(&tok, tok, basety)
 			cur = cur.Next
 		} else {
