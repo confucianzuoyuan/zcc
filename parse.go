@@ -237,7 +237,14 @@ func newInitializer(ty *CType, isFlexible bool) *Initializer {
 		init.Children = make([]*Initializer, length)
 
 		for mem := ty.Members; mem != nil; mem = mem.Next {
-			init.Children[mem.Index] = newInitializer(mem.Ty, false)
+			if isFlexible && ty.IsFlexible && mem.Next == nil {
+				child := &Initializer{}
+				child.Ty = mem.Ty
+				child.IsFlexible = true
+				init.Children[mem.Index] = child
+			} else {
+				init.Children[mem.Index] = newInitializer(mem.Ty, false)
+			}
 		}
 
 		return init
@@ -434,6 +441,20 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 func initializer(rest **Token, tok *Token, ty *CType, newTy **CType) *Initializer {
 	init := newInitializer(ty, true)
 	initializer2(rest, tok, init)
+
+	if (ty.Kind == TY_STRUCT || ty.Kind == TY_UNION) && ty.IsFlexible {
+		ty := ty.copy()
+
+		mem := ty.Members
+		for mem.Next != nil {
+			mem = mem.Next
+		}
+		mem.Ty = init.Children[mem.Index].Ty
+		ty.Size += mem.Ty.Size
+
+		*newTy = ty
+		return init
+	}
 	*newTy = init.Ty
 	return init
 }
@@ -797,6 +818,7 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	// if were a zero-sized array.
 	if cur != &head && cur.Ty.Kind == TY_ARRAY && cur.Ty.ArrayLength < 0 {
 		cur.Ty = arrayOf(cur.Ty.Base, 0)
+		ty.IsFlexible = true
 	}
 
 	*rest = tok.Next

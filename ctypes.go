@@ -29,7 +29,8 @@ type CType struct {
 	ArrayLength int64
 
 	// Struct
-	Members *Member
+	Members    *Member
+	IsFlexible bool
 
 	ReturnType *CType
 	Params     *CType
@@ -39,6 +40,19 @@ type CType struct {
 func (ty *CType) copy() *CType {
 	ret := &CType{}
 	*ret = *ty
+	if ty.Kind == TY_STRUCT {
+		head := Member{}
+		cur := &head
+		for mem := ty.Members; mem != nil; mem = mem.Next {
+			m := &Member{}
+			*m = *mem
+			cur.Next = m
+			cur = m
+		}
+
+		ret.Members = head.Next
+		return ret
+	}
 	return ret
 }
 
