@@ -287,7 +287,12 @@ func countArrayInitElements(tok *Token, ty *CType) int {
 	return i
 }
 
-func arrayInitializer(rest **Token, tok *Token, init *Initializer) {
+func debugToken(tok *Token) {
+	fmt.Printf("%s\r\n", string((*currentInput)[tok.Location:tok.Location+tok.Length]))
+}
+
+// array-initializer1 = "{" initializer ("," initializer)* "}"
+func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
 
 	if init.IsFlexible {
@@ -308,8 +313,24 @@ func arrayInitializer(rest **Token, tok *Token, init *Initializer) {
 	}
 }
 
-// struct-initializer = "{" initializer ("," initializer)* "}"
-func structInitializer(rest **Token, tok *Token, init *Initializer) {
+// array-initializer2 = initializer ("," initializer)*
+func arrayInitializer2(rest **Token, tok *Token, init *Initializer) {
+	if init.IsFlexible {
+		length := countArrayInitElements(tok, init.Ty)
+		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
+	}
+
+	for i := 0; i < int(init.Ty.ArrayLength) && !tok.isEqual("}"); i += 1 {
+		if i > 0 {
+			tok = skip(tok, ",")
+		}
+		initializer2(&tok, tok, init.Children[i])
+	}
+	*rest = tok
+}
+
+// struct-initializer1 = "{" initializer ("," initializer)* "}"
+func structInitializer1(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
 
 	mem := init.Ty.Members
@@ -328,12 +349,29 @@ func structInitializer(rest **Token, tok *Token, init *Initializer) {
 	}
 }
 
+// struct-initializer2 = initializer ("," initializer)*
+func structInitializer2(rest **Token, tok *Token, init *Initializer) {
+	first := true
+
+	for mem := init.Ty.Members; mem != nil && !tok.isEqual("}"); mem = mem.Next {
+		if !first {
+			tok = skip(tok, ",")
+		}
+		first = false
+		initializer2(&tok, tok, init.Children[mem.Index])
+	}
+	*rest = tok
+}
+
 func unionInitializer(rest **Token, tok *Token, init *Initializer) {
 	// Unlike structs, union initializers take only one initializer,
 	// and that initializes the first union member.
-	tok = skip(tok, "{")
-	initializer2(&tok, tok, init.Children[0])
-	*rest = skip(tok, "}")
+	if tok.isEqual("{") {
+		initializer2(&tok, tok.Next, init.Children[0])
+		*rest = skip(tok, "}")
+	} else {
+		initializer2(rest, tok, init.Children[0])
+	}
 }
 
 /*
@@ -348,23 +386,31 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	if init.Ty.Kind == TY_ARRAY {
-		arrayInitializer(rest, tok, init)
+		if tok.isEqual("{") {
+			arrayInitializer1(rest, tok, init)
+		} else {
+			arrayInitializer2(rest, tok, init)
+		}
 		return
 	}
 
 	if init.Ty.Kind == TY_STRUCT {
+		if tok.isEqual("{") {
+			structInitializer1(rest, tok, init)
+			return
+		}
+
 		// A struct can be initialized with another struct. E.g.
 		// `struct T x = y;` where y is a variable of type `struct T`.
 		// Handle that case first.
-		if !tok.isEqual("{") {
-			expr := assign(rest, tok)
-			expr.addType()
-			if expr.Ty.Kind == TY_STRUCT {
-				init.Expr = expr
-				return
-			}
+		expr := assign(rest, tok)
+		expr.addType()
+		if expr.Ty.Kind == TY_STRUCT {
+			init.Expr = expr
+			return
 		}
-		structInitializer(rest, tok, init)
+
+		structInitializer2(rest, tok, init)
 		return
 	}
 
