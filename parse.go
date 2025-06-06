@@ -558,6 +558,7 @@ func newLocalVar(name string, ty *CType) *Obj {
 func newGlobalVar(name string, ty *CType) *Obj {
 	variable := newVar(name, ty)
 	variable.Next = globals
+	variable.IsStatic = true
 	variable.IsDefinition = true
 	globals = variable
 	return variable
@@ -2357,6 +2358,7 @@ func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 		ty := declarator(&tok, tok, basety)
 		variable := newGlobalVar(ty.Name.getIdent(), ty)
 		variable.IsDefinition = !attr.IsExtern
+		variable.IsStatic = attr.IsStatic
 		if attr.Align > 0 {
 			variable.Align = attr.Align
 		}

@@ -514,7 +514,11 @@ func emitData(prog *Obj) {
 			continue
 		}
 
-		printlnToFile("  .globl %s", v.Name)
+		if v.IsStatic {
+			printlnToFile("  .local %s", v.Name)
+		} else {
+			printlnToFile("  .globl %s", v.Name)
+		}
 		printlnToFile("  .align %d", v.Align)
 
 		if v.InitData != nil {
