@@ -600,6 +600,37 @@ func emitText(prog *Obj) {
 		printlnToFile("  mov %%rsp, %%rbp")
 		printlnToFile("  sub $%d, %%rsp", fn.StackSize)
 
+		// Save arg registers if function is variadic
+		if fn.VaArea != nil {
+			gp := 0
+			for v := fn.Params; v != nil; v = v.Next {
+				gp += 1
+			}
+			off := fn.VaArea.Offset
+
+			// va_elem
+			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)
+			printlnToFile("  movl $0, %d(%%rbp)", off+4)
+			printlnToFile("  movq %%rbp, %d(%%rbp)", off+16)
+			printlnToFile("  addq $%d, %d(%%rbp)", off+24, off+16)
+
+			//__reg_save_area__
+			printlnToFile("  movq %%rdi, %d(%%rbp)", off+24)
+			printlnToFile("  movq %%rsi, %d(%%rbp)", off+32)
+			printlnToFile("  movq %%rdx, %d(%%rbp)", off+40)
+			printlnToFile("  movq %%rcx, %d(%%rbp)", off+48)
+			printlnToFile("  movq %%r8, %d(%%rbp)", off+56)
+			printlnToFile("  movq %%r9, %d(%%rbp)", off+64)
+			printlnToFile("  movsd %%xmm0, %d(%%rbp)", off+72)
+			printlnToFile("  movsd %%xmm1, %d(%%rbp)", off+80)
+			printlnToFile("  movsd %%xmm2, %d(%%rbp)", off+88)
+			printlnToFile("  movsd %%xmm3, %d(%%rbp)", off+96)
+			printlnToFile("  movsd %%xmm4, %d(%%rbp)", off+104)
+			printlnToFile("  movsd %%xmm5, %d(%%rbp)", off+112)
+			printlnToFile("  movsd %%xmm6, %d(%%rbp)", off+120)
+			printlnToFile("  movsd %%xmm7, %d(%%rbp)", off+128)
+		}
+
 		// Save passed-by-register arguments to the stack
 		i := 0
 		for v := fn.Params; v != nil; v = v.Next {

@@ -2369,6 +2369,9 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	enterScope()
 	createParamLocalVars(ty.Params)
 	fn.Params = locals
+	if ty.IsVariadic {
+		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))
+	}
 
 	tok = skip(tok, "{")
 

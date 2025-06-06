@@ -24,6 +24,7 @@ type Obj struct {
 	Params    *Obj
 	Body      *AstNode
 	Locals    *Obj
+	VaArea    *Obj // Variable argument area
 	StackSize int64
 }
 
