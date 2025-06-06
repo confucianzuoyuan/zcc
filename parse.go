@@ -792,6 +792,13 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		}
 	}
 
+	// If the last element is an array of incomplete type, it's
+	// called a "flexible array member". It should behave as if
+	// if were a zero-sized array.
+	if cur != &head && cur.Ty.Kind == TY_ARRAY && cur.Ty.ArrayLength < 0 {
+		cur.Ty = arrayOf(cur.Ty.Base, 0)
+	}
+
 	*rest = tok.Next
 	ty.Members = head.Next
 }
