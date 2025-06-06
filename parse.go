@@ -1008,6 +1008,10 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 		cur = cur.Next
 	}
 
+	if cur == &head {
+		isVariadic = true
+	}
+
 	ty = funcType(ty)
 	ty.Params = head.Next
 	ty.IsVariadic = isVariadic
@@ -2215,6 +2219,10 @@ func funcall(rest **Token, tok *Token) *AstNode {
 		arg := assign(&tok, tok)
 		arg.addType()
 
+		if paramTy == nil && !ty.IsVariadic {
+			errorTok(arg.Tok, "too many arguments to function")
+		}
+
 		if paramTy != nil {
 			if paramTy.Kind == TY_STRUCT || paramTy.Kind == TY_UNION {
 				errorTok(arg.Tok, "passing struct or union is not supported yet")
@@ -2226,6 +2234,10 @@ func funcall(rest **Token, tok *Token) *AstNode {
 
 		cur.Next = arg
 		cur = cur.Next
+	}
+
+	if paramTy != nil {
+		errorTok(tok, "not enough arguments to function")
 	}
 
 	*rest = skip(tok, ")")
