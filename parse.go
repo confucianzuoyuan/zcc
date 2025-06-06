@@ -1453,7 +1453,7 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 				continue
 			}
 
-			if isFunction(tok) {
+			if tok.isFunction() {
 				tok = function(tok, basety, &attr)
 				continue
 			}
@@ -2286,7 +2286,7 @@ func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 
 // Lookahead tokens and returns true if a given token is a start
 // of a function definition or declaration.
-func isFunction(tok *Token) bool {
+func (tok *Token) isFunction() bool {
 	if tok.isEqual(";") {
 		return false
 	}
@@ -2311,7 +2311,7 @@ func parse(tok *Token) *Obj {
 		}
 
 		// Function
-		if isFunction(tok) {
+		if tok.isFunction() {
 			tok = function(tok, basety, &attr)
 			continue
 		}
