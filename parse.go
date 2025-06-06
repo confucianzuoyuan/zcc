@@ -1121,6 +1121,16 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			errorTok(tok, "variable declared as void")
 		}
 
+		if attr != nil && attr.IsStatic {
+			// static local variable
+			variable := newAnonGlobalVar(ty)
+			pushScope(ty.Name.getIdent()).Variable = variable
+			if tok.isEqual("=") {
+				globalVarInitializer(&tok, tok.Next, variable)
+			}
+			continue
+		}
+
 		variable := newLocalVar(ty.Name.getIdent(), ty)
 		if attr != nil && attr.Align > 0 {
 			variable.Align = attr.Align
