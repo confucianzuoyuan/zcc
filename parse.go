@@ -2169,6 +2169,7 @@ func funcall(rest **Token, tok *Token) *AstNode {
  *         | "sizeof" "(" type-name ")"
  *         | "sizeof" unary
  *         | "_Alignof" "(" type-name ")"
+ *         | "_Alignof" unary
  *         | ident func-args?
  *         | str
  *         | num
@@ -2202,11 +2203,16 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return newNum(node.Ty.Size, tok)
 	}
 
-	if tok.isEqual("_Alignof") {
-		tok = skip(tok.Next, "(")
-		ty := typeName(&tok, tok)
+	if tok.isEqual("_Alignof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
+		ty := typeName(&tok, tok.Next.Next)
 		*rest = skip(tok, ")")
 		return newNum(ty.Align, tok)
+	}
+
+	if tok.isEqual("_Alignof") {
+		node := unary(rest, tok.Next)
+		node.addType()
+		return newNum(node.Ty.Align, tok)
 	}
 
 	if tok.Kind == TK_IDENT {
