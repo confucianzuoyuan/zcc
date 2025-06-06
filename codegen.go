@@ -325,7 +325,14 @@ func genExpr(node *AstNode) {
 		}
 
 		printlnToFile("  mov $0, %%rax")
-		printlnToFile("  call %s", node.FuncName)
+
+		if depth%2 == 0 {
+			printlnToFile("  call %s", node.FuncName)
+		} else {
+			printlnToFile("  sub $8, %%rsp")
+			printlnToFile("  call %s", node.FuncName)
+			printlnToFile("  add $8, %%rsp")
+		}
 		return
 	}
 
