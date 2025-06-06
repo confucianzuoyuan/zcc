@@ -513,6 +513,7 @@ func emitData(prog *Obj) {
 		}
 
 		printlnToFile("  .globl %s", v.Name)
+		printlnToFile("  .align %d", v.Ty.Align)
 
 		if v.InitData != nil {
 			printlnToFile("  .data")
