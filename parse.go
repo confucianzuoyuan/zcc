@@ -969,7 +969,7 @@ func structRef(lhs *AstNode, tok *Token) *AstNode {
 	return node
 }
 
-// func-params = ("void" | param ("," param)*?)? ")"
+// func-params = ("void" | param ("," param)* ("," "...")?)? ")"
 // param       = declspec declarator
 func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	if tok.isEqual("void") && tok.Next.isEqual(")") {
@@ -979,10 +979,18 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 	head := CType{}
 	cur := &head
+	isVariadic := false
 
 	for !tok.isEqual(")") {
 		if cur != &head {
 			tok = skip(tok, ",")
+		}
+
+		if tok.isEqual("...") {
+			isVariadic = true
+			tok = tok.Next
+			skip(tok, ")")
+			break
 		}
 
 		ty2 := declspec(&tok, tok, nil)
@@ -1002,6 +1010,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 	ty = funcType(ty)
 	ty.Params = head.Next
+	ty.IsVariadic = isVariadic
 	*rest = tok.Next
 	return ty
 }

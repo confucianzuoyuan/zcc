@@ -34,6 +34,7 @@ type CType struct {
 
 	ReturnType *CType
 	Params     *CType
+	IsVariadic bool
 	Next       *CType
 }
 
