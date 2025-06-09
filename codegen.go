@@ -325,6 +325,18 @@ func cast(from *CType, to *CType) {
 	}
 }
 
+func storeFp(r int, offset int64, sz int64) {
+	if sz == 4 {
+		printlnToFile("  movss %%xmm%d, %d(%%rbp)", r, offset)
+		return
+	}
+	if sz == 8 {
+		printlnToFile("  movsd %%xmm%d, %d(%%rbp)", r, offset)
+		return
+	}
+	panic("unreachable")
+}
+
 func storeGp(r int, offset int64, sz int64) {
 	switch sz {
 	case 1:
@@ -866,10 +878,16 @@ func emitText(prog *Obj) {
 		}
 
 		// Save passed-by-register arguments to the stack
-		i := 0
+		gp := 0
+		fp := 0
 		for v := fn.Params; v != nil; v = v.Next {
-			storeGp(i, v.Offset, v.Ty.Size)
-			i += 1
+			if v.Ty.isFloat() {
+				storeFp(fp, v.Offset, v.Ty.Size)
+				fp += 1
+			} else {
+				storeGp(gp, v.Offset, v.Ty.Size)
+				gp += 1
+			}
 		}
 
 		// Emit code
