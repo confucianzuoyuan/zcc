@@ -41,6 +41,18 @@ func pop(arg string) {
 	depth -= 1
 }
 
+func pushf() {
+	printlnToFile("  sub $8, %%rsp")
+	printlnToFile("  movsd %%xmm0, (%%rsp)")
+	depth += 1
+}
+
+func popf(arg string) {
+	printlnToFile("  movsd (%%rsp), %s", arg)
+	printlnToFile("  add $8, %%rsp")
+	depth -= 1
+}
+
 func count() int {
 	i += 1
 	return i - 1
@@ -464,6 +476,43 @@ func genExpr(node *AstNode) {
 			return
 		}
 		return
+	}
+
+	if node.Lhs.Ty.isFloat() {
+		genExpr(node.Rhs)
+		pushf()
+		genExpr(node.Lhs)
+		popf("%xmm1")
+
+		sz := "sd"
+		if node.Lhs.Ty.Kind == TY_FLOAT {
+			sz = "ss"
+		}
+
+		switch node.Kind {
+		case ND_EQ, ND_NE, ND_LT, ND_LE:
+			printlnToFile("  ucomi%s %%xmm0, %%xmm1", sz)
+
+			if node.Kind == ND_EQ {
+				printlnToFile("  sete %%al")
+				printlnToFile("  setnp %%dl")
+				printlnToFile("  and %%dl, %%al")
+			} else if node.Kind == ND_NE {
+				printlnToFile("  setne %%al")
+				printlnToFile("  setp %%dl")
+				printlnToFile("  or %%dl, %%al")
+			} else if node.Kind == ND_LT {
+				printlnToFile("  seta %%al")
+			} else {
+				printlnToFile("  setae %%al")
+			}
+
+			printlnToFile("  and $1, %%al")
+			printlnToFile("  movzb %%al, %%rax")
+			return
+		}
+
+		errorTok(node.Tok, "invalid expression")
 	}
 
 	genExpr(node.Rhs)

@@ -208,6 +208,14 @@ func (ty *CType) getCommonType(other *CType) *CType {
 		return pointerTo(ty.Base)
 	}
 
+	if ty.Kind == TY_DOUBLE || other.Kind == TY_DOUBLE {
+		return TyDouble
+	}
+
+	if ty.Kind == TY_FLOAT || other.Kind == TY_FLOAT {
+		return TyFloat
+	}
+
 	if ty.Size < 4 {
 		ty = TyInt
 	}

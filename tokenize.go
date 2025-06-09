@@ -431,7 +431,7 @@ func readNumber(start int) *Token {
 	var ty *CType
 	var value float64
 	if (*currentInput)[end-1] == 'f' || (*currentInput)[end-1] == 'F' {
-		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
+		value, _ = strconv.ParseFloat(string((*currentInput)[start:end-1]), 64)
 		ty = TyFloat
 	} else if (*currentInput)[end-1] == 'l' || (*currentInput)[end-1] == 'L' {
 		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
