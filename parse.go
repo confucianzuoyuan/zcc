@@ -205,6 +205,13 @@ func newLong(value int64, tok *Token) *AstNode {
 	return node
 }
 
+func newULong(value int64, tok *Token) *AstNode {
+	node := newNode(ND_NUM, tok)
+	node.Value = value
+	node.Ty = TyULong
+	return node
+}
+
 func newVarNode(variable *Obj, tok *Token) *AstNode {
 	node := newNode(ND_VAR, tok)
 	node.Variable = variable
@@ -2014,7 +2021,7 @@ func newSub(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 	// ptr - ptr, which returns how many elements are between the two.
 	if lhs.Ty.Base != nil && rhs.Ty.Base != nil {
 		node := newBinary(ND_SUB, lhs, rhs, tok)
-		node.Ty = TyInt
+		node.Ty = TyLong
 		return newBinary(ND_DIV, node, newNum(lhs.Ty.Base.Size, tok), tok)
 	}
 
@@ -2290,7 +2297,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("sizeof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
 		ty := typeName(&tok, tok.Next.Next)
 		*rest = skip(tok, ")")
-		return newNum(ty.Size, start)
+		return newULong(ty.Size, start)
 	}
 
 	if tok.isEqual("(") {
@@ -2302,19 +2309,19 @@ func primary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("sizeof") {
 		node := unary(rest, tok.Next)
 		node.addType()
-		return newNum(node.Ty.Size, tok)
+		return newULong(node.Ty.Size, tok)
 	}
 
 	if tok.isEqual("_Alignof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
 		ty := typeName(&tok, tok.Next.Next)
 		*rest = skip(tok, ")")
-		return newNum(ty.Align, tok)
+		return newULong(ty.Align, tok)
 	}
 
 	if tok.isEqual("_Alignof") {
 		node := unary(rest, tok.Next)
 		node.addType()
-		return newNum(node.Ty.Align, tok)
+		return newULong(node.Ty.Align, tok)
 	}
 
 	if tok.Kind == TK_IDENT {
