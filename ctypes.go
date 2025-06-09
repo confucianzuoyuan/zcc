@@ -227,11 +227,7 @@ func (node *AstNode) addType() {
 
 	switch node.Kind {
 	case ND_NUM:
-		if node.Value == int64(int(node.Value)) {
-			node.Ty = TyInt
-		} else {
-			node.Ty = TyLong
-		}
+		node.Ty = TyInt
 		return
 	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD, ND_BITAND, ND_BITOR, ND_BITXOR:
 		usualArithConv(&node.Lhs, &node.Rhs)

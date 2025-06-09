@@ -2348,6 +2348,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 	if tok.Kind == TK_NUM {
 		node := newNum(tok.Value, tok)
+		node.Ty = tok.Ty
 		*rest = tok.Next
 		return node
 	}

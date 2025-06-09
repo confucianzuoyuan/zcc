@@ -283,12 +283,14 @@ func readCharLiteral(start int) *Token {
 
 	tok := newToken(TK_NUM, start, end+1)
 	tok.Value = int64(c)
+	tok.Ty = TyInt
 	return tok
 }
 
 func readIntLiteral(start int) *Token {
 	p := start
 
+	// Read a binary, octal, decimal or hexadecimal number.
 	base := 10
 	if ((*currentInput)[p] == '0' && ((*currentInput)[p+1] == 'x' || (*currentInput)[p+1] == 'X')) && isHexDigit((*currentInput)[p+2]) {
 		p += 2
@@ -333,12 +335,85 @@ func readIntLiteral(start int) *Token {
 		errorAt(p, "invalid base")
 	}
 
+	// Read U, L or LL suffixes.
+	l := false
+	u := false
+
+	suffix3 := string((*currentInput)[p : p+3])
+	suffix2 := string((*currentInput)[p : p+2])
+	suffix1 := string((*currentInput)[p : p+1])
+	if suffix3 == "LLU" || suffix3 == "LLu" || suffix3 == "llU" || suffix3 == "llu" || suffix3 == "ULL" || suffix3 == "Ull" || suffix3 == "uLL" || suffix3 == "ull" {
+		p += 3
+		u = true
+		l = true
+	} else if suffix2 == "lu" || suffix2 == "Lu" || suffix2 == "lU" || suffix2 == "LU" || suffix2 == "ul" || suffix2 == "Ul" || suffix2 == "uL" || suffix2 == "UL" {
+		p += 2
+		l = true
+		u = true
+	} else if suffix2 == "LL" || suffix2 == "ll" {
+		p += 2
+		l = true
+	} else if suffix1 == "L" || suffix1 == "l" {
+		p += 1
+		l = true
+	} else if suffix1 == "U" || suffix1 == "u" {
+		p += 1
+		u = true
+	}
+
 	if isAlphaNumber((*currentInput)[p]) {
 		errorAt(p, "invalid digit")
 	}
 
+	// Infer a type
+	var ty *CType = nil
+	if base == 10 {
+		if l && u {
+			ty = TyULong
+		} else if l {
+			ty = TyLong
+		} else if u {
+			if val>>32 != 0 {
+				ty = TyULong
+			} else {
+				ty = TyUInt
+			}
+		} else {
+			if val>>31 != 0 {
+				ty = TyLong
+			} else {
+				ty = TyInt
+			}
+		}
+	} else {
+		if l && u {
+			ty = TyULong
+		} else if l {
+			if val>>63 != 0 {
+				ty = TyULong
+			} else {
+				ty = TyLong
+			}
+		} else if u {
+			if val>>32 != 0 {
+				ty = TyULong
+			} else {
+				ty = TyUInt
+			}
+		} else if val>>63 != 0 {
+			ty = TyULong
+		} else if val>>32 != 0 {
+			ty = TyLong
+		} else if val>>31 != 0 {
+			ty = TyUInt
+		} else {
+			ty = TyInt
+		}
+	}
+
 	tok := newToken(TK_NUM, start, p)
 	tok.Value = int64(val)
+	tok.Ty = ty
 	return tok
 }
 
