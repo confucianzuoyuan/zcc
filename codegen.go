@@ -343,6 +343,23 @@ func genExpr(node *AstNode) {
 		return
 	case ND_NEG:
 		genExpr(node.Lhs)
+
+		if node.Ty.Kind == TY_FLOAT {
+			printlnToFile("  mov $1, %%rax")
+			printlnToFile("  shl $31, %%rax")
+			printlnToFile("  movq %%rax, %%xmm1")
+			printlnToFile("  xorps %%xmm1, %%xmm0")
+			return
+		}
+
+		if node.Ty.Kind == TY_DOUBLE {
+			printlnToFile("  mov $1, %%rax")
+			printlnToFile("  shl $63, %%rax")
+			printlnToFile("  movq %%rax, %%xmm1")
+			printlnToFile("  xorpd %%xmm1, %%xmm0")
+			return
+		}
+
 		printlnToFile("  neg %%rax")
 		return
 	case ND_VAR, ND_MEMBER:
@@ -490,6 +507,18 @@ func genExpr(node *AstNode) {
 		}
 
 		switch node.Kind {
+		case ND_ADD:
+			printlnToFile("  add%s %%xmm1, %%xmm0", sz)
+			return
+		case ND_SUB:
+			printlnToFile("  sub%s %%xmm1, %%xmm0", sz)
+			return
+		case ND_MUL:
+			printlnToFile("  mul%s %%xmm1, %%xmm0", sz)
+			return
+		case ND_DIV:
+			printlnToFile("  div%s %%xmm1, %%xmm0", sz)
+			return
 		case ND_EQ, ND_NE, ND_LT, ND_LE:
 			printlnToFile("  ucomi%s %%xmm0, %%xmm1", sz)
 
@@ -558,13 +587,13 @@ func genExpr(node *AstNode) {
 		}
 		return
 	case ND_BITAND:
-		printlnToFile("  and %%rdi, %%rax")
+		printlnToFile("  and %s, %s", di, ax)
 		return
 	case ND_BITOR:
-		printlnToFile("  or %%rdi, %%rax")
+		printlnToFile("  or %s, %s", di, ax)
 		return
 	case ND_BITXOR:
-		printlnToFile("  xor %%rdi, %%rax")
+		printlnToFile("  xor %s, %s", di, ax)
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
 		printlnToFile("  cmp %s, %s", di, ax)

@@ -173,6 +173,10 @@ func (t *CType) isFloat() bool {
 	return t.Kind == TY_FLOAT || t.Kind == TY_DOUBLE
 }
 
+func (t *CType) isNumeric() bool {
+	return t.isInteger() || t.isFloat()
+}
+
 func pointerTo(base *CType) *CType {
 	ty := newType(TY_PTR, 8, 8) // Assuming pointer size is 8 bytes
 	ty.Base = base

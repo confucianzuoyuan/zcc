@@ -423,21 +423,34 @@ func readNumber(start int) *Token {
 	}
 
 	// If it's not an integer, it must be a floating point constant.
-	end := start
-	for ((*currentInput)[end] <= '9' && (*currentInput)[end] >= '0') || ((*currentInput)[end] <= 'Z' && (*currentInput)[end] >= 'A') || ((*currentInput)[end] <= 'z' && (*currentInput)[end] >= 'a') || ((*currentInput)[end] == 'l' || (*currentInput)[end] == 'L') || (*currentInput)[end] == '.' || (*currentInput)[end] == '+' || (*currentInput)[end] == '-' {
+	end := start + tok.Length
+	if (*currentInput)[end] == '.' {
 		end += 1
 	}
+	for isDecimalDigit((*currentInput)[end]) || (*currentInput)[end] == 'p' {
+		end += 1
+	}
+	if (*currentInput)[end] == 'e' || (*currentInput)[end] == 'E' {
+		if (*currentInput)[end+1] == '+' || (*currentInput)[end+1] == '-' {
+			end += 2
+		} else {
+			end += 1
+		}
+
+		for isDecimalDigit((*currentInput)[end]) {
+			end += 1
+		}
+	}
+	value, _ := strconv.ParseFloat(string((*currentInput)[start:end]), 64)
 
 	var ty *CType
-	var value float64
-	if (*currentInput)[end-1] == 'f' || (*currentInput)[end-1] == 'F' {
-		value, _ = strconv.ParseFloat(string((*currentInput)[start:end-1]), 64)
+	if (*currentInput)[end] == 'f' || (*currentInput)[end] == 'F' {
 		ty = TyFloat
-	} else if (*currentInput)[end-1] == 'l' || (*currentInput)[end-1] == 'L' {
-		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
+		end += 1
+	} else if (*currentInput)[end] == 'l' || (*currentInput)[end] == 'L' {
 		ty = TyDouble
+		end += 1
 	} else {
-		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
 		ty = TyDouble
 	}
 
