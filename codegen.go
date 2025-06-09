@@ -172,6 +172,18 @@ func store(ty *CType) {
 }
 
 func cmpZero(ty *CType) {
+	if ty.Kind == TY_FLOAT {
+		printlnToFile("  xorps %%xmm1, %%xmm1")
+		printlnToFile("  ucomiss %%xmm1, %%xmm0")
+		return
+	}
+
+	if ty.Kind == TY_DOUBLE {
+		printlnToFile("  xorpd %%xmm1, %%xmm1")
+		printlnToFile("  ucomisd %%xmm1, %%xmm0")
+		return
+	}
+
 	if ty.isInteger() && ty.Size <= 4 {
 		printlnToFile("  cmp $0, %%eax")
 	} else {
@@ -402,7 +414,7 @@ func genExpr(node *AstNode) {
 	case ND_COND:
 		c := count()
 		genExpr(node.Cond)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Cond.Ty)
 		printlnToFile("  je .L.else.%d", c)
 		genExpr(node.Then)
 		printlnToFile("  jmp .L.end.%d", c)
@@ -412,7 +424,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_NOT:
 		genExpr(node.Lhs)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Lhs.Ty)
 		printlnToFile("  sete %%al")
 		printlnToFile("  movzx %%al, %%rax")
 		return
@@ -423,10 +435,10 @@ func genExpr(node *AstNode) {
 	case ND_LOGAND:
 		c := count()
 		genExpr(node.Lhs)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Lhs.Ty)
 		printlnToFile("  je  .L.false.%d", c)
 		genExpr(node.Rhs)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Rhs.Ty)
 		printlnToFile("  je  .L.false.%d", c)
 		printlnToFile("  mov $1, %%rax")
 		printlnToFile("  jmp .L.end.%d", c)
@@ -437,10 +449,10 @@ func genExpr(node *AstNode) {
 	case ND_LOGOR:
 		c := count()
 		genExpr(node.Lhs)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Lhs.Ty)
 		printlnToFile("  jne .L.true.%d", c)
 		genExpr(node.Rhs)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Rhs.Ty)
 		printlnToFile("  jne .L.true.%d", c)
 		printlnToFile("  mov $0, %%rax")
 		printlnToFile("  jmp .L.end.%d", c)
@@ -642,7 +654,7 @@ func genStmt(node *AstNode) {
 	case ND_IF:
 		c := count()
 		genExpr(node.Cond)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Cond.Ty)
 		printlnToFile("  je  .L.else.%d", c)
 		genStmt(node.Then)
 		printlnToFile("  jmp .L.end.%d", c)
@@ -660,7 +672,7 @@ func genStmt(node *AstNode) {
 		printlnToFile(".L.begin.%d:", c)
 		if node.Cond != nil {
 			genExpr(node.Cond)
-			printlnToFile("  cmp $0, %%rax")
+			cmpZero(node.Cond.Ty)
 			printlnToFile("  je %s", node.BreakLabel)
 		}
 		genStmt(node.Then)
@@ -677,7 +689,7 @@ func genStmt(node *AstNode) {
 		genStmt(node.Then)
 		printlnToFile("%s:", node.ContinueLabel)
 		genExpr(node.Cond)
-		printlnToFile("  cmp $0, %%rax")
+		cmpZero(node.Cond.Ty)
 		printlnToFile("  jne .L.begin.%d", c)
 		printlnToFile("%s:", node.BreakLabel)
 		return
