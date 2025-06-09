@@ -92,15 +92,22 @@ func load(ty *CType) {
 		return
 	}
 
+	insn := ""
+	if ty.IsUnsigned {
+		insn = "movz"
+	} else {
+		insn = "movs"
+	}
+
 	// When we load a char or a short value to a register, we always
 	// extend them to the size of int, so we can assume the lower half of
 	// a register always contains a valid value. The upper half of a
 	// register for char, short and int may contain garbage. When we load
 	// a long value to a register, it simply occupies the entire register.
 	if ty.Size == 1 {
-		printlnToFile("  movsbl (%%rax), %%eax")
+		printlnToFile("  %sbl (%%rax), %%eax", insn)
 	} else if ty.Size == 2 {
-		printlnToFile("  movswl (%%rax), %%eax")
+		printlnToFile("  %swl (%%rax), %%eax", insn)
 	} else if ty.Size == 4 {
 		printlnToFile("  movsxd (%%rax), %%rax")
 	} else {
@@ -144,34 +151,60 @@ const (
 	I16
 	I32
 	I64
+	U8
+	U16
+	U32
+	U64
 )
 
 func getTypeId(ty *CType) int {
 	switch ty.Kind {
 	case TY_CHAR:
-		return I8
+		if ty.IsUnsigned {
+			return U8
+		} else {
+			return I8
+		}
 	case TY_SHORT:
-		return I16
+		if ty.IsUnsigned {
+			return U16
+		} else {
+			return I16
+		}
 	case TY_INT:
-		return I32
+		if ty.IsUnsigned {
+			return U32
+		} else {
+			return I32
+		}
+	case TY_LONG:
+		if ty.IsUnsigned {
+			return U64
+		} else {
+			return I64
+		}
 	}
-	return I64
+	return U64
 }
 
 // The table for type casts
 const I32I8 = "movsbl %al, %eax"
+const I32U8 = "movzbl %al, %eax"
 const I32I16 = "movswl %ax, %eax"
+const I32U16 = "movzwl %ax, %eax"
 const I32I64 = "movsxd %eax, %rax"
+const U32I64 = "mov %eax, %eax"
 
 var CastTable = [][]string{
-	// I8
-	{"", "", "", I32I64},
-	// I16
-	{I32I8, "", "", I32I64},
-	// I32
-	{I32I8, I32I16, "", I32I64},
-	// I64
-	{I32I8, I32I16, "", ""},
+	// i8 i16 i32 i64 u8 u16 u32 u64
+	{"", "", "", I32I64, I32U8, I32I16, "", I32I64},        // i8
+	{I32I8, "", "", I32I64, I32U8, I32U16, "", I32I64},     // i16
+	{I32I8, I32I16, "", I32I64, I32U8, I32U16, "", I32I64}, // i32
+	{I32I8, I32I16, "", "", I32U8, I32U16, "", ""},         // i64
+	{I32I8, "", "", I32I64, "", "", "", I32I64},            // u8
+	{I32I8, I32I16, "", I32I64, I32U8, "", "", I32I64},     // u16
+	{I32I8, I32I16, "", U32I64, I32U8, I32U16, "", U32I64}, // u32
+	{I32I8, I32I16, "", "", I32U8, I32U16, "", ""},         // u64
 }
 
 func cast(from *CType, to *CType) {
@@ -342,10 +375,18 @@ func genExpr(node *AstNode) {
 			printlnToFile("  movzx %%al, %%eax")
 			return
 		case TY_CHAR:
-			printlnToFile("  movsbl %%al, %%eax")
+			if node.Ty.IsUnsigned {
+				printlnToFile("  movzbl %%al, %%eax")
+			} else {
+				printlnToFile("  movsbl %%al, %%eax")
+			}
 			return
 		case TY_SHORT:
-			printlnToFile("  movswl %%ax, %%eax")
+			if node.Ty.IsUnsigned {
+				printlnToFile("  movzwl %%ax, %%eax")
+			} else {
+				printlnToFile("  movswl %%ax, %%eax")
+			}
 			return
 		}
 		return
@@ -358,10 +399,12 @@ func genExpr(node *AstNode) {
 
 	ax := "%eax"
 	di := "%edi"
+	dx := "%edx"
 
 	if node.Lhs.Ty.Kind == TY_LONG || node.Lhs.Ty.Base != nil {
 		ax = "%rax"
 		di = "%rdi"
+		dx = "%rdx"
 	}
 
 	switch node.Kind {
@@ -375,12 +418,17 @@ func genExpr(node *AstNode) {
 		printlnToFile("  imul %s, %s", di, ax)
 		return
 	case ND_DIV, ND_MOD:
-		if node.Lhs.Ty.Size == 8 {
-			printlnToFile("  cqo")
+		if node.Ty.IsUnsigned {
+			printlnToFile("  mov $0, %s", dx)
+			printlnToFile("  div %s", di)
 		} else {
-			printlnToFile("  cdq")
+			if node.Lhs.Ty.Size == 8 {
+				printlnToFile("  cqo")
+			} else {
+				printlnToFile("  cdq")
+			}
+			printlnToFile("  idiv %s", di)
 		}
-		printlnToFile("  idiv %s", di)
 
 		if node.Kind == ND_MOD {
 			printlnToFile("  mov %%rdx, %%rax")
@@ -403,9 +451,17 @@ func genExpr(node *AstNode) {
 		} else if node.Kind == ND_NE {
 			printlnToFile("  setne %%al")
 		} else if node.Kind == ND_LT {
-			printlnToFile("  setl %%al")
+			if node.Lhs.Ty.IsUnsigned {
+				printlnToFile("  setb %%al")
+			} else {
+				printlnToFile("  setl %%al")
+			}
 		} else if node.Kind == ND_LE {
-			printlnToFile("  setle %%al")
+			if node.Lhs.Ty.IsUnsigned {
+				printlnToFile("  setbe %%al")
+			} else {
+				printlnToFile("  setle %%al")
+			}
 		}
 
 		printlnToFile("  movzb %%al, %%rax")
@@ -416,8 +472,8 @@ func genExpr(node *AstNode) {
 		return
 	case ND_SHR:
 		printlnToFile("  mov %%rdi, %%rcx")
-		if node.Ty.Size == 8 {
-			printlnToFile("  sar %%cl, %s", ax)
+		if node.Lhs.Ty.IsUnsigned {
+			printlnToFile("  shr %%cl, %s", ax)
 		} else {
 			printlnToFile("  sar %%cl, %s", ax)
 		}

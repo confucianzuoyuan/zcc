@@ -18,9 +18,10 @@ const (
 )
 
 type CType struct {
-	Kind  CTypeKind
-	Size  int64 // sizeof() value
-	Align int64 // alignment
+	Kind       CTypeKind
+	Size       int64 // sizeof() value
+	Align      int64 // alignment
+	IsUnsigned bool  // unsigned or signed
 
 	Base *CType
 
@@ -93,6 +94,34 @@ var TyLong = &CType{
 	Align: 8,
 }
 
+var TyUChar = &CType{
+	Kind:       TY_CHAR,
+	Size:       1,
+	Align:      1,
+	IsUnsigned: true,
+}
+
+var TyUShort = &CType{
+	Kind:       TY_SHORT,
+	Size:       2,
+	Align:      2,
+	IsUnsigned: true,
+}
+
+var TyUInt = &CType{
+	Kind:       TY_INT,
+	Size:       4,
+	Align:      4,
+	IsUnsigned: true,
+}
+
+var TyULong = &CType{
+	Kind:       TY_LONG,
+	Size:       8,
+	Align:      8,
+	IsUnsigned: true,
+}
+
 func newType(kind CTypeKind, size int64, align int64) *CType {
 	ty := &CType{
 		Kind:  kind,
@@ -141,11 +170,26 @@ func (ty *CType) getCommonType(other *CType) *CType {
 		return pointerTo(ty.Base)
 	}
 
-	if ty.Size == 8 || other.Size == 8 {
-		return TyLong
+	if ty.Size < 4 {
+		ty = TyInt
+	}
+	if other.Size < 4 {
+		other = TyInt
 	}
 
-	return TyInt
+	if ty.Size != other.Size {
+		if ty.Size > other.Size {
+			return ty
+		} else {
+			return other
+		}
+	}
+
+	if other.IsUnsigned {
+		return other
+	}
+
+	return ty
 }
 
 // For many binary operators, we implicitly promote operands so that

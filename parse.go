@@ -617,7 +617,7 @@ func consume(rest **Token, tok *Token, str string) bool {
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef" | "static" | "extern"
- *             | "signed"
+ *             | "signed" | "unsigned"
  *             | struct-decl | union-decl | typedef-name
  *             | enum-specifier)+
  *
@@ -639,14 +639,15 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	// keyword "void" so far. With this, we can use a switch statement
 	// as you can see below.
 	const (
-		VOID   = 1 << 0
-		BOOL   = 1 << 2
-		CHAR   = 1 << 4
-		SHORT  = 1 << 6
-		INT    = 1 << 8
-		LONG   = 1 << 10
-		OTHER  = 1 << 12 // struct or union
-		SIGNED = 1 << 13
+		VOID     = 1 << 0
+		BOOL     = 1 << 2
+		CHAR     = 1 << 4
+		SHORT    = 1 << 6
+		INT      = 1 << 8
+		LONG     = 1 << 10
+		OTHER    = 1 << 12 // struct or union
+		SIGNED   = 1 << 13
+		UNSIGNED = 1 << 14
 	)
 
 	ty := TyInt
@@ -727,6 +728,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			counter += LONG
 		} else if tok.isEqual("signed") {
 			counter |= SIGNED
+		} else if tok.isEqual("unsigned") {
+			counter |= UNSIGNED
 		} else {
 			errorTok(tok, "expected a typename")
 		}
@@ -738,12 +741,20 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			ty = TyBool
 		case CHAR, SIGNED + CHAR:
 			ty = TyChar
+		case UNSIGNED + CHAR:
+			ty = TyUChar
 		case SHORT, SHORT + INT, SIGNED + SHORT, SIGNED + SHORT + INT:
 			ty = TyShort
+		case UNSIGNED + SHORT, UNSIGNED + SHORT + INT:
+			ty = TyUShort
 		case INT, SIGNED, SIGNED + INT:
 			ty = TyInt
+		case UNSIGNED, UNSIGNED + INT:
+			ty = TyUInt
 		case LONG, LONG + INT, LONG + LONG, LONG + LONG + INT, SIGNED + LONG, SIGNED + LONG + INT, SIGNED + LONG + LONG, SIGNED + LONG + LONG + INT:
 			ty = TyLong
+		case UNSIGNED + LONG, UNSIGNED + LONG + INT, UNSIGNED + LONG + LONG, UNSIGNED + LONG + LONG + INT:
+			ty = TyULong
 		default:
 			errorTok(tok, "invalid type")
 		}
@@ -1262,7 +1273,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned",
 	}
 
 	for _, k := range kw {
