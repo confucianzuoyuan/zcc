@@ -139,6 +139,7 @@ func (t *CType) isInteger() bool {
 func pointerTo(base *CType) *CType {
 	ty := newType(TY_PTR, 8, 8) // Assuming pointer size is 8 bytes
 	ty.Base = base
+	ty.IsUnsigned = true
 	return ty
 }
 
