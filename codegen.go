@@ -849,14 +849,19 @@ func emitText(prog *Obj) {
 		// Save arg registers if function is variadic
 		if fn.VaArea != nil {
 			gp := 0
+			fp := 0
 			for v := fn.Params; v != nil; v = v.Next {
-				gp += 1
+				if v.Ty.isFloat() {
+					fp += 1
+				} else {
+					gp += 1
+				}
 			}
 			off := fn.VaArea.Offset
 
 			// va_elem
 			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)
-			printlnToFile("  movl $0, %d(%%rbp)", off+4)
+			printlnToFile("  movl $%d, %d(%%rbp)", fp*8+48, off+4)
 			printlnToFile("  movq %%rbp, %d(%%rbp)", off+16)
 			printlnToFile("  addq $%d, %d(%%rbp)", off+24, off+16)
 
