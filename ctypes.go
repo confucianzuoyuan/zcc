@@ -25,7 +25,9 @@ type CType struct {
 
 	Base *CType
 
-	Name *Token
+	// Declaration
+	Name    *Token
+	NamePos *Token
 
 	ArrayLength int64
 

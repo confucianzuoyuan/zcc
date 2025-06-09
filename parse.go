@@ -1110,12 +1110,17 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 		return declarator(&tok, start.Next, ty)
 	}
 
-	if tok.Kind != TK_IDENT {
-		errorTok(tok, "expected a variable name")
+	var name *Token = nil
+	var namePos *Token = nil
+
+	if tok.Kind == TK_IDENT {
+		name = tok
+		tok = tok.Next
 	}
 
-	ty = typeSuffix(rest, tok.Next, ty)
-	ty.Name = tok
+	ty = typeSuffix(rest, tok, ty)
+	ty.Name = name
+	ty.NamePos = namePos
 	return ty
 }
 
@@ -1175,6 +1180,9 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		ty := declarator(&tok, tok, basety)
 		if ty.Kind == TY_VOID {
 			errorTok(tok, "variable declared as void")
+		}
+		if ty.Name == nil {
+			errorTok(ty.NamePos, "variable name omitted")
 		}
 
 		if attr != nil && attr.IsStatic {
@@ -2433,6 +2441,9 @@ func parseTypeDef(tok *Token, basety *CType) *Token {
 		first = false
 
 		ty := declarator(&tok, tok, basety)
+		if ty.Name == nil {
+			errorTok(ty.NamePos, "typedef name omitted")
+		}
 		pushScope(ty.Name.getIdent()).TypeDef = ty
 	}
 
@@ -2442,12 +2453,18 @@ func parseTypeDef(tok *Token, basety *CType) *Token {
 func createParamLocalVars(param *CType) {
 	if param != nil {
 		createParamLocalVars(param.Next)
+		if param.Name == nil {
+			errorTok(param.NamePos, "parameter name omitted")
+		}
 		newLocalVar(param.Name.getIdent(), param)
 	}
 }
 
 func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	ty := declarator(&tok, tok, basety)
+	if ty.Name == nil {
+		errorTok(ty.NamePos, "function name omitted")
+	}
 
 	fn := newGlobalVar(ty.Name.getIdent(), ty)
 	fn.IsFunction = true
@@ -2487,6 +2504,10 @@ func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 		first = false
 
 		ty := declarator(&tok, tok, basety)
+		if ty.Name == nil {
+			errorTok(ty.NamePos, "variable name omitted")
+		}
+
 		variable := newGlobalVar(ty.Name.getIdent(), ty)
 		variable.IsDefinition = !attr.IsExtern
 		variable.IsStatic = attr.IsStatic
