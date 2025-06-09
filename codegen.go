@@ -93,6 +93,16 @@ func load(ty *CType) {
 		return
 	}
 
+	if ty.Kind == TY_FLOAT {
+		printlnToFile("  movss (%%rax), %%xmm0")
+		return
+	}
+
+	if ty.Kind == TY_DOUBLE {
+		printlnToFile("  movsd (%%rax), %%xmm0")
+		return
+	}
+
 	insn := ""
 	if ty.IsUnsigned {
 		insn = "movz"
@@ -128,6 +138,16 @@ func store(ty *CType) {
 		return
 	}
 
+	if ty.Kind == TY_FLOAT {
+		printlnToFile("  movss %%xmm0, (%%rdi)")
+		return
+	}
+
+	if ty.Kind == TY_DOUBLE {
+		printlnToFile("  movsd %%xmm0, (%%rdi)")
+		return
+	}
+
 	if ty.Size == 1 {
 		printlnToFile("  mov %%al, (%%rdi)")
 	} else if ty.Size == 2 {
@@ -156,6 +176,8 @@ const (
 	U16
 	U32
 	U64
+	F32
+	F64
 )
 
 func getTypeId(ty *CType) int {
@@ -184,6 +206,10 @@ func getTypeId(ty *CType) int {
 		} else {
 			return I64
 		}
+	case TY_FLOAT:
+		return F32
+	case TY_DOUBLE:
+		return F64
 	}
 	return U64
 }
@@ -193,19 +219,54 @@ const I32I8 = "movsbl %al, %eax"
 const I32U8 = "movzbl %al, %eax"
 const I32I16 = "movswl %ax, %eax"
 const I32U16 = "movzwl %ax, %eax"
+const I32F32 = "cvtsi2ssl %eax, %xmm0"
 const I32I64 = "movsxd %eax, %rax"
+const I32F64 = "cvtsi2sdl %eax, %xmm0"
+
+const U32F32 = "mov %eax, %eax; cvtsi2ssq %rax, %xmm0"
 const U32I64 = "mov %eax, %eax"
+const U32F64 = "mov %eax, %eax; cvtsi2sdq %rax, %xmm0"
+
+const I64F32 = "cvtsi2ssq %rax, %xmm0"
+const I64F64 = "cvtsi2sdq %rax, %xmm0"
+
+const U64F32 = "cvtsi2ssq %rax, %xmm0"
+const U64F64 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2sd %rax,%xmm0; jmp 2f; 
+  1: mov %rax,%rdi; and $1,%eax; pxor %xmm0,%xmm0; shr %rdi; 
+  or %rax,%rdi; cvtsi2sd %rdi,%xmm0; addsd %xmm0,%xmm0; 2:`
+
+const F32I8 = "cvttss2sil %xmm0, %eax; movsbl %al, %eax"
+const F32U8 = "cvttss2sil %xmm0, %eax; movzbl %al, %eax"
+const F32I16 = "cvttss2sil %xmm0, %eax; movswl %ax, %eax"
+const F32U16 = "cvttss2sil %xmm0, %eax; movzwl %ax, %eax"
+const F32I32 = "cvttss2sil %xmm0, %eax"
+const F32U32 = "cvttss2siq %xmm0, %rax"
+const F32I64 = "cvttss2siq %xmm0, %rax"
+const F32U64 = "cvttss2siq %xmm0, %rax"
+const F32F64 = "cvtss2sd %xmm0, %xmm0"
+
+const F64I8 = "cvttsd2sil %xmm0, %eax; movsbl %al, %eax"
+const F64U8 = "cvttsd2sil %xmm0, %eax; movzbl %al, %eax"
+const F64I16 = "cvttsd2sil %xmm0, %eax; movswl %ax, %eax"
+const F64U16 = "cvttsd2sil %xmm0, %eax; movzwl %ax, %eax"
+const F64I32 = "cvttsd2sil %xmm0, %eax"
+const F64U32 = "cvttsd2siq %xmm0, %rax"
+const F64F32 = "cvtsd2ss %xmm0, %xmm0"
+const F64I64 = "cvttsd2siq %xmm0, %rax"
+const F64U64 = "cvttsd2siq %xmm0, %rax"
 
 var CastTable = [][]string{
-	// i8 i16 i32 i64 u8 u16 u32 u64
-	{"", "", "", I32I64, I32U8, I32I16, "", I32I64},        // i8
-	{I32I8, "", "", I32I64, I32U8, I32U16, "", I32I64},     // i16
-	{I32I8, I32I16, "", I32I64, I32U8, I32U16, "", I32I64}, // i32
-	{I32I8, I32I16, "", "", I32U8, I32U16, "", ""},         // i64
-	{I32I8, "", "", I32I64, "", "", "", I32I64},            // u8
-	{I32I8, I32I16, "", I32I64, I32U8, "", "", I32I64},     // u16
-	{I32I8, I32I16, "", U32I64, I32U8, I32U16, "", U32I64}, // u32
-	{I32I8, I32I16, "", "", I32U8, I32U16, "", ""},         // u64
+	// i8 i16 i32 i64 u8 u16 u32 u64 f32 f64
+	{"", "", "", I32I64, I32U8, I32I16, "", I32I64, I32F32, I32F64},            // i8
+	{I32I8, "", "", I32I64, I32U8, I32U16, "", I32I64, I32F32, I32F64},         // i16
+	{I32I8, I32I16, "", I32I64, I32U8, I32U16, "", I32I64, I32F32, I32F64},     // i32
+	{I32I8, I32I16, "", "", I32U8, I32U16, "", "", I64F32, I64F64},             // i64
+	{I32I8, "", "", I32I64, "", "", "", I32I64, I32F32, I32F64},                // u8
+	{I32I8, I32I16, "", I32I64, I32U8, "", "", I32I64, I32F32, I32F64},         // u16
+	{I32I8, I32I16, "", U32I64, I32U8, I32U16, "", U32I64, U32F32, U32F64},     // u32
+	{I32I8, I32I16, "", "", I32U8, I32U16, "", "", U64F32, U64F64},             // u64
+	{F32I8, F32I16, F32I32, F32I64, F32U8, F32U16, F32U32, F32U64, "", F32F64}, //f32
+	{F64I8, F64I16, F64I32, F64I64, F64U8, F64U16, F64U32, F64U64, F64F32, ""}, //f64
 }
 
 func cast(from *CType, to *CType) {

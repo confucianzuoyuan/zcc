@@ -437,7 +437,7 @@ func readNumber(start int) *Token {
 		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
 		ty = TyDouble
 	} else {
-		value, _ = strconv.ParseFloat(string((*currentInput)[start:end+1]), 64)
+		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
 		ty = TyDouble
 	}
 

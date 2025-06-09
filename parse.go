@@ -654,9 +654,11 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		SHORT    = 1 << 6
 		INT      = 1 << 8
 		LONG     = 1 << 10
-		OTHER    = 1 << 12 // struct or union
-		SIGNED   = 1 << 13
-		UNSIGNED = 1 << 14
+		FLOAT    = 1 << 12
+		DOUBLE   = 1 << 14
+		OTHER    = 1 << 16 // struct or union
+		SIGNED   = 1 << 17
+		UNSIGNED = 1 << 18
 	)
 
 	ty := TyInt
@@ -740,6 +742,10 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			counter += INT
 		} else if tok.isEqual("long") {
 			counter += LONG
+		} else if tok.isEqual("float") {
+			counter += FLOAT
+		} else if tok.isEqual("double") {
+			counter += DOUBLE
 		} else if tok.isEqual("signed") {
 			counter |= SIGNED
 		} else if tok.isEqual("unsigned") {
@@ -769,6 +775,10 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			ty = TyLong
 		case UNSIGNED + LONG, UNSIGNED + LONG + INT, UNSIGNED + LONG + LONG, UNSIGNED + LONG + LONG + INT:
 			ty = TyULong
+		case FLOAT:
+			ty = TyFloat
+		case DOUBLE:
+			ty = TyDouble
 		default:
 			errorTok(tok, "invalid type")
 		}
@@ -1308,7 +1318,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn", "float", "double",
 	}
 
 	for _, k := range kw {

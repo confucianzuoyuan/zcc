@@ -1,3 +1,3 @@
 int main() {
-    return sizeof(8f);
+    return (_Bool)0.1;
 }
