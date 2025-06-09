@@ -47,10 +47,23 @@ func pushf() {
 	depth += 1
 }
 
-func popf(arg string) {
-	printlnToFile("  movsd (%%rsp), %s", arg)
+func popf(reg int) {
+	printlnToFile("  movsd (%%rsp), %%xmm%d", reg)
 	printlnToFile("  add $8, %%rsp")
 	depth -= 1
+}
+
+func pushArgs(args *AstNode) {
+	if args != nil {
+		pushArgs(args.Next)
+
+		genExpr(args)
+		if args.Ty.isFloat() {
+			pushf()
+		} else {
+			push()
+		}
+	}
 }
 
 func count() int {
@@ -461,18 +474,19 @@ func genExpr(node *AstNode) {
 		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_FUNCALL:
-		nargs := 0
+		pushArgs(node.Args)
+
+		gp := 0
+		fp := 0
 		for arg := node.Args; arg != nil; arg = arg.Next {
-			genExpr(arg)
-			push()
-			nargs += 1
+			if arg.Ty.isFloat() {
+				popf(fp)
+				fp += 1
+			} else {
+				pop(argreg64[gp])
+				gp += 1
+			}
 		}
-
-		for i := nargs - 1; i >= 0; i -= 1 {
-			pop(argreg64[i])
-		}
-
-		printlnToFile("  mov $0, %%rax")
 
 		if depth%2 == 0 {
 			printlnToFile("  call %s", node.FuncName)
@@ -511,7 +525,7 @@ func genExpr(node *AstNode) {
 		genExpr(node.Rhs)
 		pushf()
 		genExpr(node.Lhs)
-		popf("%xmm1")
+		popf(1)
 
 		sz := "sd"
 		if node.Lhs.Ty.Kind == TY_FLOAT {
