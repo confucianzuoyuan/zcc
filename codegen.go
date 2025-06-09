@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 )
 
 var outputFile io.Writer
@@ -253,6 +254,18 @@ func genExpr(node *AstNode) {
 	case ND_NULL_EXPR:
 		return
 	case ND_NUM:
+		switch node.Ty.Kind {
+		case TY_FLOAT:
+			u := math.Float32bits(float32(node.FloatValue))
+			printlnToFile("  mov $%d, %%eax  # float %f", u, node.FloatValue)
+			printlnToFile("  movq %%rax, %%xmm0")
+			return
+		case TY_DOUBLE:
+			u := math.Float64bits(node.FloatValue)
+			printlnToFile("  mov $%d, %%rax  # double %f", u, node.FloatValue)
+			printlnToFile("  movq %%rax, %%xmm0")
+			return
+		}
 		printlnToFile("  mov $%d, %%rax", node.Value)
 		return
 	case ND_NEG:

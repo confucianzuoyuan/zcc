@@ -2422,7 +2422,14 @@ func primary(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.Kind == TK_NUM {
-		node := newNum(tok.Value, tok)
+		var node *AstNode = nil
+		if tok.Ty.isFloat() {
+			node = newNode(ND_NUM, tok)
+			node.FloatValue = tok.FloatValue
+		} else {
+			node = newNum(tok.Value, tok)
+		}
+
 		node.Ty = tok.Ty
 		*rest = tok.Next
 		return node

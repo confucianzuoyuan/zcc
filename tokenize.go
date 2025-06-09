@@ -22,6 +22,7 @@ type Token struct {
 	Kind          TokenKind // Token kind
 	Next          *Token    // Next token
 	Value         int64     // If kind is TK_NUM, its value
+	FloatValue    float64   // If kind is TK_NUM, its value
 	Location      int       // Token location
 	Length        int       // Token length
 	Ty            *CType    // Used if TK_NUM or TK_STR
@@ -361,10 +362,6 @@ func readIntLiteral(start int) *Token {
 		u = true
 	}
 
-	if isAlphaNumber((*currentInput)[p]) {
-		errorAt(p, "invalid digit")
-	}
-
 	// Infer a type
 	var ty *CType = nil
 	if base == 10 {
@@ -413,6 +410,39 @@ func readIntLiteral(start int) *Token {
 
 	tok := newToken(TK_NUM, start, p)
 	tok.Value = int64(val)
+	tok.Ty = ty
+	return tok
+}
+
+func readNumber(start int) *Token {
+	// Try to parse as an integer constant.
+	tok := readIntLiteral(start)
+	c := (*currentInput)[start+tok.Length]
+	if c != '.' && c != 'e' && c != 'E' && c != 'f' && c != 'F' {
+		return tok
+	}
+
+	// If it's not an integer, it must be a floating point constant.
+	end := start
+	for ((*currentInput)[end] <= '9' && (*currentInput)[end] >= '0') || ((*currentInput)[end] <= 'Z' && (*currentInput)[end] >= 'A') || ((*currentInput)[end] <= 'z' && (*currentInput)[end] >= 'a') || ((*currentInput)[end] == 'l' || (*currentInput)[end] == 'L') || (*currentInput)[end] == '.' || (*currentInput)[end] == '+' || (*currentInput)[end] == '-' {
+		end += 1
+	}
+
+	var ty *CType
+	var value float64
+	if (*currentInput)[end-1] == 'f' || (*currentInput)[end-1] == 'F' {
+		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
+		ty = TyFloat
+	} else if (*currentInput)[end-1] == 'l' || (*currentInput)[end-1] == 'L' {
+		value, _ = strconv.ParseFloat(string((*currentInput)[start:end]), 64)
+		ty = TyDouble
+	} else {
+		value, _ = strconv.ParseFloat(string((*currentInput)[start:end+1]), 64)
+		ty = TyDouble
+	}
+
+	tok = newToken(TK_NUM, start, end)
+	tok.FloatValue = value
 	tok.Ty = ty
 	return tok
 }
@@ -512,8 +542,8 @@ func tokenize(filename string, src *[]uint8) *Token {
 		}
 
 		// Numeric literal
-		if isDecimalDigit((*src)[p]) {
-			cur.Next = readIntLiteral(p)
+		if isDecimalDigit((*src)[p]) || ((*src)[p] == '.' && isDecimalDigit((*src)[p+1])) {
+			cur.Next = readNumber(p)
 			cur = cur.Next
 			p += cur.Length
 			continue

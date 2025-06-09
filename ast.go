@@ -91,7 +91,8 @@ type AstNode struct {
 	Variable *Obj
 
 	// Numeric literal
-	Value int64
+	Value      int64
+	FloatValue float64
 }
 
 func (node *AstNode) String() string {

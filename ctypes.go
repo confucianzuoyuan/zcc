@@ -9,6 +9,8 @@ const (
 	TY_INT
 	TY_SHORT
 	TY_LONG
+	TY_FLOAT
+	TY_DOUBLE
 	TY_ENUM
 	TY_PTR
 	TY_FUNC
@@ -39,6 +41,23 @@ type CType struct {
 	Params     *CType
 	IsVariadic bool
 	Next       *CType
+}
+
+func (t *CType) print() {
+	switch t.Kind {
+	case TY_VOID:
+		println("void")
+	case TY_ARRAY:
+		println("array")
+	case TY_BOOL:
+		println("bool")
+	case TY_CHAR:
+		println("char")
+	case TY_FLOAT:
+		println("float")
+	case TY_DOUBLE:
+		println("double")
+	}
 }
 
 func (ty *CType) copy() *CType {
@@ -124,6 +143,18 @@ var TyULong = &CType{
 	IsUnsigned: true,
 }
 
+var TyFloat = &CType{
+	Kind:  TY_FLOAT,
+	Size:  4,
+	Align: 4,
+}
+
+var TyDouble = &CType{
+	Kind:  TY_DOUBLE,
+	Size:  8,
+	Align: 8,
+}
+
 func newType(kind CTypeKind, size int64, align int64) *CType {
 	ty := &CType{
 		Kind:  kind,
@@ -136,6 +167,10 @@ func newType(kind CTypeKind, size int64, align int64) *CType {
 
 func (t *CType) isInteger() bool {
 	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL || t.Kind == TY_ENUM
+}
+
+func (t *CType) isFloat() bool {
+	return t.Kind == TY_FLOAT || t.Kind == TY_DOUBLE
 }
 
 func pointerTo(base *CType) *CType {
