@@ -626,7 +626,9 @@ func consume(rest **Token, tok *Token, str string) bool {
  *             | "typedef" | "static" | "extern"
  *             | "signed" | "unsigned"
  *             | struct-decl | union-decl | typedef-name
- *             | enum-specifier)+
+ *             | enum-specifier
+ *             | "const" | "volatile" | "auto" | "register" | "restrict"
+ *             | "__restrict" | "__restrict__" | "_Noreturn")+
  *
  * The order of typenames in a type-specifier doesn't matter. For
  * example, `int long static` means the same as `static long int`.
@@ -680,6 +682,11 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				}
 			}
 			tok = tok.Next
+			continue
+		}
+
+		// These keywords are recognized but ignored.
+		if consume(&tok, tok, "const") || consume(&tok, tok, "volatile") || consume(&tok, tok, "auto") || consume(&tok, tok, "register") || consume(&tok, tok, "restrict") || consume(&tok, tok, "__restrict") || consume(&tok, tok, "__restrict__") || consume(&tok, tok, "_Noreturn") {
 			continue
 		}
 
@@ -1072,11 +1079,23 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 	return ty
 }
 
-// declarator = "*"* ("(" ident ")" | "(" declarator ")" | ident) type-suffix
-func declarator(rest **Token, tok *Token, ty *CType) *CType {
+// pointers = ("*" ("const" | "volatile" | "restrict")*)*
+func pointers(rest **Token, tok *Token, ty *CType) *CType {
 	for consume(&tok, tok, "*") {
 		ty = pointerTo(ty)
+
+		for tok.isEqual("const") || tok.isEqual("volatile") || tok.isEqual("restrict") || tok.isEqual("__restrict") || tok.isEqual("__restrict__") {
+			tok = tok.Next
+		}
 	}
+
+	*rest = tok
+	return ty
+}
+
+// declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type-suffix
+func declarator(rest **Token, tok *Token, ty *CType) *CType {
+	ty = pointers(&tok, tok, ty)
 
 	if tok.isEqual("(") {
 		start := tok
@@ -1096,12 +1115,9 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 	return ty
 }
 
-// abstract-declarator = "*"* ("(" abstract-declarator ")")? type-suffix
+// abstract-declarator = pointers ("(" abstract-declarator ")")? type-suffix
 func abstractDeclarator(rest **Token, tok *Token, ty *CType) *CType {
-	for tok.isEqual("*") {
-		ty = pointerTo(ty)
-		tok = tok.Next
-	}
+	ty = pointers(&tok, tok, ty)
 
 	if tok.isEqual("(") {
 		start := tok
@@ -1280,7 +1296,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn",
 	}
 
 	for _, k := range kw {
