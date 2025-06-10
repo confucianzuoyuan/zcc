@@ -780,6 +780,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			ty = TyFloat
 		case DOUBLE:
 			ty = TyDouble
+		case LONG + DOUBLE:
+			ty = TyDouble
 		default:
 			errorTok(tok, "invalid type")
 		}
