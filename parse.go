@@ -2304,7 +2304,15 @@ func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
 
 /*
  * postfix = "(" type-name ")" "{" initializer-list "}"
- *         | primary ("[" expr "]" | "." ident | "->" ident | "++" | "--")*
+ *         = ident "(" func-args ")" postfix-tail*
+ *         | primary postfix-tail*
+ *
+ * postfix-tail = "[" expr "]"
+ *              | "(" func-args ")"
+ *              | "." ident
+ *              | "->" ident
+ *              | "++"
+ *              | "--"
  */
 func postfix(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("(") && tok.Next.isTypename() {
@@ -2328,6 +2336,11 @@ func postfix(rest **Token, tok *Token) *AstNode {
 	node := primary(&tok, tok)
 
 	for {
+		if tok.isEqual("(") {
+			node = funcall(&tok, tok.Next, node)
+			continue
+		}
+
 		if tok.isEqual(("[")) {
 			// x[y] is short for *(x+y)
 			start := tok
@@ -2367,20 +2380,20 @@ func postfix(rest **Token, tok *Token) *AstNode {
 	}
 }
 
-// funcall = ident "(" (assign ("," assign)*)? ")"
-func funcall(rest **Token, tok *Token) *AstNode {
-	start := tok
-	tok = tok.Next.Next
+// funcall = (assign ("," assign)*)? ")"
+func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
+	fn.addType()
 
-	sc := findVariable(start)
-	if sc == nil {
-		errorTok(start, "implicit declaration of a function")
-	}
-	if sc.Variable == nil || sc.Variable.Ty.Kind != TY_FUNC {
-		errorTok(start, "not a function")
+	if fn.Ty.Kind != TY_FUNC && (fn.Ty.Kind != TY_PTR || fn.Ty.Base.Kind != TY_FUNC) {
+		errorTok(fn.Tok, "not a function")
 	}
 
-	ty := sc.Variable.Ty
+	var ty *CType
+	if fn.Ty.Kind == TY_FUNC {
+		ty = fn.Ty
+	} else {
+		ty = fn.Ty.Base
+	}
 	paramTy := ty.Params
 
 	head := AstNode{}
@@ -2421,8 +2434,7 @@ func funcall(rest **Token, tok *Token) *AstNode {
 
 	*rest = skip(tok, ")")
 
-	node := newNode(ND_FUNCALL, start)
-	node.FuncName = string((*currentInput)[start.Location : start.Location+start.Length])
+	node := newUnary(ND_FUNCALL, fn, tok)
 	node.FuncType = ty
 	node.Ty = ty.ReturnType
 	node.Args = head.Next
@@ -2436,7 +2448,7 @@ func funcall(rest **Token, tok *Token) *AstNode {
  *         | "sizeof" unary
  *         | "_Alignof" "(" type-name ")"
  *         | "_Alignof" unary
- *         | ident func-args?
+ *         | ident
  *         | str
  *         | num
  */
@@ -2482,26 +2494,22 @@ func primary(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.Kind == TK_IDENT {
-		// Function call
-		if tok.Next.isEqual("(") {
-			return funcall(rest, tok)
-		}
-
 		// Variable or enum constant
 		sc := findVariable(tok)
-		if sc == nil || (sc.Variable == nil && sc.EnumType == nil) {
-			errorTok(tok, "undefined variable")
-		}
-
-		var node *AstNode
-		if sc.Variable != nil {
-			node = newVarNode(sc.Variable, tok)
-		} else {
-			node = newNum(int64(sc.EnumValue), tok)
-		}
-
 		*rest = tok.Next
-		return node
+
+		if sc != nil {
+			if sc.Variable != nil {
+				return newVarNode(sc.Variable, tok)
+			} else {
+				return newNum(int64(sc.EnumValue), tok)
+			}
+		}
+
+		if tok.Next.isEqual("(") {
+			errorTok(tok, "implicit declaration of a function")
+		}
+		errorTok(tok, "undefined variable")
 	}
 
 	if tok.Kind == TK_STR {

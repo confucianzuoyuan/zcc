@@ -74,7 +74,6 @@ type AstNode struct {
 	Member *Member
 
 	// Function call
-	FuncName string
 	FuncType *CType
 	Args     *AstNode
 

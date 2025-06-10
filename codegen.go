@@ -82,13 +82,46 @@ func alignTo(n int64, align int64) int64 {
 func genAddr(node *AstNode) {
 	switch node.Kind {
 	case ND_VAR:
+		// Local variable
 		if node.Variable.IsLocal {
-			// Local variable
 			printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
-		} else {
-			// Global variable
-			printlnToFile("  lea %s(%%rip), %%rax", node.Variable.Name)
+			return
 		}
+		// Here, we generate an absolute address of a function or a global
+		// variable. Even though they exist at a certain address at runtime,
+		// their addresses are not known at link-time for the following
+		// two reasons.
+		//
+		//  - Address randomization: Executables are loaded to memory as a
+		//    whole but it is not known what address they are loaded to.
+		//    Therefore, at link-time, relative address in the same
+		//    exectuable (i.e. the distance between two functions in the
+		//    same executable) is known, but the absolute address is not
+		//    known.
+		//
+		//  - Dynamic linking: Dynamic shared objects (DSOs) or .so files
+		//    are loaded to memory alongside an executable at runtime and
+		//    linked by the runtime loader in memory. We know nothing
+		//    about addresses of global stuff that may be defined by DSOs
+		//    until the runtime relocation is complete.
+		//
+		// In order to deal with the former case, we use RIP-relative
+		// addressing, denoted by `(%rip)`. For the latter, we obtain an
+		// address of a stuff that may be in a shared object file from the
+		// Global Offset Table using `@GOTPCREL(%rip)` notation.
+
+		// Function
+		if node.Ty.Kind == TY_FUNC {
+			if node.Variable.IsDefinition {
+				printlnToFile("  lea %s(%%rip), %%rax", node.Variable.Name)
+			} else {
+				printlnToFile("  mov %s@GOTPCREL(%%rip), %%rax", node.Variable.Name)
+			}
+			return
+		}
+
+		// Global variable
+		printlnToFile("  lea %s(%%rip), %%rax", node.Variable.Name)
 		return
 	case ND_DEREF:
 		genExpr(node.Lhs)
@@ -108,7 +141,7 @@ func genAddr(node *AstNode) {
 
 // Load a value from where %rax is pointing to.
 func load(ty *CType) {
-	if ty.Kind == TY_ARRAY || ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+	if ty.Kind == TY_ARRAY || ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_FUNC {
 		// If it is an array, do not attempt to load a value to the
 		// register because in general we can't load an entire array to a
 		// register. As a result, the result of an evaluation of an array
@@ -487,6 +520,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_FUNCALL:
 		pushArgs(node.Args)
+		genExpr(node.Lhs)
 
 		gp := 0
 		fp := 0
@@ -501,10 +535,10 @@ func genExpr(node *AstNode) {
 		}
 
 		if depth%2 == 0 {
-			printlnToFile("  call %s", node.FuncName)
+			printlnToFile("  call *%%rax")
 		} else {
 			printlnToFile("  sub $8, %%rsp")
-			printlnToFile("  call %s", node.FuncName)
+			printlnToFile("  call *%%rax")
 			printlnToFile("  add $8, %%rsp")
 		}
 
