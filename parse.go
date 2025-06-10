@@ -20,6 +20,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 )
 
 // Scope for local, global variables or typedefs
@@ -1284,6 +1285,32 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]ui
 		return cur
 	}
 
+	if ty.Kind == TY_FLOAT {
+		val := math.Float32bits(float32(evalDouble(init.Expr)))
+		(*buf)[offset] = uint8(val)
+		(*buf)[offset+1] = uint8(val >> 8)
+		(*buf)[offset+2] = uint8(val >> 16)
+		(*buf)[offset+3] = uint8(val >> 24)
+		return cur
+	}
+
+	if ty.Kind == TY_DOUBLE {
+		val := math.Float64bits(evalDouble(init.Expr))
+		(*buf)[offset] = uint8(val)
+		(*buf)[offset+1] = uint8(val >> 8)
+		(*buf)[offset+2] = uint8(val >> 16)
+		(*buf)[offset+3] = uint8(val >> 24)
+		(*buf)[offset+4] = uint8(val >> 32)
+		(*buf)[offset+5] = uint8(val >> 40)
+		(*buf)[offset+6] = uint8(val >> 48)
+		(*buf)[offset+7] = uint8(val >> 56)
+		return cur
+	}
+
+	if ty.Kind == TY_DOUBLE {
+		return cur
+	}
+
 	label := ""
 	val := eval2(init.Expr, &label)
 
@@ -1631,6 +1658,48 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
+func evalDouble(node *AstNode) float64 {
+	node.addType()
+
+	if node.Ty.isInteger() {
+		if node.Ty.IsUnsigned {
+			return float64(uint64(eval(node)))
+		}
+		return float64(eval(node))
+	}
+
+	switch node.Kind {
+	case ND_ADD:
+		return evalDouble(node.Lhs) + evalDouble(node.Rhs)
+	case ND_SUB:
+		return evalDouble(node.Lhs) - evalDouble(node.Rhs)
+	case ND_MUL:
+		return evalDouble(node.Lhs) * evalDouble(node.Rhs)
+	case ND_DIV:
+		return evalDouble(node.Lhs) / evalDouble(node.Rhs)
+	case ND_NEG:
+		return -evalDouble(node.Lhs)
+	case ND_COND:
+		if evalDouble(node.Cond) != 0 {
+			return evalDouble(node.Then)
+		} else {
+			return evalDouble(node.Else)
+		}
+	case ND_COMMA:
+		return evalDouble(node.Rhs)
+	case ND_CAST:
+		if node.Lhs.Ty.isFloat() {
+			return evalDouble(node.Lhs)
+		}
+		return float64(eval(node.Lhs))
+	case ND_NUM:
+		return node.FloatValue
+	}
+
+	errorTok(node.Tok, "not a compile-time constant")
+	panic("unreachable")
+}
+
 // Evaluate a given node as a constant expression.
 //
 // A constant expression is either just a number or ptr+n where ptr
@@ -1639,6 +1708,10 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 // expression for a global variable.
 func eval2(node *AstNode, label *string) int64 {
 	node.addType()
+
+	if node.Ty.isFloat() {
+		return int64(evalDouble(node))
+	}
 
 	switch node.Kind {
 	case ND_ADD:
