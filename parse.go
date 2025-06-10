@@ -1038,11 +1038,17 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 		ty2 := declspec(&tok, tok, nil)
 		ty2 = declarator(&tok, tok, ty2)
 
-		// "array of T" is converted to "pointer to T" only in the parameter
-		// context. For example, *argv[] is converted to **argv by this.
+		name := ty2.Name
+
 		if ty2.Kind == TY_ARRAY {
-			name := ty2.Name
+			// "array of T" is converted to "pointer to T" only in the parameter
+			// context. For example, *argv[] is converted to **argv by this.
 			ty2 = pointerTo(ty2.Base)
+			ty2.Name = name
+		} else if ty2.Kind == TY_FUNC {
+			// Likewise, a function is converted to a pointer to a function
+			// only in the parameter context.
+			ty2 = pointerTo(ty2)
 			ty2.Name = name
 		}
 
