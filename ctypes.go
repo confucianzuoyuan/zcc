@@ -212,6 +212,13 @@ func (ty *CType) getCommonType(other *CType) *CType {
 		return pointerTo(ty.Base)
 	}
 
+	if ty.Kind == TY_FUNC {
+		return pointerTo(ty)
+	}
+	if other.Kind == TY_FUNC {
+		return pointerTo(other)
+	}
+
 	if ty.Kind == TY_DOUBLE || other.Kind == TY_DOUBLE {
 		return TyDouble
 	}
