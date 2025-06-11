@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-var outputFile io.Writer
+var cgOutputFile io.Writer
 var depth int
 var argreg8 = []string{
 	"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b",
@@ -26,9 +26,9 @@ var i int = 1
 var currentFn *Obj
 
 func printlnToFile(fmtStr string, args ...interface{}) {
-	fmt.Fprintf(outputFile, fmtStr, args...)
+	fmt.Fprintf(cgOutputFile, fmtStr, args...)
 	// 输出换行符
-	fmt.Fprintln(outputFile)
+	fmt.Fprintln(cgOutputFile)
 }
 
 func push() {
@@ -944,7 +944,7 @@ func emitText(prog *Obj) {
 }
 
 func codegen(prog *Obj, out io.Writer) {
-	outputFile = out
+	cgOutputFile = out
 
 	assignLocalVariableOffsets(prog)
 	emitData(prog)

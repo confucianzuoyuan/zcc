@@ -15,7 +15,10 @@ var opt_cc1 bool
 var opt_hash_hash_hash bool
 var opt_o string = ""
 var dump_ir bool = false
-var inputPath string = ""
+var baseFile string = ""
+var outputFile string = ""
+
+var inputPaths []string
 var tmpfiles []string
 
 func usage(status int) {
@@ -24,7 +27,21 @@ func usage(status int) {
 	os.Exit(status)
 }
 
+func takeArg(arg string) bool {
+	return arg == "-o"
+}
+
 func parseArgs(args []string) {
+	// Make sure that all command line options that take an argument
+	// have an argument.
+	for idx := 1; idx < len(args); idx += 1 {
+		if takeArg(args[idx]) {
+			if idx+1 == len(args) {
+				usage(1)
+			}
+		}
+	}
+
 	for idx := 1; idx < len(args); idx += 1 {
 		if args[idx] == "-###" {
 			opt_hash_hash_hash = true
@@ -48,9 +65,6 @@ func parseArgs(args []string) {
 		}
 
 		if args[idx] == "-o" {
-			if args[idx+1] == "" {
-				usage(1)
-			}
 			idx += 1
 			opt_o = args[idx]
 			continue
@@ -66,15 +80,27 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-cc1-input" {
+			baseFile = args[idx+1]
+			idx += 1
+			continue
+		}
+
+		if args[idx] == "-cc1-output" {
+			outputFile = args[idx+1]
+			idx += 1
+			continue
+		}
+
 		if strings.HasPrefix(args[idx], "-") && len(args[idx]) > 1 {
 			e := fmt.Sprintf("unknown argument: %s", args[idx])
 			panic(e)
 		}
 
-		inputPath = args[idx]
+		inputPaths = append(inputPaths, args[idx])
 	}
 
-	if inputPath == "" {
+	if len(inputPaths) == 0 {
 		panic("no input files")
 	}
 }
@@ -107,11 +133,12 @@ func run_cc1(args []string, input string, output string) {
 	args = append(args, "-cc1")
 
 	if input != "" {
+		args = append(args, "-cc1-input")
 		args = append(args, input)
 	}
 
 	if output != "" {
-		args = append(args, "-o")
+		args = append(args, "-cc1-output")
 		args = append(args, output)
 	}
 
@@ -181,15 +208,15 @@ func createTmpfile() string {
 
 func cc1() {
 	// Tokenize and parse.
-	tok := tokenizeFile(inputPath)
+	tok := tokenizeFile(baseFile)
 	o := parse(tok)
 
 	// Traverse the AST to emit assembly.
 	if dump_ir {
 		println("dump ir not impl")
 	} else {
-		out, _ := openFile(opt_o)
-		fmt.Fprintf(out, ".file 1 \"%s\"\n", inputPath)
+		out, _ := openFile(outputFile)
+		fmt.Fprintf(out, ".file 1 \"%s\"\n", baseFile)
 		codegen(o, out)
 	}
 }
@@ -209,23 +236,31 @@ func main() {
 		return
 	}
 
-	var output string = ""
-	if opt_o != "" {
-		output = opt_o
-	} else if opt_S {
-		output = replaceExtension(inputPath, ".s")
-	} else {
-		output = replaceExtension(inputPath, ".o")
+	if len(inputPaths) > 1 && opt_o != "" {
+		panic("cannot specify '-o' with multiple files")
 	}
 
-	// If -S is given, assembly text is the final output.
-	if opt_S {
-		run_cc1(args, inputPath, output)
-		return
-	}
+	for _, p := range inputPaths {
+		input := p
+		output := ""
 
-	// Otherwise, run the assembler to assemble our output.
-	tmpfile := createTmpfile()
-	run_cc1(args, inputPath, tmpfile)
-	assemble(tmpfile, output)
+		if opt_o != "" {
+			output = opt_o
+		} else if opt_S {
+			output = replaceExtension(input, ".s")
+		} else {
+			output = replaceExtension(input, ".o")
+		}
+
+		// If -S is given, assembly text is the final output.
+		if opt_S {
+			run_cc1(args, input, output)
+			continue
+		}
+
+		// Otherwise, run the assembler to assemble our output.
+		tmpfile := createTmpfile()
+		run_cc1(args, input, tmpfile)
+		assemble(tmpfile, output)
+	}
 }
