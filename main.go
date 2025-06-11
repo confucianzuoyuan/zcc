@@ -215,7 +215,8 @@ func createTmpfile() string {
 func cc1() {
 	// Tokenize and parse.
 	tok := tokenizeFile(baseFile)
-	o := parse(tok)
+	tok = preprocess(tok)
+	prog := parse(tok)
 
 	// Traverse the AST to emit assembly.
 	if dump_ir {
@@ -223,7 +224,7 @@ func cc1() {
 	} else {
 		out, _ := openFile(outputFile)
 		fmt.Fprintf(out, ".file 1 \"%s\"\n", baseFile)
-		codegen(o, out)
+		codegen(prog, out)
 	}
 }
 
