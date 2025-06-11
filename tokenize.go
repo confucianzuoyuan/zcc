@@ -28,19 +28,25 @@ type Token struct {
 	Ty            *CType    // Used if TK_NUM or TK_STR
 	StringLiteral string    // String literal contents including terminating '\0'
 
-	LineNo int // Line number
+	LineNo            int  // Line number
+	AtBeginningOfLine bool // True if this token is at beginning of line
 }
 
 var currentFilename string
 var currentInput *[]uint8
 
+// True if the current position is at the beginning of a line
+var atBeginningOfLine bool
+
 func newToken(kind TokenKind, start int, end int) *Token {
 	tok := &Token{
-		Kind:     kind,
-		Location: start,
-		Length:   end - start,
+		Kind:              kind,
+		Location:          start,
+		Length:            end - start,
+		AtBeginningOfLine: atBeginningOfLine,
 	}
 
+	atBeginningOfLine = false
 	return tok
 }
 
@@ -514,6 +520,8 @@ func tokenize(filename string, src *[]uint8) *Token {
 	head := Token{}
 	cur := &head
 
+	atBeginningOfLine = true
+
 	for (*src)[p] != 0 {
 		// Skip line comments.
 		if (*src)[p] == '/' && (*src)[p+1] == '/' {
@@ -545,6 +553,13 @@ func tokenize(filename string, src *[]uint8) *Token {
 				panic("unclosed block comment")
 			}
 			p = q + 2
+			continue
+		}
+
+		// Skip newline.
+		if (*src)[p] == '\n' {
+			p += 1
+			atBeginningOfLine = true
 			continue
 		}
 
