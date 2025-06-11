@@ -5,8 +5,8 @@ zcc:
 	go build
 
 test/%.exe: zcc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./zcc -o test/$*.s -
-	$(CC) -o $@ test/$*.s -xc test/common
+	$(CC) -o- -E -P -C test/$*.c | ./zcc -o test/$*.o -
+	$(CC) -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
 	for i in $^; do echo $$i; ./$$i || exit 1; echo; done

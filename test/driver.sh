@@ -22,4 +22,19 @@ check -o
 ./zcc --help 2>&1 | grep -q zcc
 check --help
 
+# -S
+echo 'int main() {}' | ./zcc -S -o - - | grep -q 'main:'
+check -S
+
+# Default output file
+rm -f $tmp/out.o $tmp/out.s
+echo 'int main() {}' > $tmp/out.c
+(cd $tmp; $OLDPWD/zcc out.c)
+[ -f $tmp/out.o ]
+check 'default output file'
+
+(cd $tmp; $OLDPWD/zcc -S out.c)
+[ -f $tmp/out.s ]
+check 'default output file'
+
 echo OK
