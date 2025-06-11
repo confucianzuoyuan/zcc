@@ -11,6 +11,7 @@ import (
 )
 
 var opt_S bool
+var opt_c bool
 var opt_cc1 bool
 var opt_hash_hash_hash bool
 var opt_o string = ""
@@ -77,6 +78,11 @@ func parseArgs(args []string) {
 
 		if args[idx] == "-S" {
 			opt_S = true
+			continue
+		}
+
+		if args[idx] == "-c" {
+			opt_c = true
 			continue
 		}
 
@@ -226,6 +232,90 @@ func assemble(input string, output string) {
 	runSubprocess(cmd)
 }
 
+func findFile(pattern string) (string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", err
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	return matches[len(matches)-1], nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func findLibPath() string {
+	if fileExists("/usr/lib/x86_64-linux-gnu/crti.o") {
+		return "/usr/lib/x86_64-linux-gnu"
+	}
+	if fileExists("/usr/lib64/crti.o") {
+		return "/usr/lib64"
+	}
+	panic("library path is not found")
+}
+
+func findGccLibPath() string {
+	paths := []string{
+		"/usr/lib/gcc/x86_64-linux-gnu/*/crtbegin.o",
+		"/usr/lib/gcc/x86_64-pc-linux-gnu/*/crtbegin.o", // For Gentoo
+		"/usr/lib/gcc/x86_64-redhat-linux/*/crtbegin.o", // For Fedora
+	}
+
+	for _, p := range paths {
+		path, _ := findFile(p)
+		if path != "" {
+			return filepath.Dir(path)
+		}
+	}
+
+	panic("gcc library path is not found")
+}
+
+func runLinker(inputs []string, output string) {
+	arr := []string{}
+
+	arr = append(arr, "ld")
+	arr = append(arr, "-o")
+	arr = append(arr, output)
+	arr = append(arr, "-m")
+	arr = append(arr, "elf_x86_64")
+	arr = append(arr, "-dynamic-linker")
+	arr = append(arr, "/lib64/ld-linux-x86-64.so.2")
+
+	libpath := findLibPath()
+	gccLibpath := findGccLibPath()
+
+	arr = append(arr, libpath+"/crt1.o")
+	arr = append(arr, libpath+"/crti.o")
+	arr = append(arr, gccLibpath+"/crtbegin.o")
+	arr = append(arr, "-L"+gccLibpath)
+	arr = append(arr, "-L"+libpath)
+	arr = append(arr, "-L"+libpath+"/..")
+	arr = append(arr, "-L/usr/lib64")
+	arr = append(arr, "-L/lib64")
+	arr = append(arr, "-L/usr/lib/x86_64-linux-gnu")
+	arr = append(arr, "-L/usr/lib/x86_64-pc-linux-gnu")
+	arr = append(arr, "-L/usr/lib/x86_64-redhat-linux")
+	arr = append(arr, "-L/usr/lib")
+	arr = append(arr, "-L/lib")
+
+	arr = append(arr, inputs...)
+
+	arr = append(arr, "-lc")
+	arr = append(arr, "-lgcc")
+	arr = append(arr, "--as-needed")
+	arr = append(arr, "-lgcc_s")
+	arr = append(arr, "--no-as-needed")
+	arr = append(arr, gccLibpath+"/crtend.o")
+	arr = append(arr, libpath+"/crtn.o")
+
+	runSubprocess(arr)
+}
+
 func main() {
 	defer cleanup()
 	args := os.Args
@@ -236,9 +326,11 @@ func main() {
 		return
 	}
 
-	if len(inputPaths) > 1 && opt_o != "" {
-		panic("cannot specify '-o' with multiple files")
+	if len(inputPaths) > 1 && opt_o != "" && (opt_c || opt_S) {
+		panic("cannot specify '-o' with '-c' or '-S' with multiple files")
 	}
+
+	ldArgs := []string{}
 
 	for _, p := range inputPaths {
 		input := p
@@ -252,15 +344,53 @@ func main() {
 			output = replaceExtension(input, ".o")
 		}
 
-		// If -S is given, assembly text is the final output.
+		// Handle .o
+		if strings.HasSuffix(input, ".o") {
+			ldArgs = append(ldArgs, input)
+			continue
+		}
+
+		// Handle .s
+		if strings.HasSuffix(input, ".s") {
+			if !opt_S {
+				assemble(input, output)
+			}
+			continue
+		}
+
+		// Handle .c
+		if !strings.HasSuffix(input, ".c") && input != "-" {
+			panic("unknown file extension: " + input)
+		}
+
+		// Just compile
 		if opt_S {
 			run_cc1(args, input, output)
 			continue
 		}
 
-		// Otherwise, run the assembler to assemble our output.
-		tmpfile := createTmpfile()
-		run_cc1(args, input, tmpfile)
-		assemble(tmpfile, output)
+		// Compile and assemble
+		if opt_c {
+			tmp := createTmpfile()
+			run_cc1(args, input, tmp)
+			assemble(tmp, output)
+			continue
+		}
+
+		// Compile, assemble and link
+		tmp1 := createTmpfile()
+		tmp2 := createTmpfile()
+		run_cc1(args, input, tmp1)
+		assemble(tmp1, tmp2)
+		ldArgs = append(ldArgs, tmp2)
+		continue
+	}
+
+	if len(ldArgs) > 0 {
+		if opt_o != "" {
+			runLinker(ldArgs, opt_o)
+		} else {
+			runLinker(ldArgs, "a.out")
+		}
 	}
 }

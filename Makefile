@@ -5,7 +5,7 @@ zcc:
 	go build
 
 test/%.exe: zcc test/%.c
-	$(CC) -o- -E -P -C test/$*.c | ./zcc -o test/$*.o -
+	$(CC) -o- -E -P -C test/$*.c | ./zcc -c -o test/$*.o -
 	$(CC) -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
