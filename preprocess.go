@@ -6,6 +6,7 @@ type CondInclCtx int
 
 const (
 	IN_THEN CondInclCtx = iota
+	IN_ELIF
 	IN_ELSE
 )
 
@@ -42,7 +43,7 @@ func skipCondIncl2(tok *Token) *Token {
 	return tok
 }
 
-// Skip until next `#else` or `#endif`.
+// Skip until next `#else` or `#endif` or `#elif`.
 // Nested `#if` and `#endif` are skipped.
 func skipCondIncl(tok *Token) *Token {
 	for tok != nil && tok.Kind != TK_EOF {
@@ -50,7 +51,7 @@ func skipCondIncl(tok *Token) *Token {
 			tok = skipCondIncl2(tok.Next.Next)
 			continue
 		}
-		if tok.isHash() && (tok.Next.isEqual("endif") || tok.Next.isEqual("else")) {
+		if tok.isHash() && (tok.Next.isEqual("endif") || tok.Next.isEqual("else") || tok.Next.isEqual("elif")) {
 			break
 		}
 		tok = tok.Next
@@ -181,6 +182,21 @@ func preprocess2(tok *Token) *Token {
 			if val == 0 {
 				tok = skipCondIncl(tok)
 			}
+			continue
+		}
+
+		if tok.isEqual("elif") {
+			if condIncl == nil || condIncl.Ctx == IN_ELSE {
+				errorTok(start, "stray #elif")
+			}
+			condIncl.Ctx = IN_ELIF
+
+			if !condIncl.Included && evalConstExpr(&tok, tok) != 0 {
+				condIncl.Included = true
+			} else {
+				tok = skipCondIncl(tok)
+			}
+
 			continue
 		}
 
