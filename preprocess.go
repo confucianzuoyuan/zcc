@@ -2,6 +2,77 @@ package main
 
 import "path/filepath"
 
+// `#if` can be nested, so we use a stack to manage nested `#if`s.
+type CondIncl struct {
+	Next *CondIncl
+	Tok  *Token
+}
+
+var condIncl *CondIncl
+
+func (t *Token) newEOF() *Token {
+	newToken := t.copy()
+	newToken.Kind = TK_EOF
+	newToken.Length = 0
+	return newToken
+}
+
+// Skip until next `#endif`
+func skipCondIncl(tok *Token) *Token {
+	for tok != nil && tok.Kind != TK_EOF {
+		if tok.isHash() && tok.Next.isEqual("endif") {
+			return tok
+		}
+		tok = tok.Next
+	}
+
+	return tok
+}
+
+// Copy all tokens until the next newline, terminate them with
+// an EOF token and then returns them. This function is used to
+// create a new list of tokens for `#if` arguments.
+func copyLine(rest **Token, tok *Token) *Token {
+	head := Token{}
+	cur := &head
+
+	for ; tok != nil && !tok.AtBeginningOfLine; tok = tok.Next {
+		cur.Next = tok.copy()
+		cur = cur.Next
+	}
+
+	cur.Next = tok.newEOF()
+	*rest = tok
+	return head.Next
+}
+
+// Read and evaluate a constant expression.
+func evalConstExpr(rest **Token, tok *Token) int64 {
+	start := tok
+	expr := copyLine(rest, tok.Next)
+
+	if expr.Kind == TK_EOF {
+		errorTok(start, "no expressions")
+	}
+
+	var rest2 *Token
+	val := constExpr(&rest2, expr)
+	if rest2.Kind != TK_EOF {
+		errorTok(rest2, "extra token")
+	}
+
+	return val
+}
+
+func pushCondIncl(tok *Token) *CondIncl {
+	ci := &CondIncl{
+		Next: condIncl,
+		Tok:  tok,
+	}
+	condIncl = ci
+	return ci
+}
+
 func (t *Token) isHash() bool {
 	return t.AtBeginningOfLine && t.isEqual("#")
 }
@@ -35,6 +106,7 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		start := tok
 		tok = tok.Next
 
 		if tok.isEqual("include") {
@@ -67,6 +139,24 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if tok.isEqual("if") {
+			val := evalConstExpr(&tok, tok)
+			pushCondIncl(start)
+			if val == 0 {
+				tok = skipCondIncl(tok)
+			}
+			continue
+		}
+
+		if tok.isEqual("endif") {
+			if condIncl == nil {
+				errorTok(start, "stray #endif")
+			}
+			condIncl = condIncl.Next
+			tok = skipLine(tok.Next)
+			continue
+		}
+
 		// `#`-only line is legal. It's called a null directive.
 		if tok.AtBeginningOfLine {
 			continue
@@ -82,6 +172,9 @@ func preprocess2(tok *Token) *Token {
 // Entry point function of the preprocessor.
 func preprocess(tok *Token) *Token {
 	tok = preprocess2(tok)
+	if condIncl != nil {
+		errorTok(condIncl.Tok, "unterminated conditional directive")
+	}
 	convertKeywords(tok)
 	return tok
 }
