@@ -24,7 +24,9 @@
 
 package main
 
-import "path/filepath"
+import (
+	"path/filepath"
+)
 
 type CondInclCtx int
 
@@ -155,6 +157,51 @@ func pushCondIncl(tok *Token, included bool) *CondIncl {
 	}
 	condIncl = ci
 	return ci
+}
+
+// Double-quote a given string and returns it.
+func quoteString(s string) []uint8 {
+	buf := []uint8{}
+	buf = append(buf, '"')
+	for _, c := range []uint8(s) {
+		if c == '\\' || c == '"' {
+			buf = append(buf, '\\')
+		}
+		buf = append(buf, c)
+	}
+	buf = append(buf, '"')
+
+	return buf
+}
+
+func newStringToken(s string, tmpl *Token) *Token {
+	buf := quoteString(s)
+	buf = append(buf, 0)
+	f := newFile(tmpl.File.Name, tmpl.File.FileNo, &buf)
+	return tokenize(f)
+}
+
+// Concatenates all tokens in `tok` and returns a new string.
+func (tok *Token) joinTokens() []uint8 {
+	buf := []uint8{}
+
+	for t := tok; t != nil && t.Kind != TK_EOF; t = t.Next {
+		if t != tok && t.HasSpace {
+			buf = append(buf, ' ')
+		}
+		buf = append(buf, (*t.File.Contents)[t.Location:t.Location+t.Length]...)
+	}
+	return buf
+}
+
+// Concatenates all tokens in `arg` and returns a new string token.
+// This function is used for the stringizing operator (#).
+func stringize(hash *Token, arg *Token) *Token {
+	// Create a new string token. We need to set some value to its
+	// source location for error reporting function, so we use a macro
+	// name token as a template.
+	buf := arg.joinTokens()
+	return newStringToken(string(buf), hash)
 }
 
 func findMacro(tok *Token) *Macro {
@@ -295,10 +342,21 @@ func subst(tok *Token, args *MacroArg) *Token {
 	cur := &head
 
 	for tok != nil && tok.Kind != TK_EOF {
-		arg := findArg(args, tok)
+		// "#" followed by a parameter is replaced with stringized actuals.
+		if tok.isEqual("#") {
+			arg := findArg(args, tok.Next)
+			if arg == nil {
+				errorTok(tok.Next, "'#' is not followed by a macro parameter")
+			}
+			cur.Next = stringize(tok, arg.Tok)
+			cur = cur.Next
+			tok = tok.Next.Next
+			continue
+		}
 
 		// Handle a macro token. Macro arguments are completely macro-expanded
 		// before they are substituted into a macro body.
+		arg := findArg(args, tok)
 		if arg != nil {
 			t := preprocess2(arg.Tok)
 			for ; t.Kind != TK_EOF; t = t.Next {
