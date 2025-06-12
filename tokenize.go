@@ -135,6 +135,10 @@ func errorTok(tok *Token, msg string) {
 	os.Exit(1)
 }
 
+func warnTok(tok *Token, msg string) {
+	verrorAt(tok.File.Name, tok.File.Contents, tok.LineNo, tok.Location, msg)
+}
+
 func (t *Token) isEqual(s string) bool {
 	return string((*t.File.Contents)[t.Location:t.Location+t.Length]) == s
 }

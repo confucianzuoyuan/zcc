@@ -6,6 +6,20 @@ func (t *Token) isHash() bool {
 	return t.AtBeginningOfLine && t.isEqual("#")
 }
 
+// Some preprocessor directives such as #include allow extraneous
+// tokens before newline. This function skips such tokens.
+func skipLine(tok *Token) *Token {
+	if tok.AtBeginningOfLine {
+		return tok
+	}
+
+	warnTok(tok, "extra token")
+	for tok.AtBeginningOfLine {
+		tok = tok.Next
+	}
+	return tok
+}
+
 // Visit all tokens in `tok` while evaluating preprocessing
 // macros and directives.
 func preprocess2(tok *Token) *Token {
@@ -40,6 +54,8 @@ func preprocess2(tok *Token) *Token {
 			if tok2 == nil {
 				errorTok(tok, "error +")
 			}
+
+			tok = skipLine(tok.Next)
 			tok = tok2.append(tok.Next)
 
 			continue
