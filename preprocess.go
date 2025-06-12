@@ -42,10 +42,11 @@ type CondIncl struct {
 }
 
 type Macro struct {
-	Next    *Macro
-	Name    string
-	Body    *Token
-	Deleted bool
+	Next      *Macro
+	Name      string
+	IsObjlike bool
+	Body      *Token
+	Deleted   bool
 }
 
 type Hideset struct {
@@ -161,14 +162,32 @@ func findMacro(tok *Token) *Macro {
 	return nil
 }
 
-func addMacro(name string, body *Token) *Macro {
+func addMacro(name string, isObjlike bool, body *Token) *Macro {
 	m := &Macro{
-		Next: macros,
-		Name: name,
-		Body: body,
+		Next:      macros,
+		Name:      name,
+		Body:      body,
+		IsObjlike: isObjlike,
 	}
 	macros = m
 	return m
+}
+
+func readMacroDefinition(rest **Token, tok *Token) {
+	if tok.Kind != TK_IDENT {
+		errorTok(tok, "macro name must be an identifier")
+	}
+	name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	tok = tok.Next
+
+	if !tok.HasSpace && tok.isEqual("(") {
+		// Function-like macro
+		tok = skip(tok.Next, ")")
+		addMacro(name, false, copyLine(rest, tok))
+	} else {
+		// Object-like macro
+		addMacro(name, true, copyLine(rest, tok))
+	}
 }
 
 // If tok is a macro, expand it and return true.
@@ -183,9 +202,23 @@ func expandMacro(rest **Token, tok *Token) bool {
 		return false
 	}
 
-	hs := tok.Hideset.union(newHideset(m.Name))
-	body := addHideset(m.Body, hs)
-	*rest = body.append(tok.Next)
+	// Object-like macro application
+	if m.IsObjlike {
+		hs := tok.Hideset.union(newHideset(m.Name))
+		body := addHideset(m.Body, hs)
+		*rest = body.append(tok.Next)
+		return true
+	}
+
+	// If a funclike macro token is not followed by an argument list,
+	// treat it as a normal identifier.
+	if !tok.Next.isEqual("(") {
+		return false
+	}
+
+	// Function-like macro application
+	tok = skip(tok.Next.Next, ")")
+	*rest = m.Body.append(tok)
 	return true
 }
 
@@ -303,12 +336,7 @@ func preprocess2(tok *Token) *Token {
 		}
 
 		if tok.isEqual("define") {
-			tok = tok.Next
-			if tok.Kind != TK_IDENT {
-				errorTok(tok, "macro name must be an identifier")
-			}
-			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
-			addMacro(name, copyLine(&tok, tok.Next))
+			readMacroDefinition(&tok, tok.Next)
 			continue
 		}
 
@@ -320,7 +348,7 @@ func preprocess2(tok *Token) *Token {
 			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 			tok = skipLine(tok.Next)
 
-			m := addMacro(name, nil)
+			m := addMacro(name, true, nil)
 			m.Deleted = true
 			continue
 		}

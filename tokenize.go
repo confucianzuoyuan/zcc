@@ -37,6 +37,7 @@ type Token struct {
 	File              *File    //Source location
 	LineNo            int      // Line number
 	AtBeginningOfLine bool     // True if this token is at beginning of line
+	HasSpace          bool     // True if this token follows a space character
 	Hideset           *Hideset // For macro expansion
 }
 
@@ -51,6 +52,9 @@ var fileNo int = 0
 // True if the current position is at the beginning of a line
 var atBeginningOfLine bool
 
+// True if the current position follows a space character
+var hasSpace bool
+
 func newToken(kind TokenKind, start int, end int) *Token {
 	tok := &Token{
 		Kind:              kind,
@@ -58,9 +62,11 @@ func newToken(kind TokenKind, start int, end int) *Token {
 		Length:            end - start,
 		File:              currentFile,
 		AtBeginningOfLine: atBeginningOfLine,
+		HasSpace:          hasSpace,
 	}
 
 	atBeginningOfLine = false
+	hasSpace = false
 	return tok
 }
 
@@ -564,6 +570,7 @@ func tokenize(file *File) *Token {
 	cur := &head
 
 	atBeginningOfLine = true
+	hasSpace = false
 
 	for (*src)[p] != 0 {
 		// Skip line comments.
@@ -572,6 +579,7 @@ func tokenize(file *File) *Token {
 			for (*src)[p] != '\n' {
 				p += 1
 			}
+			hasSpace = true
 			continue
 		}
 
@@ -596,6 +604,7 @@ func tokenize(file *File) *Token {
 				panic("unclosed block comment")
 			}
 			p = q + 2
+			hasSpace = true
 			continue
 		}
 
@@ -603,12 +612,14 @@ func tokenize(file *File) *Token {
 		if (*src)[p] == '\n' {
 			p += 1
 			atBeginningOfLine = true
+			hasSpace = false
 			continue
 		}
 
 		// Skip whitespace characters.
 		if (*src)[p] == ' ' || (*src)[p] == '\t' || (*src)[p] == '\v' || (*src)[p] == '\f' || (*src)[p] == '\n' || (*src)[p] == '\r' {
 			p += 1
+			hasSpace = true
 			continue
 		}
 
