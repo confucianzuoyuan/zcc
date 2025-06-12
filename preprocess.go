@@ -26,7 +26,7 @@ func preprocess2(tok *Token) *Token {
 	head := Token{}
 	cur := &head
 
-	for tok.Kind != TK_EOF {
+	for tok != nil && tok.Kind != TK_EOF {
 		// Pass through if it is not a "#".
 		if !tok.isHash() {
 			cur.Next = tok
@@ -49,7 +49,13 @@ func preprocess2(tok *Token) *Token {
 			if len(s) > 0 && s[len(s)-1] == 0 {
 				s = s[:len(s)-1]
 			}
-			path := filepath.Dir(tok.File.Name) + "/" + s
+			path := ""
+			if s[0] == '/' {
+				path = s
+			} else {
+				path = filepath.Dir(tok.File.Name) + "/" + s
+			}
+
 			tok2 := tokenizeFile(path)
 			if tok2 == nil {
 				errorTok(tok, "error +")

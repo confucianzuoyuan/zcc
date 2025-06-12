@@ -510,7 +510,7 @@ func readNumber(src *[]uint8, start int) *Token {
 }
 
 func convertKeywords(tok *Token) {
-	for t := tok; t.Kind != TK_EOF; t = t.Next {
+	for t := tok; t != nil && t.Kind != TK_EOF; t = t.Next {
 		if t.isKeyword() {
 			t.Kind = TK_KEYWORD
 		}

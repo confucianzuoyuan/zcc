@@ -10,6 +10,7 @@ import (
 	"syscall"
 )
 
+var opt_E bool
 var opt_S bool
 var opt_c bool
 var opt_cc1 bool
@@ -83,6 +84,11 @@ func parseArgs(args []string) {
 
 		if args[idx] == "-c" {
 			opt_c = true
+			continue
+		}
+
+		if args[idx] == "-E" {
+			opt_E = true
 			continue
 		}
 
@@ -219,6 +225,13 @@ func cc1() {
 		panic(baseFile + ": error")
 	}
 	tok = preprocess(tok)
+
+	// If -E is given, print out preprocessed C code as a result.
+	if opt_E {
+		printTokens(tok)
+		return
+	}
+
 	prog := parse(tok)
 
 	// Traverse the AST to emit assembly.
@@ -228,6 +241,26 @@ func cc1() {
 		out, _ := openFile(outputFile)
 		codegen(prog, out)
 	}
+}
+
+// Print tokens to stdout. Used for -E.
+func printTokens(tok *Token) {
+	var out *os.File
+	if opt_o != "" {
+		out, _ = openFile(opt_o)
+	} else {
+		out, _ = openFile("-")
+	}
+
+	line := 1
+	for ; tok != nil && tok.Kind != TK_EOF; tok = tok.Next {
+		if line > 1 && tok.AtBeginningOfLine {
+			fmt.Fprintf(out, "\n")
+		}
+		fmt.Fprintf(out, "%s", string((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
+		line += 1
+	}
+	fmt.Fprintf(out, "\n")
 }
 
 func assemble(input string, output string) {
@@ -329,8 +362,8 @@ func main() {
 		return
 	}
 
-	if len(inputPaths) > 1 && opt_o != "" && (opt_c || opt_S) {
-		panic("cannot specify '-o' with '-c' or '-S' with multiple files")
+	if len(inputPaths) > 1 && opt_o != "" && (opt_c || opt_S || opt_E) {
+		panic("cannot specify '-o' with '-c' ,'-S' or '-E' with multiple files")
 	}
 
 	ldArgs := []string{}
@@ -366,7 +399,13 @@ func main() {
 			panic("unknown file extension: " + input)
 		}
 
-		// Just compile
+		// Just preprocess
+		if opt_E {
+			run_cc1(args, input, "")
+			continue
+		}
+
+		// Compile
 		if opt_S {
 			run_cc1(args, input, output)
 			continue
