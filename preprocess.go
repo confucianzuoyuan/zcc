@@ -46,6 +46,8 @@ type CondIncl struct {
 	Ctx      CondInclCtx
 }
 
+type MacroHandlerFn func(*Token) *Token
+
 type Macro struct {
 	Next      *Macro
 	Name      string
@@ -53,6 +55,7 @@ type Macro struct {
 	Params    *MacroParam
 	Body      *Token
 	Deleted   bool
+	Handler   MacroHandlerFn
 }
 
 type MacroParam struct {
@@ -578,10 +581,20 @@ func expandMacro(rest **Token, tok *Token) bool {
 		return false
 	}
 
+	// Built-in dynamic macro application such as __LINE__
+	if m.Handler != nil {
+		*rest = m.Handler(tok)
+		(*rest).Next = tok.Next
+		return true
+	}
+
 	// Object-like macro application
 	if m.IsObjlike {
 		hs := tok.Hideset.union(newHideset(m.Name))
 		body := addHideset(m.Body, hs)
+		for t := body; t.Kind != TK_EOF; t = t.Next {
+			t.Origin = tok
+		}
 		*rest = body.append(tok.Next)
 		(*rest).AtBeginningOfLine = tok.AtBeginningOfLine
 		(*rest).HasSpace = tok.HasSpace
@@ -609,6 +622,9 @@ func expandMacro(rest **Token, tok *Token) bool {
 
 	body := subst(m.Body, args)
 	body = addHideset(body, hs)
+	for t := body; t.Kind != TK_EOF; t = t.Next {
+		t.Origin = macroToken
+	}
 	*rest = body.append(tok.Next)
 	(*rest).AtBeginningOfLine = macroToken.AtBeginningOfLine
 	(*rest).HasSpace = macroToken.HasSpace
@@ -874,6 +890,26 @@ func defineMacro(name string, buf string) {
 	addMacro(name, true, tok)
 }
 
+func addBuiltin(name string, fn MacroHandlerFn) *Macro {
+	m := addMacro(name, true, nil)
+	m.Handler = fn
+	return m
+}
+
+func fileMacro(tmpl *Token) *Token {
+	for tmpl.Origin != nil {
+		tmpl = tmpl.Next
+	}
+	return newStringToken(tmpl.File.Name, tmpl)
+}
+
+func lineMacro(tmpl *Token) *Token {
+	for tmpl.Origin != nil {
+		tmpl = tmpl.Next
+	}
+	return newNumberToken(tmpl.LineNo, tmpl)
+}
+
 func initMacros() {
 	// Define predefined macros
 	defineMacro("_LP64", "1")
@@ -917,6 +953,9 @@ func initMacros() {
 	defineMacro("__x86_64__", "1")
 	defineMacro("linux", "1")
 	defineMacro("unix", "1")
+
+	addBuiltin("__FILE__", fileMacro)
+	addBuiltin("__LINE__", lineMacro)
 }
 
 // Entry point function of the preprocessor.
