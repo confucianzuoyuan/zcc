@@ -2,10 +2,19 @@ package main
 
 import "path/filepath"
 
+type CondInclCtx int
+
+const (
+	IN_THEN CondInclCtx = iota
+	IN_ELSE
+)
+
 // `#if` can be nested, so we use a stack to manage nested `#if`s.
 type CondIncl struct {
-	Next *CondIncl
-	Tok  *Token
+	Next     *CondIncl
+	Tok      *Token
+	Included bool
+	Ctx      CondInclCtx
 }
 
 var condIncl *CondIncl
@@ -17,15 +26,31 @@ func (t *Token) newEOF() *Token {
 	return newToken
 }
 
+func skipCondIncl2(tok *Token) *Token {
+	for tok != nil && tok.Kind != TK_EOF {
+		if tok.isHash() && tok.Next.isEqual("if") {
+			tok = skipCondIncl2(tok.Next.Next)
+			continue
+		}
+		if tok.isHash() && tok.Next.isEqual("endif") {
+			return tok.Next.Next
+		}
+
+		tok = tok.Next
+	}
+
+	return tok
+}
+
+// Skip until next `#else` or `#endif`.
 // Nested `#if` and `#endif` are skipped.
 func skipCondIncl(tok *Token) *Token {
 	for tok != nil && tok.Kind != TK_EOF {
 		if tok.isHash() && tok.Next.isEqual("if") {
-			tok = skipCondIncl(tok.Next.Next)
-			tok = tok.Next
+			tok = skipCondIncl2(tok.Next.Next)
 			continue
 		}
-		if tok.isHash() && tok.Next.isEqual("endif") {
+		if tok.isHash() && (tok.Next.isEqual("endif") || tok.Next.isEqual("else")) {
 			break
 		}
 		tok = tok.Next
@@ -69,10 +94,12 @@ func evalConstExpr(rest **Token, tok *Token) int64 {
 	return val
 }
 
-func pushCondIncl(tok *Token) *CondIncl {
+func pushCondIncl(tok *Token, included bool) *CondIncl {
 	ci := &CondIncl{
-		Next: condIncl,
-		Tok:  tok,
+		Next:     condIncl,
+		Tok:      tok,
+		Ctx:      IN_THEN,
+		Included: included,
 	}
 	condIncl = ci
 	return ci
@@ -146,8 +173,25 @@ func preprocess2(tok *Token) *Token {
 
 		if tok.isEqual("if") {
 			val := evalConstExpr(&tok, tok)
-			pushCondIncl(start)
+			var included bool = true
 			if val == 0 {
+				included = false
+			}
+			pushCondIncl(start, included)
+			if val == 0 {
+				tok = skipCondIncl(tok)
+			}
+			continue
+		}
+
+		if tok.isEqual("else") {
+			if condIncl == nil || condIncl.Ctx == IN_ELSE {
+				errorTok(start, "stray #else")
+			}
+			condIncl.Ctx = IN_ELSE
+			tok = skipLine(tok.Next)
+
+			if condIncl.Included {
 				tok = skipCondIncl(tok)
 			}
 			continue
