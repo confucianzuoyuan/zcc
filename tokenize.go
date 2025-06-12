@@ -34,9 +34,10 @@ type Token struct {
 	Ty            *CType    // Used if TK_NUM or TK_STR
 	StringLiteral string    // String literal contents including terminating '\0'
 
-	File              *File //Source location
-	LineNo            int   // Line number
-	AtBeginningOfLine bool  // True if this token is at beginning of line
+	File              *File    //Source location
+	LineNo            int      // Line number
+	AtBeginningOfLine bool     // True if this token is at beginning of line
+	Hideset           *Hideset // For macro expansion
 }
 
 // Input file
