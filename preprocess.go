@@ -73,6 +73,55 @@ type Hideset struct {
 var condIncl *CondIncl
 var macros *Macro
 
+func newNumberToken(val int, tmpl *Token) *Token {
+	buf := []uint8(fmt.Sprintf("%d\n", val))
+	buf = append(buf, 0)
+	return tokenize(newFile(tmpl.File.Name, tmpl.File.FileNo, &buf))
+}
+
+func readConstExpr(rest **Token, tok *Token) *Token {
+	tok = copyLine(rest, tok)
+
+	head := Token{}
+	cur := &head
+
+	for tok.Kind != TK_EOF {
+		// "defined(foo)" or "defined foo" becomes "1" if macro "foo"
+		// is defined. Otherwise "0".
+		if tok.isEqual("defined") {
+			start := tok
+			hasParen := consume(&tok, tok.Next, "(")
+
+			if tok.Kind != TK_IDENT {
+				errorTok(start, "macro name must be an identifier")
+			}
+
+			m := findMacro(tok)
+			tok = tok.Next
+
+			if hasParen {
+				tok = skip(tok, ")")
+			}
+
+			if m != nil {
+				cur.Next = newNumberToken(1, start)
+				cur = cur.Next
+			} else {
+				cur.Next = newNumberToken(0, start)
+				cur = cur.Next
+			}
+			continue
+		}
+
+		cur.Next = tok
+		cur = cur.Next
+		tok = tok.Next
+	}
+
+	cur.Next = tok
+	return head.Next
+}
+
 func (t *Token) newEOF() *Token {
 	newToken := t.copy()
 	newToken.Kind = TK_EOF
@@ -133,7 +182,7 @@ func copyLine(rest **Token, tok *Token) *Token {
 // Read and evaluate a constant expression.
 func evalConstExpr(rest **Token, tok *Token) int64 {
 	start := tok
-	expr := copyLine(rest, tok.Next)
+	expr := readConstExpr(rest, tok.Next)
 	expr = preprocess2(expr)
 
 	if expr.Kind == TK_EOF {
