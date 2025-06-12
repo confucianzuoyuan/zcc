@@ -10,6 +10,8 @@ import (
 	"syscall"
 )
 
+var includePaths []string
+
 var opt_E bool
 var opt_S bool
 var opt_c bool
@@ -30,7 +32,7 @@ func usage(status int) {
 }
 
 func takeArg(arg string) bool {
-	return arg == "-o"
+	return arg == "-o" || arg == "-I"
 }
 
 func parseArgs(args []string) {
@@ -74,6 +76,11 @@ func parseArgs(args []string) {
 
 		if strings.HasPrefix(args[idx], "-o") {
 			opt_o = args[idx][2:]
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-I") {
+			includePaths = append(includePaths, args[idx][2:])
 			continue
 		}
 

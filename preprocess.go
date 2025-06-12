@@ -688,6 +688,23 @@ func skipLine(tok *Token) *Token {
 	return tok
 }
 
+func searchIncludePaths(filename string) string {
+	if filename[0] == '/' {
+		return filename
+	}
+
+	// Search a file from the include paths.
+	for _, f := range includePaths {
+		path := f + "/" + filename
+		_, err := os.Stat(path)
+		if err == nil {
+			return path
+		}
+	}
+
+	return ""
+}
+
 // Visit all tokens in `tok` while evaluating preprocessing
 // macros and directives.
 func preprocess2(tok *Token) *Token {
@@ -720,7 +737,7 @@ func preprocess2(tok *Token) *Token {
 				filename = filename[:len(filename)-1]
 			}
 
-			if filename[0] != '/' {
+			if filename[0] != '/' && isDoubleQuote {
 				path := filepath.Dir(start.File.Name) + "/" + filename
 				_, err := os.Stat(path)
 				if err == nil {
@@ -729,8 +746,12 @@ func preprocess2(tok *Token) *Token {
 				}
 			}
 
-			// TODO: Search a file from the include paths.
-			tok = includeFile(tok, filename, start.Next.Next)
+			path := searchIncludePaths(filename)
+			if path != "" {
+				tok = includeFile(tok, path, start.Next.Next)
+			} else {
+				tok = includeFile(tok, filename, start.Next.Next)
+			}
 			continue
 		}
 
