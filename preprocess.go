@@ -867,8 +867,61 @@ func preprocess2(tok *Token) *Token {
 	return head.Next
 }
 
+func defineMacro(name string, buf string) {
+	b := []uint8(buf)
+	b = append(b, 0)
+	tok := tokenize(newFile("<built-in>", 1, &b))
+	addMacro(name, true, tok)
+}
+
+func initMacros() {
+	// Define predefined macros
+	defineMacro("_LP64", "1")
+	defineMacro("__C99_MACRO_WITH_VA_ARGS", "1")
+	defineMacro("__ELF__", "1")
+	defineMacro("__LP64__", "1")
+	defineMacro("__SIZEOF_DOUBLE__", "8")
+	defineMacro("__SIZEOF_FLOAT__", "4")
+	defineMacro("__SIZEOF_INT__", "4")
+	defineMacro("__SIZEOF_LONG_DOUBLE__", "8")
+	defineMacro("__SIZEOF_LONG_LONG__", "8")
+	defineMacro("__SIZEOF_LONG__", "8")
+	defineMacro("__SIZEOF_POINTER__", "8")
+	defineMacro("__SIZEOF_PTRDIFF_T__", "8")
+	defineMacro("__SIZEOF_SHORT__", "2")
+	defineMacro("__SIZEOF_SIZE_T__", "8")
+	defineMacro("__SIZE_TYPE__", "unsigned long")
+	defineMacro("__STDC_HOSTED__", "1")
+	defineMacro("__STDC_NO_ATOMICS__", "1")
+	defineMacro("__STDC_NO_COMPLEX__", "1")
+	defineMacro("__STDC_NO_THREADS__", "1")
+	defineMacro("__STDC_NO_VLA__", "1")
+	defineMacro("__STDC_VERSION__", "201112L")
+	defineMacro("__STDC__", "1")
+	defineMacro("__USER_LABEL_PREFIX__", "")
+	defineMacro("__alignof__", "_Alignof")
+	defineMacro("__amd64", "1")
+	defineMacro("__amd64__", "1")
+	defineMacro("__zcc__", "1")
+	defineMacro("__const__", "const")
+	defineMacro("__gnu_linux__", "1")
+	defineMacro("__inline__", "inline")
+	defineMacro("__linux", "1")
+	defineMacro("__linux__", "1")
+	defineMacro("__signed__", "signed")
+	defineMacro("__typeof__", "typeof")
+	defineMacro("__unix", "1")
+	defineMacro("__unix__", "1")
+	defineMacro("__volatile__", "volatile")
+	defineMacro("__x86_64", "1")
+	defineMacro("__x86_64__", "1")
+	defineMacro("linux", "1")
+	defineMacro("unix", "1")
+}
+
 // Entry point function of the preprocessor.
 func preprocess(tok *Token) *Token {
+	initMacros()
 	tok = preprocess2(tok)
 	if condIncl != nil {
 		errorTok(condIncl.Tok, "unterminated conditional directive")

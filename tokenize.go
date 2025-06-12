@@ -396,8 +396,14 @@ func readIntLiteral(src *[]uint8, start int) *Token {
 	l := false
 	u := false
 
-	suffix3 := string((*currentInput)[p : p+3])
-	suffix2 := string((*currentInput)[p : p+2])
+	suffix3 := ""
+	if p+3 < len(*currentInput) {
+		suffix3 = string((*currentInput)[p : p+3])
+	}
+	suffix2 := ""
+	if p+2 < len(*currentInput) {
+		suffix2 = string((*currentInput)[p : p+2])
+	}
 	suffix1 := string((*currentInput)[p : p+1])
 	if suffix3 == "LLU" || suffix3 == "LLu" || suffix3 == "llU" || suffix3 == "llu" || suffix3 == "ULL" || suffix3 == "Ull" || suffix3 == "uLL" || suffix3 == "ull" {
 		p += 3
