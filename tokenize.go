@@ -729,6 +729,42 @@ func newFile(name string, fileNo int, contents *[]uint8) *File {
 	return file
 }
 
+// Removes backslashes followed by a newline.
+func removeBackslashNewline(src *[]uint8) {
+	i := 0
+	j := 0
+
+	// We want to keep the number of newline characters so that
+	// the logical line number matches the physical one.
+	// This counter maintain the number of newlines we have removed.
+	n := 0
+
+	for (*src)[i] != 0 {
+		if (*src)[i] == '\\' && (*src)[i+1] == '\n' {
+			i += 2
+			n += 1
+		} else if (*src)[i] == '\n' {
+			(*src)[j] = (*src)[i]
+			j += 1
+			i += 1
+			for ; n > 0; n -= 1 {
+				(*src)[j] = '\n'
+				j += 1
+			}
+		} else {
+			(*src)[j] = (*src)[i]
+			j += 1
+			i += 1
+		}
+	}
+
+	for ; n > 0; n -= 1 {
+		(*src)[j] = '\n'
+		j += 1
+	}
+	(*src)[j] = 0
+}
+
 func getInputFiles() []*File {
 	return inputFiles
 }
@@ -739,6 +775,9 @@ func tokenizeFile(path string) *Token {
 		return nil
 	}
 
+	removeBackslashNewline(src)
+
+	// Save the filename for assembler .file directive.
 	file := newFile(path, fileNo+1, src)
 
 	// Save the filename for assembler .file directive.
