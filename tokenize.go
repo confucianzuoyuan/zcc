@@ -72,14 +72,14 @@ func (t *Token) copy() *Token {
 
 // Append tok2 to the end of tok1.
 func (t *Token) append(other *Token) *Token {
-	if t == nil || t.Kind == TK_EOF {
+	if t.Kind == TK_EOF {
 		return other
 	}
 
 	head := Token{}
 	cur := &head
 
-	for ; t != nil && t.Kind != TK_EOF; t = t.Next {
+	for ; t.Kind != TK_EOF; t = t.Next {
 		cur.Next = t.copy()
 		cur = cur.Next
 	}

@@ -18,7 +18,14 @@ type CondIncl struct {
 	Ctx      CondInclCtx
 }
 
+type Macro struct {
+	Next *Macro
+	Name string
+	Body *Token
+}
+
 var condIncl *CondIncl
+var macros *Macro
 
 func (t *Token) newEOF() *Token {
 	newToken := t.copy()
@@ -106,6 +113,41 @@ func pushCondIncl(tok *Token, included bool) *CondIncl {
 	return ci
 }
 
+func findMacro(tok *Token) *Macro {
+	if tok.Kind != TK_IDENT {
+		return nil
+	}
+
+	for m := macros; m != nil; m = m.Next {
+		if tok.isEqual(m.Name) {
+			return m
+		}
+	}
+
+	return nil
+}
+
+func addMacro(name string, body *Token) *Macro {
+	m := &Macro{
+		Next: macros,
+		Name: name,
+		Body: body,
+	}
+	macros = m
+	return m
+}
+
+// If tok is a macro, expand it and return true.
+// Otherwise, do nothing and return false.
+func expandMacro(rest **Token, tok *Token) bool {
+	m := findMacro(tok)
+	if m == nil {
+		return false
+	}
+	*rest = m.Body.append(tok.Next)
+	return true
+}
+
 func (t *Token) isHash() bool {
 	return t.AtBeginningOfLine && t.isEqual("#")
 }
@@ -131,6 +173,11 @@ func preprocess2(tok *Token) *Token {
 	cur := &head
 
 	for tok != nil && tok.Kind != TK_EOF {
+		// If it is a macro, expand it.
+		if expandMacro(&tok, tok) {
+			continue
+		}
+
 		// Pass through if it is not a "#".
 		if !tok.isHash() {
 			cur.Next = tok
@@ -169,6 +216,16 @@ func preprocess2(tok *Token) *Token {
 			tok = skipLine(tok.Next)
 			tok = tok2.append(tok.Next)
 
+			continue
+		}
+
+		if tok.isEqual("define") {
+			tok = tok.Next
+			if tok.Kind != TK_IDENT {
+				errorTok(tok, "macro name must be an identifier")
+			}
+			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+			addMacro(name, copyLine(&tok, tok.Next))
 			continue
 		}
 
