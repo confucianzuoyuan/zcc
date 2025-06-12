@@ -65,7 +65,7 @@ func (t *Token) newEOF() *Token {
 
 func skipCondIncl2(tok *Token) *Token {
 	for tok != nil && tok.Kind != TK_EOF {
-		if tok.isHash() && tok.Next.isEqual("if") {
+		if tok.isHash() && (tok.Next.isEqual("if") || tok.Next.isEqual("ifdef") || tok.Next.isEqual("ifndef")) {
 			tok = skipCondIncl2(tok.Next.Next)
 			continue
 		}
@@ -83,7 +83,7 @@ func skipCondIncl2(tok *Token) *Token {
 // Nested `#if` and `#endif` are skipped.
 func skipCondIncl(tok *Token) *Token {
 	for tok != nil && tok.Kind != TK_EOF {
-		if tok.isHash() && tok.Next.isEqual("if") {
+		if tok.isHash() && (tok.Next.isEqual("if") || tok.Next.isEqual("ifdef") || tok.Next.isEqual("ifndef")) {
 			tok = skipCondIncl2(tok.Next.Next)
 			continue
 		}
@@ -333,6 +333,34 @@ func preprocess2(tok *Token) *Token {
 			}
 			pushCondIncl(start, included)
 			if val == 0 {
+				tok = skipCondIncl(tok)
+			}
+			continue
+		}
+
+		if tok.isEqual("ifdef") {
+			defined := findMacro(tok.Next)
+			if defined != nil {
+				pushCondIncl(tok, true)
+			} else {
+				pushCondIncl(tok, false)
+			}
+			tok = skipLine(tok.Next.Next)
+			if defined == nil {
+				tok = skipCondIncl(tok)
+			}
+			continue
+		}
+
+		if tok.isEqual("ifndef") {
+			defined := findMacro(tok.Next)
+			if defined == nil {
+				pushCondIncl(tok, true)
+			} else {
+				pushCondIncl(tok, false)
+			}
+			tok = skipLine(tok.Next.Next)
+			if defined != nil {
 				tok = skipCondIncl(tok)
 			}
 			continue
