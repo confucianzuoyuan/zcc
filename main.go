@@ -321,6 +321,17 @@ func findGccLibPath() string {
 	panic("gcc library path is not found")
 }
 
+func addDefaultIncludePaths(argv0 string) {
+	// We expect that chibicc-specific include files are installed
+	// to ./include relative to argv[0].
+	includePaths = append(includePaths, filepath.Dir(argv0)+"/include")
+
+	// Add standard include paths.
+	includePaths = append(includePaths, "/usr/local/include")
+	includePaths = append(includePaths, "/usr/include/x86_64-linux-gnu")
+	includePaths = append(includePaths, "/usr/include")
+}
+
 func runLinker(inputs []string, output string) {
 	arr := []string{}
 
@@ -368,6 +379,7 @@ func main() {
 	parseArgs(args)
 
 	if opt_cc1 {
+		addDefaultIncludePaths(args[0])
 		cc1()
 		return
 	}
