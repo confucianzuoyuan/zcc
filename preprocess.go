@@ -17,8 +17,9 @@
 // "hideset". Hideset is initially empty, and every time we expand a
 // macro, the macro name is added to the resulting tokens' hidesets.
 //
-// The above macro expansion algorithm is explained in this document,
-// which is used as a basis for the standard's wording:
+// The above macro expansion algorithm is explained in this document
+// written by Dave Prossor, which is used as a basis for the
+// standard's wording:
 // https://github.com/rui314/chibicc/wiki/cpp.algo.pdf
 
 package main
@@ -273,7 +274,8 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam) *MacroArg {
 		cur.Name = pp.Name
 	}
 
-	*rest = skip(tok, ")")
+	skip(tok, ")")
+	*rest = tok
 	return head.Next
 }
 
@@ -345,8 +347,21 @@ func expandMacro(rest **Token, tok *Token) bool {
 	}
 
 	// Function-like macro application
+	macroToken := tok
 	args := readMacroArgs(&tok, tok, m.Params)
-	*rest = subst(m.Body, args).append(tok)
+	rparen := tok
+
+	// Tokens that consist a func-like macro invocation may have different
+	// hidesets, and if that's the case, it's not clear what the hideset
+	// for the new tokens should be. We take the interesection of the
+	// macro token and the closing parenthesis and use it as a new hideset
+	// as explained in the Dave Prossor's algorithm.
+	hs := macroToken.Hideset.intersection(rparen.Hideset)
+	hs = hs.union(newHideset(m.Name))
+
+	body := subst(m.Body, args)
+	body = addHideset(body, hs)
+	*rest = body.append(tok.Next)
 	return true
 }
 
@@ -389,6 +404,19 @@ func addHideset(tok *Token, hs *Hideset) *Token {
 		cur = cur.Next
 	}
 
+	return head.Next
+}
+
+func (hs1 *Hideset) intersection(hs2 *Hideset) *Hideset {
+	head := Hideset{}
+	cur := &head
+
+	for ; hs1 != nil; hs1 = hs1.Next {
+		if hs2.contains(hs1.Name) {
+			cur.Next = newHideset(hs1.Name)
+			cur = cur.Next
+		}
+	}
 	return head.Next
 }
 
