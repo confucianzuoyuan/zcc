@@ -166,7 +166,7 @@ func pushScope(name string) *VarScope {
 
 func pushTagScope(tok *Token, ty *CType) *TagScope {
 	sc := &TagScope{}
-	sc.Name = string((*currentInput)[tok.Location : tok.Location+tok.Length])
+	sc.Name = string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	sc.Ty = ty
 	sc.Next = scope.Tags
 	scope.Tags = sc
@@ -305,7 +305,22 @@ func countArrayInitElements(tok *Token, ty *CType) int {
 }
 
 func debugToken(tok *Token) {
-	fmt.Printf("%s\r\n", string((*currentInput)[tok.Location:tok.Location+tok.Length]))
+	switch tok.Kind {
+	case TK_EOF:
+		println("eof")
+	case TK_IDENT:
+		println("ident")
+	case TK_KEYWORD:
+		println("keyword")
+	case TK_NUM:
+		println("number")
+	case TK_PUNCT:
+		println("punct")
+	case TK_STR:
+		println("string")
+	}
+
+	fmt.Printf("%s\r\n", string((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
 }
 
 // array-initializer1 = "{" initializer ("," initializer)* ","? "}"
@@ -592,7 +607,7 @@ func (tok *Token) getIdent() string {
 	if tok.Kind != TK_IDENT {
 		errorTok(tok, "expected an identifier")
 	}
-	return string((*currentInput)[tok.Location : tok.Location+tok.Length])
+	return string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 }
 
 func findTypeDef(tok *Token) *CType {
@@ -991,7 +1006,7 @@ func unionDecl(rest **Token, tok *Token) *CType {
 
 func getStructMember(ty *CType, tok *Token) *Member {
 	for mem := ty.Members; mem != nil; mem = mem.Next {
-		if mem.Name.isEqual(string((*currentInput)[tok.Location : tok.Location+tok.Length])) {
+		if mem.Name.isEqual(string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
 			return mem
 		}
 	}

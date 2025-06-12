@@ -1,5 +1,7 @@
 package main
 
+import "path/filepath"
+
 func (t *Token) isHash() bool {
 	return t.AtBeginningOfLine && t.isEqual("#")
 }
@@ -20,6 +22,28 @@ func preprocess2(tok *Token) *Token {
 		}
 
 		tok = tok.Next
+
+		if tok.isEqual("include") {
+			tok = tok.Next
+
+			if tok.Kind != TK_STR {
+				errorTok(tok, "expected a filename")
+			}
+
+			// 去掉字符串字面量末尾的"\x00"
+			s := tok.StringLiteral
+			if len(s) > 0 && s[len(s)-1] == 0 {
+				s = s[:len(s)-1]
+			}
+			path := filepath.Dir(tok.File.Name) + "/" + s
+			tok2 := tokenizeFile(path)
+			if tok2 == nil {
+				errorTok(tok, "error +")
+			}
+			tok = tok2.append(tok.Next)
+
+			continue
+		}
 
 		// `#`-only line is legal. It's called a null directive.
 		if tok.AtBeginningOfLine {

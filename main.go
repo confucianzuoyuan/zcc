@@ -215,6 +215,9 @@ func createTmpfile() string {
 func cc1() {
 	// Tokenize and parse.
 	tok := tokenizeFile(baseFile)
+	if tok == nil {
+		panic(baseFile + ": error")
+	}
 	tok = preprocess(tok)
 	prog := parse(tok)
 
@@ -223,7 +226,6 @@ func cc1() {
 		println("dump ir not impl")
 	} else {
 		out, _ := openFile(outputFile)
-		fmt.Fprintf(out, ".file 1 \"%s\"\n", baseFile)
 		codegen(prog, out)
 	}
 }

@@ -18,6 +18,12 @@ const (
 	TK_EOF                      // End-of-file markers
 )
 
+type File struct {
+	Name     string
+	FileNo   int
+	Contents *[]uint8
+}
+
 type Token struct {
 	Kind          TokenKind // Token kind
 	Next          *Token    // Next token
@@ -28,12 +34,18 @@ type Token struct {
 	Ty            *CType    // Used if TK_NUM or TK_STR
 	StringLiteral string    // String literal contents including terminating '\0'
 
-	LineNo            int  // Line number
-	AtBeginningOfLine bool // True if this token is at beginning of line
+	File              *File //Source location
+	LineNo            int   // Line number
+	AtBeginningOfLine bool  // True if this token is at beginning of line
 }
 
-var currentFilename string
-var currentInput *[]uint8
+// Input file
+var currentFile *File
+
+// A list of all input files.
+var inputFiles []*File
+
+var fileNo int = 0
 
 // True if the current position is at the beginning of a line
 var atBeginningOfLine bool
@@ -43,11 +55,36 @@ func newToken(kind TokenKind, start int, end int) *Token {
 		Kind:              kind,
 		Location:          start,
 		Length:            end - start,
+		File:              currentFile,
 		AtBeginningOfLine: atBeginningOfLine,
 	}
 
 	atBeginningOfLine = false
 	return tok
+}
+
+func (t *Token) copy() *Token {
+	newToken := &Token{}
+	*newToken = *t
+	newToken.Next = nil
+	return newToken
+}
+
+// Append tok2 to the end of tok1.
+func (t *Token) append(other *Token) *Token {
+	if t == nil || t.Kind == TK_EOF {
+		return other
+	}
+
+	head := Token{}
+	cur := &head
+
+	for ; t != nil && t.Kind != TK_EOF; t = t.Next {
+		cur.Next = t.copy()
+		cur = cur.Next
+	}
+	cur.Next = other
+	return head.Next
 }
 
 /*
@@ -56,21 +93,21 @@ func newToken(kind TokenKind, start int, end int) *Token {
  * foo.c:10: x = y + 1;
  *               ^ <error message here>
  */
-func verrorAt(buf *[]uint8, line_no int, loc int, msg string) {
+func verrorAt(filename string, input *[]uint8, line_no int, loc int, msg string) {
 	// Find a line containing `loc`
 	line := loc
-	for 0 < line && (*buf)[line-1] != '\n' {
+	for 0 < line && (*input)[line-1] != '\n' {
 		line -= 1
 	}
 
 	end := loc
-	for (*buf)[end] != 0 && (*buf)[end] != '\n' {
+	for (*input)[end] != 0 && (*input)[end] != '\n' {
 		end += 1
 	}
 
 	// Print out the line.
-	indent, _ := fmt.Fprintf(os.Stderr, "%s:%d: ", currentFilename, line_no)
-	fmt.Fprintf(os.Stderr, "%s", string((*buf)[line:end+1]))
+	indent, _ := fmt.Fprintf(os.Stderr, "%s:%d: ", filename, line_no)
+	fmt.Fprintf(os.Stderr, "%s", string((*input)[line:end+1]))
 
 	// Show the error message
 	pos := loc - line + indent
@@ -81,7 +118,7 @@ func verrorAt(buf *[]uint8, line_no int, loc int, msg string) {
 }
 
 func errorAt(loc int, msg string) {
-	buf := currentInput
+	buf := currentFile.Contents
 	line_no := 1
 	for p := 0; p < loc; p += 1 {
 		if (*buf)[p] == '\n' {
@@ -89,17 +126,17 @@ func errorAt(loc int, msg string) {
 		}
 	}
 
-	verrorAt(buf, line_no, loc, msg)
+	verrorAt(currentFile.Name, buf, line_no, loc, msg)
 	os.Exit(1)
 }
 
 func errorTok(tok *Token, msg string) {
-	verrorAt(currentInput, tok.LineNo, tok.Location, msg)
+	verrorAt(tok.File.Name, tok.File.Contents, tok.LineNo, tok.Location, msg)
 	os.Exit(1)
 }
 
 func (t *Token) isEqual(s string) bool {
-	return string((*currentInput)[t.Location:t.Location+t.Length]) == s
+	return string((*t.File.Contents)[t.Location:t.Location+t.Length]) == s
 }
 
 // Returns true if c is valid as the first character of an identifier.
@@ -160,8 +197,8 @@ func isOctalDigit(c uint8) bool {
 }
 
 // 返回：(读取的值, new_pos)
-func readEscapedChar(p int) (int8, int) {
-	buf := currentInput
+func readEscapedChar(src *[]uint8, p int) (int8, int) {
+	buf := src
 	if '0' <= (*buf)[p] && (*buf)[p] <= '7' {
 		// Read an octal number.
 		c := int((*buf)[p] - '0')
@@ -227,8 +264,8 @@ func readEscapedChar(p int) (int8, int) {
 }
 
 // Find a closing double-quote.
-func stringLiteralEnd(p int) int {
-	buf := currentInput
+func stringLiteralEnd(src *[]uint8, p int) int {
+	buf := src
 	start := p
 	for ; (*buf)[p] != '"'; p += 1 {
 		if (*buf)[p] == '\n' || (*buf)[p] == 0 {
@@ -241,15 +278,15 @@ func stringLiteralEnd(p int) int {
 	return p
 }
 
-func readStringLiteral(start int) *Token {
-	buf := currentInput
-	end := stringLiteralEnd(start + 1)
+func readStringLiteral(src *[]uint8, start int) *Token {
+	buf := src
+	end := stringLiteralEnd(src, start+1)
 	str := make([]uint8, end-start)
 	var len int64 = 0
 
 	for p := start + 1; p < end; {
 		if (*buf)[p] == '\\' {
-			c, new_pos := readEscapedChar(p + 1)
+			c, new_pos := readEscapedChar(src, p+1)
 			str[len] = uint8(c)
 			len += 1
 			p = new_pos
@@ -266,7 +303,8 @@ func readStringLiteral(start int) *Token {
 	return tok
 }
 
-func readCharLiteral(start int) *Token {
+func readCharLiteral(src *[]uint8, start int) *Token {
+	currentInput := src
 	p := start + 1
 	if (*currentInput)[p] == 0 {
 		errorAt(start, "unclosed char literal")
@@ -274,7 +312,7 @@ func readCharLiteral(start int) *Token {
 
 	var c int8
 	if (*currentInput)[p] == '\\' {
-		c, p = readEscapedChar(p + 1)
+		c, p = readEscapedChar(src, p+1)
 	} else {
 		c = int8((*currentInput)[p])
 		p += 1
@@ -294,7 +332,8 @@ func readCharLiteral(start int) *Token {
 	return tok
 }
 
-func readIntLiteral(start int) *Token {
+func readIntLiteral(src *[]uint8, start int) *Token {
+	currentInput := src
 	p := start
 
 	// Read a binary, octal, decimal or hexadecimal number.
@@ -420,40 +459,40 @@ func readIntLiteral(start int) *Token {
 	return tok
 }
 
-func readNumber(start int) *Token {
+func readNumber(src *[]uint8, start int) *Token {
 	// Try to parse as an integer constant.
-	tok := readIntLiteral(start)
-	c := (*currentInput)[start+tok.Length]
+	tok := readIntLiteral(src, start)
+	c := (*src)[start+tok.Length]
 	if c != '.' && c != 'e' && c != 'E' && c != 'f' && c != 'F' {
 		return tok
 	}
 
 	// If it's not an integer, it must be a floating point constant.
 	end := start + tok.Length
-	if (*currentInput)[end] == '.' {
+	if (*src)[end] == '.' {
 		end += 1
 	}
-	for isDecimalDigit((*currentInput)[end]) || (*currentInput)[end] == 'p' {
+	for isDecimalDigit((*src)[end]) || (*src)[end] == 'p' {
 		end += 1
 	}
-	if (*currentInput)[end] == 'e' || (*currentInput)[end] == 'E' {
-		if (*currentInput)[end+1] == '+' || (*currentInput)[end+1] == '-' {
+	if (*src)[end] == 'e' || (*src)[end] == 'E' {
+		if (*src)[end+1] == '+' || (*src)[end+1] == '-' {
 			end += 2
 		} else {
 			end += 1
 		}
 
-		for isDecimalDigit((*currentInput)[end]) {
+		for isDecimalDigit((*src)[end]) {
 			end += 1
 		}
 	}
-	value, _ := strconv.ParseFloat(string((*currentInput)[start:end]), 64)
+	value, _ := strconv.ParseFloat(string((*src)[start:end]), 64)
 
 	var ty *CType
-	if (*currentInput)[end] == 'f' || (*currentInput)[end] == 'F' {
+	if (*src)[end] == 'f' || (*src)[end] == 'F' {
 		ty = TyFloat
 		end += 1
-	} else if (*currentInput)[end] == 'l' || (*currentInput)[end] == 'L' {
+	} else if (*src)[end] == 'l' || (*src)[end] == 'L' {
 		ty = TyDouble
 		end += 1
 	} else {
@@ -475,8 +514,7 @@ func convertKeywords(tok *Token) {
 }
 
 // Initialize line info for all tokens.
-func addLineNumbers(tok *Token) {
-	buf := currentInput
+func addLineNumbers(src *[]uint8, tok *Token) {
 	p := 0
 	n := 1
 
@@ -484,16 +522,16 @@ func addLineNumbers(tok *Token) {
 		tok.LineNo = n
 		tok = tok.Next
 	}
-	if (*buf)[p] == '\n' {
+	if (*src)[p] == '\n' {
 		n += 1
 	}
 
-	for ; (*buf)[p] != 0; p += 1 {
+	for ; (*src)[p] != 0; p += 1 {
 		if p == tok.Location {
 			tok.LineNo = n
 			tok = tok.Next
 		}
-		if (*buf)[p] == '\n' {
+		if (*src)[p] == '\n' {
 			n += 1
 		}
 	}
@@ -511,9 +549,9 @@ func isAlphaNumber(c uint8) bool {
 }
 
 // Tokenize a given string and returns new tokens.
-func tokenize(filename string, src *[]uint8) *Token {
-	currentFilename = filename
-	currentInput = src
+func tokenize(file *File) *Token {
+	currentFile = file
+	src := file.Contents
 
 	p := 0
 
@@ -534,7 +572,7 @@ func tokenize(filename string, src *[]uint8) *Token {
 
 		// Character literal
 		if (*src)[p] == '\'' {
-			cur.Next = readCharLiteral(p)
+			cur.Next = readCharLiteral(src, p)
 			cur = cur.Next
 			p += cur.Length
 			continue
@@ -571,7 +609,7 @@ func tokenize(filename string, src *[]uint8) *Token {
 
 		// Numeric literal
 		if isDecimalDigit((*src)[p]) || ((*src)[p] == '.' && isDecimalDigit((*src)[p+1])) {
-			cur.Next = readNumber(p)
+			cur.Next = readNumber(src, p)
 			cur = cur.Next
 			p += cur.Length
 			continue
@@ -579,7 +617,7 @@ func tokenize(filename string, src *[]uint8) *Token {
 
 		// String literal
 		if (*src)[p] == '"' {
-			cur.Next = readStringLiteral(p)
+			cur.Next = readStringLiteral(src, p)
 			cur = cur.Next
 			p += cur.Length
 			continue
@@ -598,7 +636,7 @@ func tokenize(filename string, src *[]uint8) *Token {
 		}
 
 		// Punctuators
-		punctLen := readPunct(p)
+		punctLen := readPunct(src, p)
 		if punctLen > 0 {
 			cur.Next = newToken(TK_PUNCT, p, p+punctLen)
 			cur = cur.Next
@@ -610,12 +648,12 @@ func tokenize(filename string, src *[]uint8) *Token {
 	}
 
 	cur.Next = newToken(TK_EOF, p, p)
-	addLineNumbers(head.Next)
+	addLineNumbers(src, head.Next)
 	return head.Next
 }
 
 // Read a punctuator token from p and returns its length.
-func readPunct(p int) int {
+func readPunct(src *[]uint8, p int) int {
 	punctuators := []string{
 		"<<=", ">>=", "...", "==", "!=", "<=", ">=", "->", "+=",
 		"-=", "*=", "/=", "++", "--", "%=", "&=", "|=", "^=", "&&",
@@ -628,7 +666,7 @@ func readPunct(p int) int {
 
 	for _, punct := range punctuators {
 		punctLen := len(punct)
-		if string((*currentInput)[p:p+punctLen]) == punct {
+		if string((*src)[p:p+punctLen]) == punct {
 			return punctLen
 		}
 	}
@@ -652,8 +690,7 @@ func readFile(path string) *[]uint8 {
 	} else {
 		src, err = os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "读取文件时出错：", err)
-			os.Exit(1)
+			return nil
 		}
 	}
 
@@ -667,6 +704,30 @@ func readFile(path string) *[]uint8 {
 	return &src
 }
 
+func newFile(name string, fileNo int, contents *[]uint8) *File {
+	file := &File{
+		Name:     name,
+		FileNo:   fileNo,
+		Contents: contents,
+	}
+	return file
+}
+
+func getInputFiles() []*File {
+	return inputFiles
+}
+
 func tokenizeFile(path string) *Token {
-	return tokenize(path, readFile(path))
+	src := readFile(path)
+	if src == nil {
+		return nil
+	}
+
+	file := newFile(path, fileNo+1, src)
+
+	// Save the filename for assembler .file directive.
+	inputFiles = append(inputFiles, file)
+	inputFiles = append(inputFiles, nil)
+	fileNo += 1
+	return tokenize(file)
 }
