@@ -19,9 +19,10 @@ type CondIncl struct {
 }
 
 type Macro struct {
-	Next *Macro
-	Name string
-	Body *Token
+	Next    *Macro
+	Name    string
+	Body    *Token
+	Deleted bool
 }
 
 var condIncl *CondIncl
@@ -120,7 +121,11 @@ func findMacro(tok *Token) *Macro {
 
 	for m := macros; m != nil; m = m.Next {
 		if tok.isEqual(m.Name) {
-			return m
+			if m.Deleted {
+				return nil
+			} else {
+				return m
+			}
 		}
 	}
 
@@ -226,6 +231,19 @@ func preprocess2(tok *Token) *Token {
 			}
 			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 			addMacro(name, copyLine(&tok, tok.Next))
+			continue
+		}
+
+		if tok.isEqual("undef") {
+			tok = tok.Next
+			if tok.Kind != TK_IDENT {
+				errorTok(tok, "macro name must be an identifier")
+			}
+			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+			tok = skipLine(tok.Next)
+
+			m := addMacro(name, nil)
+			m.Deleted = true
 			continue
 		}
 
