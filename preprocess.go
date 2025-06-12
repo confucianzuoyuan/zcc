@@ -25,6 +25,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 )
 
@@ -336,6 +337,22 @@ func findArg(args *MacroArg, tok *Token) *MacroArg {
 	return nil
 }
 
+// Concatenate two tokens to create a new token.
+func paste(lhs *Token, rhs *Token) *Token {
+	// Paste the two tokens.
+	lhsString := string((*lhs.File.Contents)[lhs.Location : lhs.Location+lhs.Length])
+	rhsString := string((*rhs.File.Contents)[rhs.Location : rhs.Location+rhs.Length])
+	buf := []uint8(lhsString + rhsString)
+	buf = append(buf, 0)
+
+	// Tokenize the resulting string
+	tok := tokenize(newFile(lhs.File.Name, lhs.File.FileNo, &buf))
+	if tok.Next.Kind != TK_EOF {
+		errorTok(lhs, fmt.Sprintf("pasting forms '%s', an invalid token", string(buf)))
+	}
+	return tok
+}
+
 // Replace func-like macro parameters with given arguments.
 func subst(tok *Token, args *MacroArg) *Token {
 	head := Token{}
@@ -354,9 +371,64 @@ func subst(tok *Token, args *MacroArg) *Token {
 			continue
 		}
 
+		if tok.isEqual("##") {
+			if cur == &head {
+				errorTok(tok, "'##' cannot appear at start of macro expansion")
+			}
+
+			if tok.Next.Kind == TK_EOF {
+				errorTok(tok, "'##' cannot appear at end of macro expansion")
+			}
+
+			arg := findArg(args, tok.Next)
+			if arg != nil {
+				if arg.Tok.Kind != TK_EOF {
+					*cur = *paste(cur, arg.Tok)
+					for t := arg.Tok.Next; t.Kind != TK_EOF; t = t.Next {
+						cur.Next = t.copy()
+						cur = cur.Next
+					}
+				}
+				tok = tok.Next.Next
+				continue
+			}
+
+			*cur = *paste(cur, tok.Next)
+			tok = tok.Next.Next
+			continue
+		}
+
+		arg := findArg(args, tok)
+
+		if arg != nil && tok.Next.isEqual("##") {
+			rhs := tok.Next.Next
+
+			if arg.Tok.Kind == TK_EOF {
+				arg2 := findArg(args, rhs)
+				if arg2 != nil {
+					for t := arg2.Tok; t.Kind != TK_EOF; t = t.Next {
+						cur.Next = t.copy()
+						cur = cur.Next
+					}
+				} else {
+					cur.Next = rhs.copy()
+					cur = cur.Next
+				}
+				tok = rhs.Next
+				continue
+			}
+
+			for t := arg.Tok; t.Kind != TK_EOF; t = t.Next {
+				cur.Next = t.copy()
+				cur = cur.Next
+			}
+
+			tok = tok.Next
+			continue
+		}
+
 		// Handle a macro token. Macro arguments are completely macro-expanded
 		// before they are substituted into a macro body.
-		arg := findArg(args, tok)
 		if arg != nil {
 			t := preprocess2(arg.Tok)
 			for ; t.Kind != TK_EOF; t = t.Next {
