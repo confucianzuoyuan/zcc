@@ -26,6 +26,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -244,10 +245,10 @@ func newStringToken(s string, tmpl *Token) *Token {
 }
 
 // Concatenates all tokens in `tok` and returns a new string.
-func (tok *Token) joinTokens() []uint8 {
+func (tok *Token) joinTokens(end *Token) []uint8 {
 	buf := []uint8{}
 
-	for t := tok; t != nil && t.Kind != TK_EOF; t = t.Next {
+	for t := tok; t != end && t.Kind != TK_EOF; t = t.Next {
 		if t != tok && t.HasSpace {
 			buf = append(buf, ' ')
 		}
@@ -262,8 +263,60 @@ func stringize(hash *Token, arg *Token) *Token {
 	// Create a new string token. We need to set some value to its
 	// source location for error reporting function, so we use a macro
 	// name token as a template.
-	buf := arg.joinTokens()
+	buf := arg.joinTokens(nil)
 	return newStringToken(string(buf), hash)
+}
+
+// Read an #include argument.
+func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
+	// Pattern 1: #include "foo.h"
+	if tok.Kind == TK_STR {
+		// A double-quoted filename for #include is a special kind of
+		// token, and we don't want to interpret any escape sequences in it.
+		// For example, "\f" in "C:\foo" is not a formfeed character but
+		// just two non-control characters, backslash and f.
+		// So we don't want to use token->str.
+		*isDoubleQuote = true
+		*rest = skipLine(tok.Next)
+		return string((*tok.File.Contents)[tok.Location+1 : tok.Location+tok.Length-1])
+	}
+
+	// Pattern 2: #include <foo.h>
+	if tok.isEqual("<") {
+		// Reconstruct a filename from a sequence of tokens between
+		// "<" and ">".
+		start := tok
+
+		// Find closing ">".
+		for ; !tok.isEqual(">"); tok = tok.Next {
+			if tok.AtBeginningOfLine || tok.Kind == TK_EOF {
+				errorTok(tok, "expected '>'")
+			}
+		}
+
+		*isDoubleQuote = false
+		*rest = skipLine(tok.Next)
+		return string(start.Next.joinTokens(tok))
+	}
+
+	// Pattern 3: #include FOO
+	// In this case FOO must be macro-expanded to either
+	// a single string token or a sequence of "<" ... ">".
+	if tok.Kind == TK_IDENT {
+		tok2 := preprocess2(copyLine(rest, tok))
+		return readIncludeFilename(&tok2, tok2, isDoubleQuote)
+	}
+
+	errorTok(tok, "expected a filename")
+	panic("unreachable")
+}
+
+func includeFile(tok *Token, path string, filenameToken *Token) *Token {
+	tok2 := tokenizeFile(path)
+	if tok2 == nil {
+		errorTok(filenameToken, "cannot open file")
+	}
+	return tok2.append(tok)
 }
 
 func findMacro(tok *Token) *Macro {
@@ -659,32 +712,25 @@ func preprocess2(tok *Token) *Token {
 		tok = tok.Next
 
 		if tok.isEqual("include") {
-			tok = tok.Next
+			isDoubleQuote := false
+			filename := readIncludeFilename(&tok, tok.Next, &isDoubleQuote)
 
-			if tok.Kind != TK_STR {
-				errorTok(tok, "expected a filename")
+			// remove '\x00' in the end
+			if len(filename) > 0 && filename[len(filename)-1] == 0 {
+				filename = filename[:len(filename)-1]
 			}
 
-			// 去掉字符串字面量末尾的"\x00"
-			s := tok.StringLiteral
-			if len(s) > 0 && s[len(s)-1] == 0 {
-				s = s[:len(s)-1]
-			}
-			path := ""
-			if s[0] == '/' {
-				path = s
-			} else {
-				path = filepath.Dir(tok.File.Name) + "/" + s
+			if filename[0] != '/' {
+				path := filepath.Dir(start.File.Name) + "/" + filename
+				_, err := os.Stat(path)
+				if err == nil {
+					tok = includeFile(tok, path, start.Next.Next)
+					continue
+				}
 			}
 
-			tok2 := tokenizeFile(path)
-			if tok2 == nil {
-				errorTok(tok, "error +")
-			}
-
-			tok = skipLine(tok.Next)
-			tok = tok2.append(tok)
-
+			// TODO: Search a file from the include paths.
+			tok = includeFile(tok, filename, start.Next.Next)
 			continue
 		}
 
