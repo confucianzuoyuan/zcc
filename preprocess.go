@@ -616,7 +616,7 @@ func preprocess2(tok *Token) *Token {
 			}
 
 			tok = skipLine(tok.Next)
-			tok = tok2.append(tok.Next)
+			tok = tok2.append(tok)
 
 			continue
 		}
