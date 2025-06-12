@@ -17,11 +17,16 @@ func (t *Token) newEOF() *Token {
 	return newToken
 }
 
-// Skip until next `#endif`
+// Nested `#if` and `#endif` are skipped.
 func skipCondIncl(tok *Token) *Token {
 	for tok != nil && tok.Kind != TK_EOF {
+		if tok.isHash() && tok.Next.isEqual("if") {
+			tok = skipCondIncl(tok.Next.Next)
+			tok = tok.Next
+			continue
+		}
 		if tok.isHash() && tok.Next.isEqual("endif") {
-			return tok
+			break
 		}
 		tok = tok.Next
 	}
