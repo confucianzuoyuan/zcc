@@ -1267,9 +1267,11 @@ func emitText(prog *Obj) {
 			off := fn.VaArea.Offset
 
 			// va_elem
-			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)
-			printlnToFile("  movl $%d, %d(%%rbp)", fp*8+48, off+4)
-			printlnToFile("  movq %%rbp, %d(%%rbp)", off+16)
+			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)      // gp_offset
+			printlnToFile("  movl $%d, %d(%%rbp)", fp*8+48, off+4) // fp_offset
+			printlnToFile("  movq %%rbp, %d(%%rbp)", off+8)        // overflow_arg_area
+			printlnToFile("  addq $16, %d(%%rbp)", off+8)
+			printlnToFile("  movq %%rbp, %d(%%rbp)", off+16) // reg_save_area
 			printlnToFile("  addq $%d, %d(%%rbp)", off+24, off+16)
 
 			//__reg_save_area__
