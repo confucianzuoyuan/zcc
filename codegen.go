@@ -874,13 +874,44 @@ func assignLocalVariableOffsets(prog *Obj) {
 			continue
 		}
 
-		offset := int64(0)
-		for v := fn.Locals; v != nil; v = v.Next {
-			offset += v.Ty.Size
-			offset = alignTo(offset, v.Align)
-			v.Offset = -offset
+		// If a function has many parameters, some parameters are
+		// inevitably passed by stack rather than by register.
+		// The first passed-by-stack parameter resides at RBP+16.
+		var top int64 = 16
+		var bottom int64 = 0
+
+		gp := 0
+		fp := 0
+
+		// Assign offsets to pass-by-stack parameters.
+		for v := fn.Params; v != nil; v = v.Next {
+			if v.Ty.isFloat() {
+				fp += 1
+				if fp-1 < FP_MAX {
+					continue
+				}
+			} else {
+				gp += 1
+				if gp-1 < GP_MAX {
+					continue
+				}
+			}
+
+			top = alignTo(top, 8)
+			v.Offset = top
+			top += v.Ty.Size
 		}
-		fn.StackSize = alignTo(offset, 16)
+
+		// Assign offsets to pass-by-register parameters and local variables.
+		for v := fn.Locals; v != nil; v = v.Next {
+			if v.Offset != 0 {
+				continue
+			}
+			bottom += v.Ty.Size
+			bottom = alignTo(bottom, v.Align)
+			v.Offset = -bottom
+		}
+		fn.StackSize = alignTo(bottom, 16)
 	}
 }
 
@@ -984,6 +1015,10 @@ func emitText(prog *Obj) {
 		gp := 0
 		fp := 0
 		for v := fn.Params; v != nil; v = v.Next {
+			if v.Offset > 0 {
+				continue
+			}
+
 			if v.Ty.isFloat() {
 				storeFp(fp, v.Offset, v.Ty.Size)
 				fp += 1
