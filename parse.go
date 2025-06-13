@@ -1406,7 +1406,11 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		*rest = skip(tok, ";")
 
 		exp.addType()
-		node.Lhs = newCast(exp, currentFunction.Ty.ReturnType)
+		ty := currentFunction.Ty.ReturnType
+		if ty.Kind != TY_STRUCT && ty.Kind != TY_UNION {
+			exp = newCast(exp, ty)
+		}
+		node.Lhs = exp
 		return node
 	}
 
@@ -2625,6 +2629,14 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 
 	enterScope()
 	createParamLocalVars(ty.Params)
+
+	// A buffer for a struct/union return value is passed
+	// as the hidden first parameter.
+	rty := ty.ReturnType
+	if (rty.Kind == TY_STRUCT || rty.Kind == TY_UNION) && rty.Size > 16 {
+		newLocalVar("", pointerTo(rty))
+	}
+
 	fn.Params = locals
 	if ty.IsVariadic {
 		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))

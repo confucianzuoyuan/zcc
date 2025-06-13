@@ -269,6 +269,67 @@ func (v *Obj) copyReturnBuffer() {
 	}
 }
 
+func copyStructReg() {
+	ty := currentFn.Ty.ReturnType
+	gp := 0
+	fp := 0
+
+	printlnToFile("  mov %%rax, %%rdi")
+
+	if ty.hasFloatNumber(0, 8, 0) {
+		if !(ty.Size == 4 || 8 <= ty.Size) {
+			panic("")
+		}
+		if ty.Size == 4 {
+			printlnToFile("  movss (%%rdi), %%xmm0")
+		} else {
+			printlnToFile("  movsd (%%rdi), %%xmm0")
+		}
+		fp += 1
+	} else {
+		printlnToFile("  mov $0, %%rax")
+		for i := int64(math.Min(8, float64(ty.Size))) - 1; i >= 0; i -= 1 {
+			printlnToFile("  shl $8, %%rax")
+			printlnToFile("  mov %d(%%rdi), %%al", i)
+		}
+		gp += 1
+	}
+
+	if ty.Size > 8 {
+		if ty.hasFloatNumber(8, 16, 0) {
+			if !(ty.Size == 12 || ty.Size == 16) {
+				panic("")
+			}
+
+			printlnToFile("  movsd 8(%%rdi), %%xmm%d", fp)
+		} else {
+			reg1 := "%al"
+			reg2 := "%rax"
+			if gp != 0 {
+				reg1 = "%dl"
+				reg2 = "%rdx"
+			}
+			printlnToFile("  mov $0, %s", reg2)
+			for i := int64(math.Min(16, float64(ty.Size))) - 1; i >= 8; i -= 1 {
+				printlnToFile("  shl $8, %s", reg2)
+				printlnToFile("  mov %d(%%rdi), %s", i, reg1)
+			}
+		}
+	}
+}
+
+func copyStructMem() {
+	ty := currentFn.Ty.ReturnType
+	v := currentFn.Params
+
+	printlnToFile("  mov %d(%%rbp), %%rdi", v.Offset)
+
+	for i := int64(0); i < ty.Size; i += 1 {
+		printlnToFile("  mov %d(%%rax), %%dl", i)
+		printlnToFile("  mov %%dl, %d(%%rdi)", i)
+	}
+}
+
 func count() int {
 	i += 1
 	return i - 1
@@ -1051,6 +1112,15 @@ func genStmt(node *AstNode) {
 	case ND_RETURN:
 		if node.Lhs != nil {
 			genExpr(node.Lhs)
+
+			ty := node.Lhs.Ty
+			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+				if ty.Size <= 16 {
+					copyStructReg()
+				} else {
+					copyStructMem()
+				}
+			}
 		}
 		printlnToFile("  jmp .L.return.%s", currentFn.Name)
 		return
