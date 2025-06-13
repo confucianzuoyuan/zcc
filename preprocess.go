@@ -1036,7 +1036,6 @@ func joinAdjacentStringLiterals(tok1 *Token) {
 
 // Entry point function of the preprocessor.
 func preprocess(tok *Token) *Token {
-	initMacros()
 	tok = preprocess2(tok)
 	if condIncl != nil {
 		errorTok(condIncl.Tok, "unterminated conditional directive")

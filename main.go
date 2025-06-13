@@ -25,6 +25,17 @@ var outputFile string = ""
 var inputPaths []string
 var tmpfiles []string
 
+func define(str string) {
+	eq := strings.Index(str, "=")
+	if eq >= 0 {
+		name := str[:eq]
+		value := str[eq+1:]
+		defineMacro(name, value)
+	} else {
+		defineMacro(str, "1")
+	}
+}
+
 func usage(status int) {
 	fmt.Fprintf(os.Stderr, "zcc [ -o <path> ] <file>\n")
 	fmt.Fprintf(os.Stderr, "      --dump-ir <file>\n")
@@ -96,6 +107,17 @@ func parseArgs(args []string) {
 
 		if args[idx] == "-E" {
 			opt_E = true
+			continue
+		}
+
+		if args[idx] == "-D" {
+			idx += 1
+			define(args[idx])
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-D") {
+			define(args[idx][2:])
 			continue
 		}
 
@@ -376,6 +398,7 @@ func runLinker(inputs []string, output string) {
 func main() {
 	defer cleanup()
 	args := os.Args
+	initMacros()
 	parseArgs(args)
 
 	if opt_cc1 {
