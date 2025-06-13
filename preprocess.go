@@ -821,10 +821,9 @@ func preprocess2(tok *Token) *Token {
 				errorTok(tok, "macro name must be an identifier")
 			}
 			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+			undefMacro(name)
 			tok = skipLine(tok.Next)
 
-			m := addMacro(name, true, nil)
-			m.Deleted = true
 			continue
 		}
 
@@ -920,6 +919,11 @@ func preprocess2(tok *Token) *Token {
 
 	cur.Next = tok
 	return head.Next
+}
+
+func undefMacro(name string) {
+	m := addMacro(name, true, nil)
+	m.Deleted = true
 }
 
 func defineMacro(name string, buf string) {
