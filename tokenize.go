@@ -15,6 +15,7 @@ const (
 	TK_KEYWORD                  // Keywords
 	TK_STR                      // String literals
 	TK_NUM                      // Numeric literals
+	TK_PP_NUM                   // Preprocessing numbers
 	TK_EOF                      // End-of-file markers
 )
 
@@ -344,9 +345,9 @@ func readCharLiteral(src *[]uint8, start int, quote int) *Token {
 	return tok
 }
 
-func readIntLiteral(src *[]uint8, start int) *Token {
-	currentInput := src
-	p := start
+func convertPpInt(tok *Token) bool {
+	currentInput := tok.File.Contents
+	p := tok.Location
 
 	// Read a binary, octal, decimal or hexadecimal number.
 	base := 10
@@ -425,6 +426,10 @@ func readIntLiteral(src *[]uint8, start int) *Token {
 		u = true
 	}
 
+	if p != tok.Location+tok.Length {
+		return false
+	}
+
 	// Infer a type
 	var ty *CType = nil
 	if base == 10 {
@@ -471,22 +476,29 @@ func readIntLiteral(src *[]uint8, start int) *Token {
 		}
 	}
 
-	tok := newToken(TK_NUM, start, p)
+	tok.Kind = TK_NUM
 	tok.Value = int64(val)
 	tok.Ty = ty
-	return tok
+	return true
 }
 
-func readNumber(src *[]uint8, start int) *Token {
+// The definition of the numeric literal at the preprocessing stage
+// is more relaxed than the definition of that at the later stages.
+// In order to handle that, a numeric literal is tokenized as a
+// "pp-number" token first and then converted to a regular number
+// token after preprocessing.
+//
+// This function converts a pp-number token to a regular number token.
+func convertPpNumber(tok *Token) {
 	// Try to parse as an integer constant.
-	tok := readIntLiteral(src, start)
-	c := (*src)[start+tok.Length]
-	if c != '.' && c != 'e' && c != 'E' && c != 'f' && c != 'F' {
-		return tok
+	if convertPpInt(tok) {
+		return
 	}
 
+	src := tok.File.Contents
+
 	// If it's not an integer, it must be a floating point constant.
-	end := start + tok.Length
+	end := tok.Location + tok.Length
 	if (*src)[end] == '.' {
 		end += 1
 	}
@@ -504,7 +516,14 @@ func readNumber(src *[]uint8, start int) *Token {
 			end += 1
 		}
 	}
-	value, _ := strconv.ParseFloat(string((*src)[start:end]), 64)
+
+	var value float64
+	if (*src)[end-1] == 'f' || (*src)[end-1] == 'F' {
+		value, _ = strconv.ParseFloat(string((*src)[tok.Location:end-1]), 64)
+		end -= 1
+	} else {
+		value, _ = strconv.ParseFloat(string((*src)[tok.Location:end]), 64)
+	}
 
 	var ty *CType
 	if (*src)[end] == 'f' || (*src)[end] == 'F' {
@@ -517,16 +536,21 @@ func readNumber(src *[]uint8, start int) *Token {
 		ty = TyDouble
 	}
 
-	tok = newToken(TK_NUM, start, end)
+	if tok.Location+tok.Length != end {
+		errorTok(tok, "invalid numeric constant")
+	}
+
+	tok.Kind = TK_NUM
 	tok.FloatValue = value
 	tok.Ty = ty
-	return tok
 }
 
-func convertKeywords(tok *Token) {
+func convertPpTokens(tok *Token) {
 	for t := tok; t != nil && t.Kind != TK_EOF; t = t.Next {
 		if t.isKeyword() {
 			t.Kind = TK_KEYWORD
+		} else if t.Kind == TK_PP_NUM {
+			convertPpNumber(t)
 		}
 	}
 }
@@ -640,9 +664,19 @@ func tokenize(file *File) *Token {
 
 		// Numeric literal
 		if isDecimalDigit((*src)[p]) || ((*src)[p] == '.' && isDecimalDigit((*src)[p+1])) {
-			cur.Next = readNumber(src, p)
+			q := p
+			p += 1
+			for {
+				if (*src)[p] != 0 && (*src)[p+1] != 0 && ((*src)[p] == 'e' || (*src)[p] == 'E' || (*src)[p] == 'p' || (*src)[p] == 'P') && ((*src)[p+1] == '+' || (*src)[p+1] == '-') {
+					p += 2
+				} else if isAlphaNumber((*src)[p]) || (*src)[p] == '.' {
+					p += 1
+				} else {
+					break
+				}
+			}
+			cur.Next = newToken(TK_PP_NUM, q, p)
 			cur = cur.Next
-			p += cur.Length
 			continue
 		}
 
