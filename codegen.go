@@ -523,9 +523,13 @@ func storeGp(r int, offset int64, sz int64) {
 	case 8:
 		printlnToFile("  mov %s, %d(%%rbp)", argreg64[r], offset)
 		return
+	default:
+		for i := int64(0); i < sz; i += 1 {
+			printlnToFile("  mov %s, %d(%%rbp)", argreg8[r], offset+i)
+			printlnToFile("  shr $8, %s", argreg64[r])
+		}
+		return
 	}
-
-	panic("unreachable in store_gp")
 }
 
 // Generate code for a given node.
@@ -992,7 +996,20 @@ func assignLocalVariableOffsets(prog *Obj) {
 
 		// Assign offsets to pass-by-stack parameters.
 		for v := fn.Params; v != nil; v = v.Next {
-			if v.Ty.isFloat() {
+			ty := v.Ty
+
+			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+				if ty.Size <= 16 {
+					fp1 := ty.hasFloatNumber(0, 8, 0)
+					fp2 := ty.hasFloatNumber(8, 16, 8)
+
+					if fp+boolToInt(fp1)+boolToInt(fp2) < FP_MAX && gp+boolToInt(!fp1)+boolToInt(!fp2) < GP_MAX {
+						fp = fp + boolToInt(fp1) + boolToInt(fp2)
+						gp = gp + boolToInt(!fp1) + boolToInt(!fp2)
+						continue
+					}
+				}
+			} else if ty.isFloat() {
 				fp += 1
 				if fp-1 < FP_MAX {
 					continue
@@ -1126,11 +1143,34 @@ func emitText(prog *Obj) {
 				continue
 			}
 
-			if v.Ty.isFloat() {
-				storeFp(fp, v.Offset, v.Ty.Size)
+			ty := v.Ty
+
+			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+				if ty.Size > 16 {
+					panic("type size greater than 16 bytes")
+				}
+				if ty.hasFloatNumber(0, 8, 0) {
+					storeFp(fp, v.Offset, int64(math.Min(8, float64(ty.Size))))
+					fp += 1
+				} else {
+					storeGp(gp, v.Offset, int64(math.Min(8, float64(ty.Size))))
+					gp += 1
+				}
+
+				if ty.Size > 8 {
+					if ty.hasFloatNumber(8, 16, 0) {
+						storeFp(fp, v.Offset+8, ty.Size-8)
+						fp += 1
+					} else {
+						storeGp(gp, v.Offset+8, ty.Size-8)
+						gp += 1
+					}
+				}
+			} else if ty.isFloat() {
+				storeFp(fp, v.Offset, ty.Size)
 				fp += 1
 			} else {
-				storeGp(gp, v.Offset, v.Ty.Size)
+				storeGp(gp, v.Offset, ty.Size)
 				gp += 1
 			}
 		}
