@@ -2457,6 +2457,12 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	node.FuncType = ty
 	node.Ty = ty.ReturnType
 	node.Args = head.Next
+
+	// If a function returns a struct, it is caller's responsibility
+	// to allocate a space for the return value.
+	if node.Ty.Kind == TY_STRUCT || node.Ty.Kind == TY_UNION {
+		node.ReturnBuffer = newLocalVar("", node.Ty)
+	}
 	return node
 }
 

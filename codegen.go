@@ -157,12 +157,19 @@ func boolToInt(b bool) int {
 //
 //   - If a function is variadic, set the number of floating-point type
 //     arguments to RAX.
-func pushArgs(args *AstNode) int {
+func pushArgs(node *AstNode) int {
 	stack := 0
 	gp := 0
 	fp := 0
 
-	for arg := args; arg != nil; arg = arg.Next {
+	// If the return type is a large struct/union, the caller passes
+	// a pointer to a buffer as if it were the first argument.
+	if node.ReturnBuffer != nil && node.Ty.Size > 16 {
+		gp += 1
+	}
+
+	// Load as many arguments to the registers as possible.
+	for arg := node.Args; arg != nil; arg = arg.Next {
 		if arg.Ty.Kind == TY_STRUCT || arg.Ty.Kind == TY_UNION {
 			if arg.Ty.Size > 16 {
 				arg.PassByStack = true
@@ -200,9 +207,66 @@ func pushArgs(args *AstNode) int {
 		stack += 1
 	}
 
-	pushArgs2(args, true)
-	pushArgs2(args, false)
+	pushArgs2(node.Args, true)
+	pushArgs2(node.Args, false)
+
+	// If the return type is a large struct/union, the caller passes
+	// a pointer to a buffer as if it were the first argument.
+	if node.ReturnBuffer != nil && node.Ty.Size > 16 {
+		printlnToFile("  lea %d(%%rbp), %%rax", node.ReturnBuffer.Offset)
+		push()
+	}
+
 	return stack
+}
+
+func (v *Obj) copyReturnBuffer() {
+	ty := v.Ty
+	gp := 0
+	fp := 0
+
+	if ty.hasFloatNumber1() {
+		if !(ty.Size == 4 || 8 <= ty.Size) {
+			panic("")
+		}
+		if ty.Size == 4 {
+			printlnToFile("  movss %%xmm0, %d(%%rbp)", v.Offset)
+		} else {
+			printlnToFile("  movsd %%xmm0, %d(%%rbp)", v.Offset)
+		}
+		fp += 1
+	} else {
+		for i := int64(0); i < int64(math.Min(8, float64(ty.Size))); i += 1 {
+			printlnToFile("  mov %%al, %d(%%rbp)", v.Offset+i)
+			printlnToFile("  shr $8, %%rax")
+		}
+		gp += 1
+	}
+
+	if ty.Size > 8 {
+		if ty.hasFloatNumber2() {
+			if !(ty.Size == 12 || ty.Size == 16) {
+				panic("")
+			}
+
+			if ty.Size == 12 {
+				printlnToFile("  movss %%xmm%d, %d(%%rbp)", fp, v.Offset+8)
+			} else {
+				printlnToFile("  movsd %%xmm%d, %d(%%rbp)", fp, v.Offset+8)
+			}
+		} else {
+			reg1 := "%al"
+			reg2 := "%rax"
+			if gp != 0 {
+				reg1 = "%dl"
+				reg2 = "%rdx"
+			}
+			for i := int64(8); i < int64(math.Min(16, float64(ty.Size))); i += 1 {
+				printlnToFile("  mov %s, %d(%%rbp)", reg1, v.Offset+i)
+				printlnToFile("  shr $8, %s", reg2)
+			}
+		}
+	}
 }
 
 func count() int {
@@ -273,6 +337,11 @@ func genAddr(node *AstNode) {
 		genAddr(node.Lhs)
 		printlnToFile("  add $%d, %%rax", node.Member.Offset)
 		return
+	case ND_FUNCALL:
+		if node.ReturnBuffer != nil {
+			genExpr(node)
+			return
+		}
 	}
 
 	errorTok(node.Tok, "not an lvalue")
@@ -662,11 +731,18 @@ func genExpr(node *AstNode) {
 		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_FUNCALL:
-		stackArgs := pushArgs(node.Args)
+		stackArgs := pushArgs(node)
 		genExpr(node.Lhs)
 
 		gp := 0
 		fp := 0
+
+		// If the return type is a large struct/union, the caller passes
+		// a pointer to a buffer as if it were the first argument.
+		if node.ReturnBuffer != nil && node.Ty.Size > 16 {
+			pop(argreg64[gp])
+			gp += 1
+		}
 		for arg := node.Args; arg != nil; arg = arg.Next {
 			ty := arg.Ty
 			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
@@ -739,6 +815,14 @@ func genExpr(node *AstNode) {
 			}
 			return
 		}
+
+		// If the return type is a small struct, a value is returned
+		// using up to two registers.
+		if node.ReturnBuffer != nil && node.Ty.Size <= 16 {
+			node.ReturnBuffer.copyReturnBuffer()
+			printlnToFile("  lea %d(%%rbp), %%rax", node.ReturnBuffer.Offset)
+		}
+
 		return
 	}
 
