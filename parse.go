@@ -2469,6 +2469,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
  *         | "sizeof" unary
  *         | "_Alignof" "(" type-name ")"
  *         | "_Alignof" unary
+ *         | "__builtin_reg_class" "(" type-name ")"
  *         | ident
  *         | str
  *         | num
@@ -2512,6 +2513,21 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node := unary(rest, tok.Next)
 		node.addType()
 		return newULong(node.Ty.Align, tok)
+	}
+
+	if tok.isEqual("__builtin_reg_class") {
+		tok = skip(tok.Next, "(")
+		ty := typeName(&tok, tok)
+		*rest = skip(tok, ")")
+
+		if ty.isInteger() || ty.Kind == TY_PTR {
+			return newNum(0, start)
+		}
+		if ty.isFloat() {
+			return newNum(1, start)
+		}
+
+		return newNum(2, start)
 	}
 
 	if tok.Kind == TK_IDENT {
