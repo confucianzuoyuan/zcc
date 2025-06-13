@@ -603,7 +603,7 @@ func storeGp(r int, offset int64, sz int64) {
 
 // Generate code for a given node.
 func genExpr(node *AstNode) {
-	printlnToFile("  .loc 1 %d %d", node.Tok.File.FileNo, node.Tok.LineNo)
+	printlnToFile("  .loc %d %d", node.Tok.File.FileNo, node.Tok.LineNo)
 
 	switch node.Kind {
 	case ND_NULL_EXPR:
@@ -967,7 +967,7 @@ func genExpr(node *AstNode) {
 }
 
 func genStmt(node *AstNode) {
-	printlnToFile("  .loc 1 %d %d", node.Tok.File.FileNo, node.Tok.LineNo)
+	printlnToFile("  .loc %d %d", node.Tok.File.FileNo, node.Tok.LineNo)
 
 	switch node.Kind {
 	case ND_IF:
@@ -1278,9 +1278,6 @@ func codegen(prog *Obj, out io.Writer) {
 
 	files := getInputFiles()
 	for _, f := range files {
-		if f == nil {
-			break
-		}
 		printlnToFile("  .file %d \"%s\"", f.FileNo, f.Name)
 	}
 

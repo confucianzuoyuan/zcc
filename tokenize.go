@@ -797,7 +797,6 @@ func tokenizeFile(path string) *Token {
 
 	// Save the filename for assembler .file directive.
 	inputFiles = append(inputFiles, file)
-	inputFiles = append(inputFiles, nil)
 	fileNo += 1
 	return tokenize(file)
 }
