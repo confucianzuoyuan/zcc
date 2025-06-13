@@ -994,6 +994,43 @@ func initMacros() {
 	addBuiltin("__LINE__", lineMacro)
 }
 
+// Concatenate adjacent string literals into a single string literal
+// as per the C spec.
+func joinAdjacentStringLiterals(tok1 *Token) {
+	for tok1 != nil && tok1.Kind != TK_EOF {
+		if tok1.Kind != TK_STR || tok1.Next.Kind != TK_STR {
+			tok1 = tok1.Next
+			continue
+		}
+
+		s := tok1.StringLiteral
+		for len(s) > 0 && s[len(s)-1] == 0 {
+			s = s[:len(s)-1]
+		}
+
+		for t := tok1.Next; t != nil && t.Kind == TK_STR; t = t.Next {
+			s += t.StringLiteral
+			for len(s) > 0 && s[len(s)-1] == 0 {
+				s = s[:len(s)-1]
+			}
+		}
+		buf := []uint8(s)
+		buf = append(buf, 0)
+		s = string(buf)
+
+		tok2 := tok1.Next
+		for ; tok2 != nil && tok2.Kind == TK_STR; tok2 = tok2.Next {
+		}
+
+		*tok1 = *(tok1.copy())
+		tok1.Ty = arrayOf(tok1.Ty.Base, int64(len(s)))
+		tok1.StringLiteral = s
+
+		tok1.Next = tok2
+		tok1 = tok2
+	}
+}
+
 // Entry point function of the preprocessor.
 func preprocess(tok *Token) *Token {
 	initMacros()
@@ -1002,5 +1039,6 @@ func preprocess(tok *Token) *Token {
 		errorTok(condIncl.Tok, "unterminated conditional directive")
 	}
 	convertKeywords(tok)
+	joinAdjacentStringLiterals(tok)
 	return tok
 }
