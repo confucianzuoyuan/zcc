@@ -2612,6 +2612,13 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 
 	tok = skip(tok, "{")
 
+	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
+	// automatically defined as a local variable containing the
+	// current function name.
+	buf := []uint8(fn.Name)
+	buf = append(buf, 0)
+	pushScope("__func__").Variable = newStringLiteral(buf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+
 	fn.Body = compoundStmt(&tok, tok)
 	fn.Locals = locals
 	leaveScope()
