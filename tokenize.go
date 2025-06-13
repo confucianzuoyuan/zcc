@@ -315,9 +315,9 @@ func readStringLiteral(src *[]uint8, start int) *Token {
 	return tok
 }
 
-func readCharLiteral(src *[]uint8, start int) *Token {
+func readCharLiteral(src *[]uint8, start int, quote int) *Token {
 	currentInput := src
-	p := start + 1
+	p := quote + 1
 	if (*currentInput)[p] == 0 {
 		errorAt(start, "unclosed char literal")
 	}
@@ -592,9 +592,17 @@ func tokenize(file *File) *Token {
 
 		// Character literal
 		if (*src)[p] == '\'' {
-			cur.Next = readCharLiteral(src, p)
+			cur.Next = readCharLiteral(src, p, p)
 			cur = cur.Next
 			p += cur.Length
+			continue
+		}
+
+		// Wide character literal
+		if (*src)[p] == 'L' && (*src)[p+1] == '\'' {
+			cur.Next = readCharLiteral(src, p, p+1)
+			cur = cur.Next
+			p = cur.Location + cur.Length
 			continue
 		}
 
