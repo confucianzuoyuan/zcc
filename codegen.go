@@ -6,6 +6,9 @@ import (
 	"math"
 )
 
+const FP_MAX = 8
+const GP_MAX = 6
+
 var cgOutputFile io.Writer
 var depth int
 var argreg8 = []string{
@@ -53,17 +56,75 @@ func popf(reg int) {
 	depth -= 1
 }
 
-func pushArgs(args *AstNode) {
-	if args != nil {
-		pushArgs(args.Next)
+func pushArgs2(args *AstNode, firstPass bool) {
+	if args == nil {
+		return
+	}
 
-		genExpr(args)
-		if args.Ty.isFloat() {
-			pushf()
+	pushArgs2(args.Next, firstPass)
+
+	if (firstPass && !args.PassByStack) || (!firstPass && args.PassByStack) {
+		return
+	}
+
+	genExpr(args)
+
+	if args.Ty.isFloat() {
+		pushf()
+	} else {
+		push()
+	}
+}
+
+// Load function call arguments. Arguments are already evaluated and
+// stored to the stack as local variables. What we need to do in this
+// function is to load them to registers or push them to the stack as
+// specified by the x86-64 psABI. Here is what the spec says:
+//
+//   - Up to 6 arguments of integral type are passed using RDI, RSI,
+//     RDX, RCX, R8 and R9.
+//
+//   - Up to 8 arguments of floating-point type are passed using XMM0 to
+//     XMM7.
+//
+//   - If all registers of an appropriate type are already used, push an
+//     argument to the stack in the right-to-left order.
+//
+//   - Each argument passed on the stack takes 8 bytes, and the end of
+//     the argument area must be aligned to a 16 byte boundary.
+//
+//   - If a function is variadic, set the number of floating-point type
+//     arguments to RAX.
+func pushArgs(args *AstNode) int {
+	stack := 0
+	gp := 0
+	fp := 0
+
+	for arg := args; arg != nil; arg = arg.Next {
+		if arg.Ty.isFloat() {
+			if fp >= FP_MAX {
+				arg.PassByStack = true
+				stack += 1
+			}
+			fp += 1
 		} else {
-			push()
+			if gp >= GP_MAX {
+				arg.PassByStack = true
+				stack += 1
+			}
+			gp += 1
 		}
 	}
+
+	if (depth+stack)%2 == 1 {
+		printlnToFile("  sub $8, %%rsp")
+		depth += 1
+		stack += 1
+	}
+
+	pushArgs2(args, true)
+	pushArgs2(args, false)
+	return stack
 }
 
 func count() int {
@@ -519,28 +580,31 @@ func genExpr(node *AstNode) {
 		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_FUNCALL:
-		pushArgs(node.Args)
+		stackArgs := pushArgs(node.Args)
 		genExpr(node.Lhs)
 
 		gp := 0
 		fp := 0
 		for arg := node.Args; arg != nil; arg = arg.Next {
 			if arg.Ty.isFloat() {
-				popf(fp)
-				fp += 1
+				if fp < FP_MAX {
+					popf(fp)
+					fp += 1
+				}
 			} else {
-				pop(argreg64[gp])
-				gp += 1
+				if gp < GP_MAX {
+					pop(argreg64[gp])
+					gp += 1
+				}
 			}
 		}
 
-		if depth%2 == 0 {
-			printlnToFile("  call *%%rax")
-		} else {
-			printlnToFile("  sub $8, %%rsp")
-			printlnToFile("  call *%%rax")
-			printlnToFile("  add $8, %%rsp")
-		}
+		printlnToFile("  mov %%rax, %%r10")
+		printlnToFile("  mov $%d, %%rax", fp)
+		printlnToFile("  call *%%r10")
+		printlnToFile("  add $%d, %%rsp", stackArgs*8)
+
+		depth -= stackArgs
 
 		// It looks like the most significant 48 or 56 bits in RAX may
 		// contain garbage if a function return type is short or bool/char,

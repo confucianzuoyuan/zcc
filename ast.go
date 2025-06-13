@@ -74,8 +74,9 @@ type AstNode struct {
 	Member *Member
 
 	// Function call
-	FuncType *CType
-	Args     *AstNode
+	FuncType    *CType
+	Args        *AstNode
+	PassByStack bool
 
 	// Goto or labeled statement
 	Label       string
