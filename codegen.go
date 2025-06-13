@@ -69,11 +69,73 @@ func pushArgs2(args *AstNode, firstPass bool) {
 
 	genExpr(args)
 
-	if args.Ty.isFloat() {
+	if args.Ty.Kind == TY_STRUCT || args.Ty.Kind == TY_UNION {
+		pushStruct(args.Ty)
+	} else if args.Ty.isFloat() {
 		pushf()
 	} else {
 		push()
 	}
+}
+
+// Structs or unions equal or smaller than 16 bytes are passed
+// using up to two registers.
+//
+// If the first 8 bytes contains only floating-point type members,
+// they are passed in an XMM register. Otherwise, they are passed
+// in a general-purpose register.
+//
+// If a struct/union is larger than 8 bytes, the same rule is
+// applied to the the next 8 byte chunk.
+//
+// This function returns true if `ty` has only floating-point
+// members in its byte range [lo, hi).
+func (ty *CType) hasFloatNumber(lo int64, hi int64, offset int64) bool {
+	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+		for mem := ty.Members; mem != nil; mem = mem.Next {
+			if !mem.Ty.hasFloatNumber(lo, hi, offset+mem.Offset) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if ty.Kind == TY_ARRAY {
+		for i := int64(0); i < ty.ArrayLength; i += 1 {
+			if !ty.Base.hasFloatNumber(lo, hi, offset+ty.Base.Size*i) {
+				return false
+			}
+		}
+		return true
+	}
+
+	return offset < lo || hi <= offset || ty.isFloat()
+}
+
+func (ty *CType) hasFloatNumber1() bool {
+	return ty.hasFloatNumber(0, 8, 0)
+}
+
+func (ty *CType) hasFloatNumber2() bool {
+	return ty.hasFloatNumber(8, 16, 0)
+}
+
+func pushStruct(ty *CType) {
+	sz := alignTo(ty.Size, 8)
+	printlnToFile("  sub $%d, %%rsp", sz)
+	depth += int(sz / 8)
+
+	for i := int64(0); i < ty.Size; i += 1 {
+		printlnToFile("  mov %d(%%rax), %%r10b", i)
+		printlnToFile("  mov %%r10b, %d(%%rsp)", i)
+	}
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // Load function call arguments. Arguments are already evaluated and
@@ -101,7 +163,23 @@ func pushArgs(args *AstNode) int {
 	fp := 0
 
 	for arg := args; arg != nil; arg = arg.Next {
-		if arg.Ty.isFloat() {
+		if arg.Ty.Kind == TY_STRUCT || arg.Ty.Kind == TY_UNION {
+			if arg.Ty.Size > 16 {
+				arg.PassByStack = true
+				stack += int(alignTo(arg.Ty.Size, 8) / 8)
+			} else {
+				fp1 := arg.Ty.hasFloatNumber1()
+				fp2 := arg.Ty.hasFloatNumber2()
+
+				if fp+boolToInt(fp1)+boolToInt(fp2) < FP_MAX && gp+boolToInt(!fp1)+boolToInt(!fp2) < GP_MAX {
+					fp = fp + boolToInt(fp1) + boolToInt(fp2)
+					gp = gp + boolToInt(!fp1) + boolToInt(!fp2)
+				} else {
+					arg.PassByStack = true
+					stack += int(alignTo(arg.Ty.Size, 8) / 8)
+				}
+			}
+		} else if arg.Ty.isFloat() {
 			if fp >= FP_MAX {
 				arg.PassByStack = true
 				stack += 1
@@ -586,7 +664,36 @@ func genExpr(node *AstNode) {
 		gp := 0
 		fp := 0
 		for arg := node.Args; arg != nil; arg = arg.Next {
-			if arg.Ty.isFloat() {
+			ty := arg.Ty
+			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+				if ty.Size > 16 {
+					continue
+				}
+
+				fp1 := ty.hasFloatNumber1()
+				fp2 := ty.hasFloatNumber2()
+
+				if fp+boolToInt(fp1)+boolToInt(fp2) < FP_MAX && gp+boolToInt(!fp1)+boolToInt(!fp2) < GP_MAX {
+					if fp1 {
+						popf(fp)
+						fp += 1
+					} else {
+						pop(argreg64[gp])
+						gp += 1
+					}
+
+					if ty.Size > 8 {
+						if fp2 {
+							popf(fp)
+							fp += 1
+						} else {
+							pop(argreg64[gp])
+							gp += 1
+						}
+					}
+				}
+
+			} else if ty.isFloat() {
 				if fp < FP_MAX {
 					popf(fp)
 					fp += 1
