@@ -2619,6 +2619,9 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	buf = append(buf, 0)
 	pushScope("__func__").Variable = newStringLiteral(buf, arrayOf(TyChar, int64(len(fn.Name)+1)))
 
+	// [GNU] __FUNCTION__ is yet another name of __func__.
+	pushScope("__FUNCTION__").Variable = newStringLiteral(buf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+
 	fn.Body = compoundStmt(&tok, tok)
 	fn.Locals = locals
 	leaveScope()
