@@ -635,6 +635,14 @@ func tokenize(file *File) *Token {
 			continue
 		}
 
+		// UTF-32 character literal
+		if (*src)[p] == 'U' && (*src)[p+1] == '\'' {
+			cur.Next = readCharLiteral(src, p, p+1, TyUInt)
+			cur = cur.Next
+			p += cur.Length
+			continue
+		}
+
 		// Wide character literal
 		if (*src)[p] == 'L' && (*src)[p+1] == '\'' {
 			cur.Next = readCharLiteral(src, p, p+1, TyInt)
