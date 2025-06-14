@@ -1983,14 +1983,32 @@ func constExpr(rest **Token, tok *Token) int64 {
 	return eval(node)
 }
 
-// Convert `A op= B` to `tmp = &A, *tmp = *tmp op B`
-// where tmp is a fresh pointer variable
+// Convert op= operators to expressions containing an assignment.
+//
+// In general, `A op= C` is converted to “tmp = &A, *tmp = *tmp op B`.
+// However, if a given expression is of form `A.x op= C`, the input is
+// converted to `tmp = &A, (*tmp).x = (*tmp).x op C` to handle assignments
+// to bitfields.
 func toAssign(binary *AstNode) *AstNode {
 	binary.Lhs.addType()
 	binary.Rhs.addType()
 
 	tok := binary.Tok
 
+	// Convert `A.x op= C` to `tmp = &A, (*tmp).x = (*tmp).x op C`.
+	if binary.Lhs.Kind == ND_MEMBER {
+		v := newLocalVar("", pointerTo(binary.Lhs.Lhs.Ty))
+
+		expr1 := newBinary(ND_ASSIGN, newVarNode(v, tok), newUnary(ND_ADDR, binary.Lhs.Lhs, tok), tok)
+		expr2 := newUnary(ND_MEMBER, newUnary(ND_DEREF, newVarNode(v, tok), tok), tok)
+		expr2.Member = binary.Lhs.Member
+		expr3 := newUnary(ND_MEMBER, newUnary(ND_DEREF, newVarNode(v, tok), tok), tok)
+		expr3.Member = binary.Lhs.Member
+		expr4 := newBinary(ND_ASSIGN, expr2, newBinary(binary.Kind, expr3, binary.Rhs, tok), tok)
+		return newBinary(ND_COMMA, expr1, expr4, tok)
+	}
+
+	// Convert `A op= C` to ``tmp = &A, *tmp = *tmp op B`.
 	variable := newLocalVar("", pointerTo(binary.Lhs.Ty))
 
 	expr1 := newBinary(ND_ASSIGN, newVarNode(variable, tok), newUnary(ND_ADDR, binary.Lhs, tok), tok)

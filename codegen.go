@@ -735,6 +735,8 @@ func genExpr(node *AstNode) {
 		push()
 		genExpr(node.Rhs)
 		if node.Lhs.Kind == ND_MEMBER && node.Lhs.Member.IsBitfield {
+			printlnToFile("  mov %%rax, %%r8")
+
 			// If the lhs is a bitfield, we need to read the current value
 			// from memory and merge it with a new value.
 			mem := node.Lhs.Member
@@ -749,6 +751,9 @@ func genExpr(node *AstNode) {
 			printlnToFile("  mov $%d, %%r9", ^mask)
 			printlnToFile("  and %%r9, %%rax")
 			printlnToFile("  or %%rdi, %%rax")
+			store(node.Ty)
+			printlnToFile("  mov %%r8, %%rax")
+			return
 		}
 
 		store(node.Ty)
