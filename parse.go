@@ -978,7 +978,11 @@ func structDecl(rest **Token, tok *Token) *CType {
 	bits := int64(0)
 	for mem := ty.Members; mem != nil; mem = mem.Next {
 		sz := mem.Ty.Size
-		if mem.IsBitfield {
+		if mem.IsBitfield && mem.BitWidth == 0 {
+			// Zero-width anonymous bitfield has a special meaning.
+			// It affects only alignment.
+			bits = alignTo(bits, mem.Ty.Size*8)
+		} else if mem.IsBitfield {
 			if bits/(sz*8) != (bits+mem.BitWidth-1)/(sz*8) {
 				bits = alignTo(bits, sz*8)
 			}
