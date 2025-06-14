@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -278,8 +280,13 @@ func cc1() {
 	if dump_ir {
 		println("dump ir not impl")
 	} else {
+		// Open a temporary output buffer.
+		var b bytes.Buffer
+		buf := bufio.NewWriter(&b)
+		codegen(prog, buf)
+		buf.Flush()
 		out, _ := openFile(outputFile)
-		codegen(prog, out)
+		out.Write(b.Bytes())
 	}
 }
 
