@@ -167,7 +167,7 @@ func fromHex(c uint8) uint8 {
 		return c - '0'
 	}
 
-	if 'a' <= 0 && c <= 'f' {
+	if 'a' <= c && c <= 'f' {
 		return c - 'a' + 10
 	}
 
@@ -237,7 +237,7 @@ func readEscapedChar(src *[]uint8, p int) (int8, int) {
 
 		c := int(0)
 		for ; isHexDigit((*buf)[p]); p += 1 {
-			c = (c << 4) + int(fromHex((*buf)[p]))
+			c = int(uint8(c<<4) + fromHex((*buf)[p]))
 		}
 		return int8(c), p
 	}
@@ -323,12 +323,15 @@ func readCharLiteral(src *[]uint8, start int, quote int) *Token {
 		errorAt(start, "unclosed char literal")
 	}
 
-	var c int8
+	var c int32
 	if (*currentInput)[p] == '\\' {
-		c, p = readEscapedChar(src, p+1)
+		_c, _p := readEscapedChar(src, p+1)
+		p = _p
+		c = int32(_c)
 	} else {
-		c = int8((*currentInput)[p])
-		p += 1
+		_c, _p := decodeUTF8(src, p)
+		p = _p
+		c = int32(_c)
 	}
 
 	end := p
@@ -618,6 +621,7 @@ func tokenize(file *File) *Token {
 		if (*src)[p] == '\'' {
 			cur.Next = readCharLiteral(src, p, p)
 			cur = cur.Next
+			cur.Value = int64(int8(cur.Value))
 			p += cur.Length
 			continue
 		}
