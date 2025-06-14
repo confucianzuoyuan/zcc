@@ -802,6 +802,60 @@ func canonicalizeNewLine(src *[]uint8) {
 	(*src)[j] = 0
 }
 
+func readUniversalChar(src *[]uint8, p int, len int) uint32 {
+	c := uint32(0)
+	for i := 0; i < len; i += 1 {
+		if !isHexDigit((*src)[p+i]) {
+			return 0
+		}
+		c = (c << 4) | uint32(fromHex((*src)[p+i]))
+	}
+	return c
+}
+
+// Replace \u or \U escape sequences with corresponding UTF-8 bytes.
+func convertUniversalChars(src *[]uint8) {
+	p := 0
+	q := 0
+
+	for (*src)[p] != 0 {
+		if (*src)[p] == '\\' && (*src)[p+1] == 'u' {
+			c := readUniversalChar(src, p+2, 4)
+			if c != 0 {
+				p += 6
+				q += encodeUTF8(src, q, c)
+			} else {
+				(*src)[q] = (*src)[p]
+				q += 1
+				p += 1
+			}
+		} else if (*src)[p] == '\\' && (*src)[p+1] == 'U' {
+			c := readUniversalChar(src, p+2, 8)
+			if c != 0 {
+				p += 10
+				q += encodeUTF8(src, q, c)
+			} else {
+				(*src)[q] = (*src)[p]
+				q += 1
+				p += 1
+			}
+		} else if (*src)[p] == '\\' {
+			(*src)[q] = (*src)[p]
+			q += 1
+			p += 1
+			(*src)[q] = (*src)[p]
+			q += 1
+			p += 1
+		} else {
+			(*src)[q] = (*src)[p]
+			q += 1
+			p += 1
+		}
+	}
+
+	(*src)[q] = 0
+}
+
 // Removes backslashes followed by a newline.
 func removeBackslashNewline(src *[]uint8) {
 	i := 0
@@ -850,6 +904,7 @@ func tokenizeFile(path string) *Token {
 
 	canonicalizeNewLine(src)
 	removeBackslashNewline(src)
+	convertUniversalChars(src)
 
 	// Save the filename for assembler .file directive.
 	file := newFile(path, fileNo+1, src)
