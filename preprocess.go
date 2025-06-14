@@ -975,6 +975,13 @@ func lineMacro(tmpl *Token) *Token {
 	return newNumberToken(tmpl.LineNo, tmpl)
 }
 
+var counter int = 0
+
+func counterMacro(tmpl *Token) *Token {
+	counter += 1
+	return newNumberToken(counter-1, tmpl)
+}
+
 func initMacros() {
 	// Define predefined macros
 	defineMacro("_LP64", "1")
@@ -1021,6 +1028,7 @@ func initMacros() {
 
 	addBuiltin("__FILE__", fileMacro)
 	addBuiltin("__LINE__", lineMacro)
+	addBuiltin("__COUNTER__", counterMacro)
 
 	now := time.Now() // 当前时间，包含本地时区
 	defineMacro("__DATE__", formatDate(now))
