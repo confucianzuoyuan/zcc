@@ -778,6 +778,30 @@ func newFile(name string, fileNo int, contents *[]uint8) *File {
 	return file
 }
 
+// Replaces \r or \r\n with \n.
+func canonicalizeNewLine(src *[]uint8) {
+	i := 0
+	j := 0
+
+	for (*src)[i] != 0 {
+		if (*src)[i] == '\r' && (*src)[i+1] == '\n' {
+			i += 2
+			(*src)[j] = '\n'
+			j += 1
+		} else if (*src)[i] == '\r' {
+			i += 1
+			(*src)[j] = '\n'
+			j += 1
+		} else {
+			(*src)[j] = (*src)[i]
+			j += 1
+			i += 1
+		}
+	}
+
+	(*src)[j] = 0
+}
+
 // Removes backslashes followed by a newline.
 func removeBackslashNewline(src *[]uint8) {
 	i := 0
@@ -824,6 +848,7 @@ func tokenizeFile(path string) *Token {
 		return nil
 	}
 
+	canonicalizeNewLine(src)
 	removeBackslashNewline(src)
 
 	// Save the filename for assembler .file directive.
