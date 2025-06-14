@@ -291,13 +291,13 @@ func stringLiteralEnd(src *[]uint8, p int) int {
 	return p
 }
 
-func readStringLiteral(src *[]uint8, start int) *Token {
+func readStringLiteral(src *[]uint8, start int, quote int) *Token {
 	buf := src
-	end := stringLiteralEnd(src, start+1)
-	str := make([]uint8, end-start)
+	end := stringLiteralEnd(src, quote+1)
+	str := make([]uint8, end-quote)
 	var len int64 = 0
 
-	for p := start + 1; p < end; {
+	for p := quote + 1; p < end; {
 		if (*buf)[p] == '\\' {
 			c, new_pos := readEscapedChar(src, p+1)
 			str[len] = uint8(c)
@@ -703,7 +703,15 @@ func tokenize(file *File) *Token {
 
 		// String literal
 		if (*src)[p] == '"' {
-			cur.Next = readStringLiteral(src, p)
+			cur.Next = readStringLiteral(src, p, p)
+			cur = cur.Next
+			p += cur.Length
+			continue
+		}
+
+		// UTF-8 string literal
+		if (*src)[p] == 'u' && (*src)[p+1] == '8' && (*src)[p+2] == '"' {
+			cur.Next = readStringLiteral(src, p, p+2)
 			cur = cur.Next
 			p += cur.Length
 			continue
