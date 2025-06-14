@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type CondInclCtx int
@@ -946,6 +947,27 @@ func fileMacro(tmpl *Token) *Token {
 	return newStringToken(tmpl.File.Name, tmpl)
 }
 
+// __DATE__ is expanded to the current date, e.g. "May 17 2020".
+// formatDate 格式化时间为类似 __DATE__ 的字符串，带双引号，比如 "May 17 2020"
+func formatDate(t time.Time) string {
+	months := []string{
+		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+	}
+
+	monthStr := months[t.Month()-1] // Go的Month从1开始
+	day := t.Day()
+	year := t.Year()
+
+	return fmt.Sprintf("\"%s %2d %d\"", monthStr, day, year)
+}
+
+// __TIME__ is expanded to the current time, e.g. "13:34:03".
+// formatTime 格式化时间为 "HH:MM:SS" 格式，带双引号
+func formatTime(t time.Time) string {
+	return fmt.Sprintf("\"%02d:%02d:%02d\"", t.Hour(), t.Minute(), t.Second())
+}
+
 func lineMacro(tmpl *Token) *Token {
 	for tmpl.Origin != nil {
 		tmpl = tmpl.Next
@@ -999,6 +1021,10 @@ func initMacros() {
 
 	addBuiltin("__FILE__", fileMacro)
 	addBuiltin("__LINE__", lineMacro)
+
+	now := time.Now() // 当前时间，包含本地时区
+	defineMacro("__DATE__", formatDate(now))
+	defineMacro("__TIME__", formatTime(now))
 }
 
 // Concatenate adjacent string literals into a single string literal
