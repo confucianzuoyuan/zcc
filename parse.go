@@ -1275,6 +1275,39 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 	return node
 }
 
+func readBuf(buf *[]uint8, offset int64, sz int64) uint64 {
+	if sz == 1 {
+		return uint64((*buf)[offset+0])
+	}
+	if sz == 2 {
+		hi := uint16((*buf)[offset+1]) << 8
+		lo := uint16((*buf)[offset+0]) << 0
+		val := hi | lo
+		return uint64(val)
+	}
+	if sz == 4 {
+		v1 := uint32((*buf)[offset+3]) << 24
+		v2 := uint32((*buf)[offset+2]) << 16
+		v3 := uint32((*buf)[offset+1]) << 8
+		v4 := uint32((*buf)[offset+0]) << 0
+		val := v1 | v2 | v3 | v4
+		return uint64(val)
+	}
+	if sz == 8 {
+		v1 := uint64((*buf)[offset+7]) << 56
+		v2 := uint64((*buf)[offset+6]) << 48
+		v3 := uint64((*buf)[offset+5]) << 40
+		v4 := uint64((*buf)[offset+4]) << 32
+		v5 := uint64((*buf)[offset+3]) << 24
+		v6 := uint64((*buf)[offset+2]) << 16
+		v7 := uint64((*buf)[offset+1]) << 8
+		v8 := uint64((*buf)[offset+0]) << 0
+		val := v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8
+		return val
+	}
+	panic("unreachable")
+}
+
 func writeBuf(buf *[]uint8, offset int64, val uint64, sz int64) {
 	if sz == 1 {
 		(*buf)[offset] = uint8(val)
@@ -1316,7 +1349,21 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]ui
 
 	if ty.Kind == TY_STRUCT {
 		for mem := ty.Members; mem != nil; mem = mem.Next {
-			cur = writeGlobalVarData(cur, init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset)
+			if mem.IsBitfield {
+				expr := init.Children[mem.Index].Expr
+				if expr == nil {
+					break
+				}
+
+				loc := offset + mem.Offset
+				oldVal := readBuf(buf, loc, mem.Ty.Size)
+				newVal := eval(expr)
+				mask := int64((1 << mem.BitWidth) - 1)
+				combined := uint64(oldVal) | uint64((newVal&mask)<<mem.BitOffset)
+				writeBuf(buf, loc, combined, mem.Ty.Size)
+			} else {
+				cur = writeGlobalVarData(cur, init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset)
+			}
 		}
 		return cur
 	}
