@@ -146,6 +146,10 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if strings.HasPrefix(args[idx], "-O") || strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-g") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" {
+			continue
+		}
+
 		if strings.HasPrefix(args[idx], "-") && len(args[idx]) > 1 {
 			e := fmt.Sprintf("unknown argument: %s", args[idx])
 			panic(e)

@@ -101,4 +101,10 @@ check -D
 echo foo | ./zcc -Dfoo=bar -Ufoo -E - | grep -q foo
 check -U
 
+# ignored options
+./zcc    -c -O -Wall -g -std=c11 -ffreestanding -fno-builtin \
+         -fno-omit-frame-pointer -fno-stack-protector -fno-strict-aliasing \
+         -m64 -mno-red-zone -w -o /dev/null $tmp/empty.c
+check 'ignored options'
+
 echo OK
