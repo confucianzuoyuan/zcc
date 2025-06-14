@@ -316,7 +316,7 @@ func readStringLiteral(src *[]uint8, start int) *Token {
 	return tok
 }
 
-func readCharLiteral(src *[]uint8, start int, quote int) *Token {
+func readCharLiteral(src *[]uint8, start int, quote int, ty *CType) *Token {
 	currentInput := src
 	p := quote + 1
 	if (*currentInput)[p] == 0 {
@@ -344,7 +344,7 @@ func readCharLiteral(src *[]uint8, start int, quote int) *Token {
 
 	tok := newToken(TK_NUM, start, end+1)
 	tok.Value = int64(c)
-	tok.Ty = TyInt
+	tok.Ty = ty
 	return tok
 }
 
@@ -619,16 +619,25 @@ func tokenize(file *File) *Token {
 
 		// Character literal
 		if (*src)[p] == '\'' {
-			cur.Next = readCharLiteral(src, p, p)
+			cur.Next = readCharLiteral(src, p, p, TyInt)
 			cur = cur.Next
 			cur.Value = int64(int8(cur.Value))
 			p += cur.Length
 			continue
 		}
 
+		// UTF-16 character literal
+		if (*src)[p] == 'u' && (*src)[p+1] == '\'' {
+			cur.Next = readCharLiteral(src, p, p+1, TyUShort)
+			cur = cur.Next
+			cur.Value = cur.Value & 0xFFFF
+			p += cur.Length
+			continue
+		}
+
 		// Wide character literal
 		if (*src)[p] == 'L' && (*src)[p+1] == '\'' {
-			cur.Next = readCharLiteral(src, p, p+1)
+			cur.Next = readCharLiteral(src, p, p+1, TyInt)
 			cur = cur.Next
 			p = cur.Location + cur.Length
 			continue
