@@ -1221,8 +1221,18 @@ func assignLocalVariableOffsets(prog *Obj) {
 			if v.Offset != 0 {
 				continue
 			}
+
+			// AMD64 System V ABI has a special alignment rule for an array of
+			// length at least 16 bytes. We need to align such array to at least
+			// 16-byte boundaries. See p.14 of
+			// https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-draft.pdf.
+			align := v.Align
+			if v.Ty.Kind == TY_ARRAY && v.Ty.Size >= 16 {
+				align = int64(math.Max(16, float64(v.Align)))
+			}
+
 			bottom += v.Ty.Size
-			bottom = alignTo(bottom, v.Align)
+			bottom = alignTo(bottom, align)
 			v.Offset = -bottom
 		}
 		fn.StackSize = alignTo(bottom, 16)
@@ -1240,7 +1250,12 @@ func emitData(prog *Obj) {
 		} else {
 			printlnToFile("  .globl %s", v.Name)
 		}
-		printlnToFile("  .align %d", v.Align)
+
+		align := v.Align
+		if v.Ty.Kind == TY_ARRAY && v.Ty.Size >= 16 {
+			align = int64(math.Max(16, float64(v.Align)))
+		}
+		printlnToFile("  .align %d", align)
 
 		if v.InitData != nil {
 			printlnToFile("  .data")
