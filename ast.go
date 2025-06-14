@@ -113,4 +113,9 @@ type Member struct {
 	Index  int
 	Align  int64
 	Offset int64 // Offset from the beginning of the struct
+
+	// Bitfield
+	IsBitfield bool
+	BitOffset  int64
+	BitWidth   int64
 }

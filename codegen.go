@@ -705,9 +705,23 @@ func genExpr(node *AstNode) {
 
 		printlnToFile("  neg %%rax")
 		return
-	case ND_VAR, ND_MEMBER:
+	case ND_VAR:
 		genAddr(node)
 		load(node.Ty)
+		return
+	case ND_MEMBER:
+		genAddr(node)
+		load(node.Ty)
+
+		mem := node.Member
+		if mem.IsBitfield {
+			printlnToFile("  shl $%d, %%rax", 64-mem.BitWidth-mem.BitOffset)
+			if mem.Ty.IsUnsigned {
+				printlnToFile("  shr $%d, %%rax", 64-mem.BitWidth)
+			} else {
+				printlnToFile("  sar $%d, %%rax", 64-mem.BitWidth)
+			}
+		}
 		return
 	case ND_DEREF:
 		genExpr(node.Lhs)
@@ -720,6 +734,23 @@ func genExpr(node *AstNode) {
 		genAddr(node.Lhs)
 		push()
 		genExpr(node.Rhs)
+		if node.Lhs.Kind == ND_MEMBER && node.Lhs.Member.IsBitfield {
+			// If the lhs is a bitfield, we need to read the current value
+			// from memory and merge it with a new value.
+			mem := node.Lhs.Member
+			printlnToFile("  mov %%rax, %%rdi")
+			printlnToFile("  and $%d, %%rdi", (1<<mem.BitWidth)-1)
+			printlnToFile("  shl $%d, %%rdi", mem.BitOffset)
+
+			printlnToFile("  mov (%%rsp), %%rax")
+			load(mem.Ty)
+
+			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
+			printlnToFile("  mov $%d, %%r9", ^mask)
+			printlnToFile("  and %%r9, %%rax")
+			printlnToFile("  or %%rdi, %%rax")
+		}
+
 		store(node.Ty)
 		return
 	case ND_STMT_EXPR:

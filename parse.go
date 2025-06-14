@@ -110,6 +110,10 @@ var continueLabel string
 // a switch statement. Otherwise, NULL.
 var currentSwitch *AstNode
 
+func alignDown(n int64, align int64) int64 {
+	return alignTo(n-align+1, align)
+}
+
 func enterScope() {
 	sc := &Scope{}
 	sc.Next = scope
@@ -895,6 +899,12 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 			} else {
 				mem.Align = mem.Ty.Align
 			}
+
+			if consume(&tok, tok, ":") {
+				mem.IsBitfield = true
+				mem.BitWidth = constExpr(&tok, tok)
+			}
+
 			cur.Next = mem
 			cur = cur.Next
 		}
@@ -965,17 +975,28 @@ func structDecl(rest **Token, tok *Token) *CType {
 	}
 
 	// Assign offsets within the struct to members.
-	var offset int64 = 0
+	bits := int64(0)
 	for mem := ty.Members; mem != nil; mem = mem.Next {
-		offset = alignTo(offset, mem.Align)
-		mem.Offset = offset
-		offset += mem.Ty.Size
+		sz := mem.Ty.Size
+		if mem.IsBitfield {
+			if bits/(sz*8) != (bits+mem.BitWidth-1)/(sz*8) {
+				bits = alignTo(bits, sz*8)
+			}
+
+			mem.Offset = alignDown(bits/8, sz)
+			mem.BitOffset = bits % (sz * 8)
+			bits += mem.BitWidth
+		} else {
+			bits = alignTo(bits, mem.Align*8)
+			mem.Offset = bits / 8
+			bits += mem.Ty.Size * 8
+		}
 
 		if ty.Align < mem.Align {
 			ty.Align = mem.Align
 		}
 	}
-	ty.Size = alignTo(offset, ty.Align)
+	ty.Size = alignTo(bits, ty.Align*8) / 8
 	return ty
 }
 
