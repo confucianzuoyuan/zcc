@@ -883,6 +883,23 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		basety := declspec(&tok, tok, &attr)
 		first := true
 
+		// Anonymous struct member
+		if (basety.Kind == TY_STRUCT || basety.Kind == TY_UNION) && consume(&tok, tok, ";") {
+			mem := &Member{}
+			mem.Ty = basety
+			mem.Index = idx
+			idx += 1
+			if attr.Align != 0 {
+				mem.Align = attr.Align
+			} else {
+				mem.Align = mem.Ty.Align
+			}
+			cur.Next = mem
+			cur = cur.Next
+			continue
+		}
+
+		// Regular struct members
 		for !consume(&tok, tok, ";") {
 			if !first {
 				tok = skip(tok, ",")
@@ -1029,25 +1046,59 @@ func unionDecl(rest **Token, tok *Token) *CType {
 	return ty
 }
 
+// Find a struct member by name.
 func getStructMember(ty *CType, tok *Token) *Member {
 	for mem := ty.Members; mem != nil; mem = mem.Next {
+		// Anonymous struct member
+		if (mem.Ty.Kind == TY_STRUCT || mem.Ty.Kind == TY_UNION) && mem.Name == nil {
+			if getStructMember(mem.Ty, tok) != nil {
+				return mem
+			}
+			continue
+		}
+
+		// Regular struct member
 		if mem.Name.isEqual(string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
 			return mem
 		}
 	}
 
-	errorTok(tok, "unknown struct member")
 	return nil
 }
 
-func structRef(lhs *AstNode, tok *Token) *AstNode {
-	lhs.addType()
-	if lhs.Ty.Kind != TY_STRUCT && lhs.Ty.Kind != TY_UNION {
-		errorTok(lhs.Tok, "not a struct not a union")
+// Create a node representing a struct member access, such as foo.bar
+// where foo is a struct and bar is a member name.
+//
+// C has a feature called "anonymous struct" which allows a struct to
+// have another unnamed struct as a member like this:
+//
+//	struct { struct { int a; }; int b; } x;
+//
+// The members of an anonymous struct belong to the outer struct's
+// member namespace. Therefore, in the above example, you can access
+// member "a" of the anonymous struct as "x.a".
+//
+// This function takes care of anonymous structs.
+func structRef(node *AstNode, tok *Token) *AstNode {
+	node.addType()
+	if node.Ty.Kind != TY_STRUCT && node.Ty.Kind != TY_UNION {
+		errorTok(node.Tok, "not a struct nor a union")
 	}
 
-	node := newUnary(ND_MEMBER, lhs, tok)
-	node.Member = getStructMember(lhs.Ty, tok)
+	ty := node.Ty
+
+	for {
+		mem := getStructMember(ty, tok)
+		if mem == nil {
+			errorTok(tok, "no such member")
+		}
+		node = newUnary(ND_MEMBER, node, tok)
+		node.Member = mem
+		if mem.Name != nil {
+			break
+		}
+		ty = mem.Ty
+	}
 	return node
 }
 
