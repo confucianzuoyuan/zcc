@@ -299,6 +299,12 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 			val := (uint16(str[2*i+1]) << 8) | uint16(str[2*i])
 			init.Children[i].Expr = newNum(int64(val), tok)
 		}
+	} else if init.Ty.Base.Size == 4 {
+		str := tok.StringLiteral
+		for i := 0; i < int(length); i++ {
+			val := (uint32(str[4*i+3]) << 24) | (uint32(str[4*i+2]) << 16) | (uint32(str[4*i+1]) << 8) | uint32(str[4*i])
+			init.Children[i].Expr = newNum(int64(val), tok)
+		}
 	} else {
 		panic("unreachable")
 	}
