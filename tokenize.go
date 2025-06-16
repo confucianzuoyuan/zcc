@@ -316,6 +316,43 @@ func readStringLiteral(src *[]uint8, start int, quote int) *Token {
 	return tok
 }
 
+// Read a UTF-8-encoded string literal and transcode it in UTF-32.
+//
+// UTF-32 is a fixed-width encoding for Unicode. Each code point is
+// encoded in 4 bytes.
+func readUTF32StringLiteral(src *[]uint8, start int, quote int, ty *CType) *Token {
+	end := stringLiteralEnd(src, quote+1)
+	buf := make([]uint32, end-quote)
+	length := 0
+
+	for p := quote + 1; p < end; {
+		if (*src)[p] == '\\' {
+			c, newPos := readEscapedChar(src, p+1)
+			p = newPos
+			buf[length] = uint32(c)
+			length += 1
+		} else {
+			c, newPos := decodeUTF8(src, p)
+			p = newPos
+			buf[length] = uint32(c)
+			length += 1
+		}
+	}
+
+	tok := newToken(TK_STR, start, end+1)
+	tok.Ty = arrayOf(ty, int64(length+1))
+	bytes := []uint8{}
+	for i := 0; i < length+1; i++ {
+		bytes = append(bytes, uint8(buf[i]))
+		bytes = append(bytes, uint8(buf[i]>>8))
+		bytes = append(bytes, uint8(buf[i]>>16))
+		bytes = append(bytes, uint8(buf[i]>>24))
+	}
+	bytes = append(bytes, 0)
+	tok.StringLiteral = string(bytes)
+	return tok
+}
+
 // Read a UTF-8-encoded string literal and transcode it in UTF-16.
 //
 // UTF-16 is yet another variable-width encoding for Unicode. Code
@@ -769,6 +806,14 @@ func tokenize(file *File) *Token {
 		// UTF-8 string literal
 		if (*src)[p] == 'u' && (*src)[p+1] == '8' && (*src)[p+2] == '"' {
 			cur.Next = readStringLiteral(src, p, p+2)
+			cur = cur.Next
+			p += cur.Length
+			continue
+		}
+
+		// UTF-32 string literal
+		if (*src)[p] == 'U' && (*src)[p+1] == '"' {
+			cur.Next = readUTF32StringLiteral(src, p, p+1, TyUInt)
 			cur = cur.Next
 			p += cur.Length
 			continue
