@@ -1025,6 +1025,8 @@ func initMacros() {
 	defineMacro("__x86_64__", "1")
 	defineMacro("linux", "1")
 	defineMacro("unix", "1")
+	defineMacro("__STDC_UTF_16__", "1")
+	defineMacro("__STDC_UTF_32__", "1")
 
 	addBuiltin("__FILE__", fileMacro)
 	addBuiltin("__LINE__", lineMacro)
