@@ -152,14 +152,23 @@ func (t *Token) isEqual(s string) bool {
 	return string((*t.File.Contents)[t.Location:t.Location+t.Length]) == s
 }
 
-// Returns true if c is valid as the first character of an identifier.
-func isIdentFirstChar(c uint8) bool {
-	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_'
-}
+// Read an identifier and returns the length of it.
+// If p does not point to a valid identifier, 0 is returned.
+func readIdent(src *[]uint8, start int) int {
+	p := start
+	c, newPos := decodeUTF8(src, p)
+	p = newPos
+	if !isIdentFirstChar(c) {
+		return 0
+	}
 
-// Returns true if c is valid as a non-first character of an identifier.
-func isIdentInnerChar(c uint8) bool {
-	return isIdentFirstChar(c) || ('0' <= c && c <= '9')
+	for {
+		c, newPos = decodeUTF8(src, p)
+		if !isIdentInnerChar(c) {
+			return p - start
+		}
+		p = newPos
+	}
 }
 
 func fromHex(c uint8) uint8 {
@@ -828,15 +837,14 @@ func tokenize(file *File) *Token {
 		}
 
 		// Identifier or keyword
-		if isIdentFirstChar((*src)[p]) {
-			start := p
-			p += 1
-			for isIdentInnerChar((*src)[p]) {
-				p += 1
+		if isIdentFirstChar(uint32((*src)[p])) {
+			identLength := readIdent(src, p)
+			if identLength != 0 {
+				cur.Next = newToken(TK_IDENT, p, p+identLength)
+				cur = cur.Next
+				p += cur.Length
+				continue
 			}
-			cur.Next = newToken(TK_IDENT, start, p)
-			cur = cur.Next
-			continue
 		}
 
 		// Punctuators
