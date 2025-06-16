@@ -819,6 +819,14 @@ func tokenize(file *File) *Token {
 			continue
 		}
 
+		// Wide string literal
+		if (*src)[p] == 'L' && (*src)[p+1] == '"' {
+			cur.Next = readUTF32StringLiteral(src, p, p+1, TyInt)
+			cur = cur.Next
+			p += cur.Length
+			continue
+		}
+
 		// Identifier or keyword
 		if isIdentFirstChar((*src)[p]) {
 			start := p
