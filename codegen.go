@@ -1269,7 +1269,7 @@ func emitData(prog *Obj) {
 					rel = rel.Next
 					pos += 8
 				} else {
-					printlnToFile("  .byte %d", v.InitData[pos])
+					printlnToFile("  .byte %d", int8(v.InitData[pos]))
 					pos += 1
 				}
 			}
