@@ -287,8 +287,20 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 	if init.Ty.ArrayLength > tok.Ty.ArrayLength {
 		length = tok.Ty.ArrayLength
 	}
-	for i := int64(0); i < length; i++ {
-		init.Children[i].Expr = newNum(int64(tok.StringLiteral[i]), tok)
+
+	if init.Ty.Base.Size == 1 {
+		str := tok.StringLiteral
+		for i := 0; i < int(length); i++ {
+			init.Children[i].Expr = newNum(int64(str[i]), tok)
+		}
+	} else if init.Ty.Base.Size == 2 {
+		str := tok.StringLiteral
+		for i := 0; i < int(length); i++ {
+			val := (uint16(str[2*i+1]) << 8) | uint16(str[2*i])
+			init.Children[i].Expr = newNum(int64(val), tok)
+		}
+	} else {
+		panic("unreachable")
 	}
 	*rest = tok.Next
 }

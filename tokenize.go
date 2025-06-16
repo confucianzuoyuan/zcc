@@ -741,7 +741,7 @@ func tokenize(file *File) *Token {
 		if (*src)[p] == 'L' && (*src)[p+1] == '\'' {
 			cur.Next = readCharLiteral(src, p, p+1, TyInt)
 			cur = cur.Next
-			p = cur.Location + cur.Length
+			p += cur.Length
 			continue
 		}
 
