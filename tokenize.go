@@ -316,6 +316,66 @@ func readStringLiteral(src *[]uint8, start int, quote int) *Token {
 	return tok
 }
 
+func uint16SliceToHexString(u16s []uint16) string {
+	s := ""
+	for _, v := range u16s {
+		if v == 0 {
+			break
+		}
+		s += fmt.Sprintf("%04X", v)
+	}
+	return s
+}
+
+// Read a UTF-8-encoded string literal and transcode it in UTF-16.
+//
+// UTF-16 is yet another variable-width encoding for Unicode. Code
+// points smaller than U+10000 are encoded in 2 bytes. Code points
+// equal to or larger than that are encoded in 4 bytes. Each 2 bytes
+// in the 4 byte sequence is called "surrogate", and a 4 byte sequence
+// is called a "surrogate pair".
+func readUTF16StringLiteral(src *[]uint8, start int, quote int) *Token {
+	end := stringLiteralEnd(src, quote+1)
+	str := make([]uint16, end-start)
+	length := 0
+
+	for p := quote + 1; p < end; {
+		if (*src)[p] == '\\' {
+			c, newPos := readEscapedChar(src, p+1)
+			str[length] = uint16(c)
+			p = newPos
+			length += 1
+			continue
+		}
+
+		c, newPos := decodeUTF8(src, p)
+		p = newPos
+		if c < 0x10000 {
+			// Encode a code point in 2 bytes.
+			str[length] = uint16(c)
+			length += 1
+		} else {
+			// Encode a code point in 4 bytes.
+			c -= 0x10000
+			str[length] = uint16(0xD800 + ((c >> 10) & 0x3FF))
+			length += 1
+			str[length] = uint16(0xDC00 + (c & 0x3FF))
+			length += 1
+		}
+	}
+
+	tok := newToken(TK_STR, start, end+1)
+	tok.Ty = arrayOf(TyUShort, int64(length+1))
+	bytes := []uint8{}
+	for i := 0; i < length+1; i++ {
+		bytes = append(bytes, uint8(str[i]))
+		bytes = append(bytes, uint8(str[i]>>8))
+	}
+	bytes = append(bytes, 0)
+	tok.StringLiteral = string(bytes)
+	return tok
+}
+
 func readCharLiteral(src *[]uint8, start int, quote int, ty *CType) *Token {
 	currentInput := src
 	p := quote + 1
@@ -614,6 +674,14 @@ func tokenize(file *File) *Token {
 				p += 1
 			}
 			hasSpace = true
+			continue
+		}
+
+		// UTF-16 string literal
+		if (*src)[p] == 'u' && (*src)[p+1] == '"' {
+			cur.Next = readUTF16StringLiteral(src, p, p+1)
+			cur = cur.Next
+			p += cur.Length
 			continue
 		}
 
