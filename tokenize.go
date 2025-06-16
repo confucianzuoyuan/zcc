@@ -316,17 +316,6 @@ func readStringLiteral(src *[]uint8, start int, quote int) *Token {
 	return tok
 }
 
-func uint16SliceToHexString(u16s []uint16) string {
-	s := ""
-	for _, v := range u16s {
-		if v == 0 {
-			break
-		}
-		s += fmt.Sprintf("%04X", v)
-	}
-	return s
-}
-
 // Read a UTF-8-encoded string literal and transcode it in UTF-16.
 //
 // UTF-16 is yet another variable-width encoding for Unicode. Code
