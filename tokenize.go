@@ -369,7 +369,8 @@ func readUTF32StringLiteral(src *[]uint8, start int, quote int, ty *CType) *Toke
 // equal to or larger than that are encoded in 4 bytes. Each 2 bytes
 // in the 4 byte sequence is called "surrogate", and a 4 byte sequence
 // is called a "surrogate pair".
-func readUTF16StringLiteral(src *[]uint8, start int, quote int) *Token {
+func readUTF16StringLiteral(file *File, start int, quote int) *Token {
+	src := file.Contents
 	end := stringLiteralEnd(src, quote+1)
 	str := make([]uint16, end-start)
 	length := 0
@@ -400,6 +401,7 @@ func readUTF16StringLiteral(src *[]uint8, start int, quote int) *Token {
 	}
 
 	tok := newToken(TK_STR, start, end+1)
+	tok.File = file
 	tok.Ty = arrayOf(TyUShort, int64(length+1))
 	bytes := []uint8{}
 	for i := 0; i < length+1; i++ {
@@ -714,7 +716,7 @@ func tokenize(file *File) *Token {
 
 		// UTF-16 string literal
 		if (*src)[p] == 'u' && (*src)[p+1] == '"' {
-			cur.Next = readUTF16StringLiteral(src, p, p+1)
+			cur.Next = readUTF16StringLiteral(currentFile, p, p+1)
 			cur = cur.Next
 			p += cur.Length
 			continue
