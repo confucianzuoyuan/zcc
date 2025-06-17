@@ -349,6 +349,12 @@ func readUTF32StringLiteral(file *File, start int, quote int, ty *CType) *Token 
 		}
 	}
 
+	for i := 0; i < length; i++ {
+		if int32(buf[i]) < -1 {
+			buf[i] = uint32(int32(buf[i]) + 256)
+		}
+	}
+
 	tok := newToken(TK_STR, start, end+1)
 	tok.File = file
 	tok.Ty = arrayOf(ty, int64(length+1))

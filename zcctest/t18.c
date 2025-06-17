@@ -1,1 +1,1 @@
-int main() { return sizeof(u""); }
+int main() { return U"\xffffffff"[0] >> 31; }

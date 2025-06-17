@@ -31,6 +31,35 @@ import (
 	"time"
 )
 
+type StringKind int
+
+const (
+	STR_NONE StringKind = iota
+	STR_UTF8
+	STR_UTF16
+	STR_UTF32
+	STR_WIDE
+)
+
+func (tok *Token) getStringKind() StringKind {
+	s := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	if s == "u8" {
+		return STR_UTF8
+	}
+
+	switch s[0] {
+	case '"':
+		return STR_NONE
+	case 'u':
+		return STR_UTF16
+	case 'U':
+		return STR_UTF32
+	case 'L':
+		return STR_WIDE
+	}
+	panic("unreachable")
+}
+
 type CondInclCtx int
 
 const (
@@ -1033,10 +1062,58 @@ func initMacros() {
 	defineMacro("__TIME__", formatTime(now))
 }
 
+func (tok *Token) tokenizeStringLiteral(basety *CType) *Token {
+	var t *Token
+	if basety.Size == 2 {
+		t = readUTF16StringLiteral(tok.File, tok.Location, tok.Location)
+	} else {
+		t = readUTF32StringLiteral(tok.File, tok.Location, tok.Location, basety)
+	}
+	t.Next = tok.Next
+	return t
+}
+
 // Concatenate adjacent string literals into a single string literal
 // as per the C spec.
-func joinAdjacentStringLiterals(tok1 *Token) {
-	for tok1 != nil && tok1.Kind != TK_EOF {
+func joinAdjacentStringLiterals(tok *Token) {
+	// First pass: If regular string literals are adjacent to wide
+	// string literals, regular string literals are converted to a wide
+	// type before concatenation. In this pass, we do the conversion.
+	for tok1 := tok; tok1.Kind != TK_EOF; {
+		if tok1.Kind != TK_STR || tok1.Next.Kind != TK_STR {
+			tok1 = tok1.Next
+			continue
+		}
+
+		kind := tok1.getStringKind()
+		basety := tok1.Ty.Base
+
+		for t := tok1.Next; t.Kind == TK_STR; t = t.Next {
+			k := t.getStringKind()
+			if kind == STR_NONE {
+				kind = k
+				basety = t.Ty.Base
+			} else if k != STR_NONE && kind != k {
+				errorTok(t, "unsupported non-standard concatenation of string literal")
+			}
+		}
+
+		if basety.Size > 1 {
+			for t := tok1; t.Kind == TK_STR; t = t.Next {
+				if t.Ty.Base.Size == 1 {
+					t1 := t.tokenizeStringLiteral(basety)
+					*t = *t1
+				}
+			}
+		}
+
+		for tok1.Kind == TK_STR {
+			tok1 = tok1.Next
+		}
+	}
+
+	// Second pass: concatenate adjacent string literals.
+	for tok1 := tok; tok1 != nil && tok1.Kind != TK_EOF; {
 		if tok1.Kind != TK_STR || tok1.Next.Kind != TK_STR {
 			tok1 = tok1.Next
 			continue
