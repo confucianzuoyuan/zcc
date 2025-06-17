@@ -473,7 +473,6 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, isVariadic bool
 		}
 		arg.Name = "__VA_ARGS__"
 		cur.Next = arg
-		cur = cur.Next
 	}
 
 	skip(tok, ")")
