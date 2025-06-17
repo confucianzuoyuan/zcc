@@ -4,7 +4,7 @@ TESTS=$(TEST_SRCS:.c=.exe)
 zcc:
 	go build
 
-test/%.exe: zcc test/%.c
+test/%.exe: clean zcc test/%.c
 	./zcc -Iinclude -Itest -c -o test/$*.o test/$*.c
 	$(CC) -o $@ test/$*.o -xc test/common
 
