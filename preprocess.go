@@ -444,7 +444,6 @@ func readMacroArgOne(rest **Token, tok *Token, readRest bool) *MacroArg {
 }
 
 func readMacroArgs(rest **Token, tok *Token, params *MacroParam, isVariadic bool) *MacroArg {
-	start := tok
 	tok = tok.Next.Next
 
 	head := MacroArg{}
@@ -475,8 +474,6 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, isVariadic bool
 		arg.Name = "__VA_ARGS__"
 		cur.Next = arg
 		cur = cur.Next
-	} else if pp != nil {
-		errorTok(start, "too many arguments")
 	}
 
 	skip(tok, ")")
@@ -1046,29 +1043,29 @@ func joinAdjacentStringLiterals(tok1 *Token) {
 			continue
 		}
 
-		s := tok1.StringLiteral
-		for len(s) > 0 && s[len(s)-1] == 0 {
-			s = s[:len(s)-1]
-		}
-
-		for t := tok1.Next; t != nil && t.Kind == TK_STR; t = t.Next {
-			s = append(s, t.StringLiteral...)
-			for len(s) > 0 && s[len(s)-1] == 0 {
-				s = s[:len(s)-1]
-			}
-		}
-		buf := []uint8(s)
-		buf = append(buf, 0)
-		s = buf
-
 		tok2 := tok1.Next
-		for ; tok2 != nil && tok2.Kind == TK_STR; tok2 = tok2.Next {
+		for tok2.Kind == TK_STR {
+			tok2 = tok2.Next
+		}
+
+		length := tok1.Ty.ArrayLength
+		for t := tok1.Next; t != tok2; t = t.Next {
+			length = length + t.Ty.ArrayLength - 1
+		}
+
+		buf := make([]uint8, tok1.Ty.Base.Size*length)
+
+		i := 0
+		for t := tok1; t != tok2; t = t.Next {
+			for j := 0; j < int(t.Ty.Size); j++ {
+				buf[i+j] = t.StringLiteral[j]
+			}
+			i = i + int(t.Ty.Size) - int(t.Ty.Base.Size)
 		}
 
 		*tok1 = *(tok1.copy())
-		tok1.Ty = arrayOf(tok1.Ty.Base, int64(len(s)))
-		tok1.StringLiteral = s
-
+		tok1.Ty = arrayOf(tok1.Ty.Base, int64(length))
+		tok1.StringLiteral = buf
 		tok1.Next = tok2
 		tok1 = tok2
 	}
