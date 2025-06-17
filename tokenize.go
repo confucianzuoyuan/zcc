@@ -359,7 +359,6 @@ func readUTF32StringLiteral(file *File, start int, quote int, ty *CType) *Token 
 		bytes = append(bytes, uint8(buf[i]>>16))
 		bytes = append(bytes, uint8(buf[i]>>24))
 	}
-	bytes = append(bytes, 0)
 	tok.StringLiteral = bytes
 	return tok
 }
@@ -410,7 +409,6 @@ func readUTF16StringLiteral(file *File, start int, quote int) *Token {
 		bytes = append(bytes, uint8(str[i]))
 		bytes = append(bytes, uint8(str[i]>>8))
 	}
-	bytes = append(bytes, 0)
 	tok.StringLiteral = bytes
 	return tok
 }
