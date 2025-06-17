@@ -329,7 +329,8 @@ func readStringLiteral(src *[]uint8, start int, quote int) *Token {
 //
 // UTF-32 is a fixed-width encoding for Unicode. Each code point is
 // encoded in 4 bytes.
-func readUTF32StringLiteral(src *[]uint8, start int, quote int, ty *CType) *Token {
+func readUTF32StringLiteral(file *File, start int, quote int, ty *CType) *Token {
+	src := file.Contents
 	end := stringLiteralEnd(src, quote+1)
 	buf := make([]uint32, end-quote)
 	length := 0
@@ -349,6 +350,7 @@ func readUTF32StringLiteral(src *[]uint8, start int, quote int, ty *CType) *Toke
 	}
 
 	tok := newToken(TK_STR, start, end+1)
+	tok.File = file
 	tok.Ty = arrayOf(ty, int64(length+1))
 	bytes := []uint8{}
 	for i := 0; i < length+1; i++ {
@@ -824,7 +826,7 @@ func tokenize(file *File) *Token {
 
 		// UTF-32 string literal
 		if (*src)[p] == 'U' && (*src)[p+1] == '"' {
-			cur.Next = readUTF32StringLiteral(src, p, p+1, TyUInt)
+			cur.Next = readUTF32StringLiteral(currentFile, p, p+1, TyUInt)
 			cur = cur.Next
 			p += cur.Length
 			continue
@@ -832,7 +834,7 @@ func tokenize(file *File) *Token {
 
 		// Wide string literal
 		if (*src)[p] == 'L' && (*src)[p+1] == '"' {
-			cur.Next = readUTF32StringLiteral(src, p, p+1, TyInt)
+			cur.Next = readUTF32StringLiteral(currentFile, p, p+1, TyInt)
 			cur = cur.Next
 			p += cur.Length
 			continue
