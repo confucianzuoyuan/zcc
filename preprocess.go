@@ -1052,14 +1052,14 @@ func joinAdjacentStringLiterals(tok1 *Token) {
 		}
 
 		for t := tok1.Next; t != nil && t.Kind == TK_STR; t = t.Next {
-			s += t.StringLiteral
+			s = append(s, t.StringLiteral...)
 			for len(s) > 0 && s[len(s)-1] == 0 {
 				s = s[:len(s)-1]
 			}
 		}
 		buf := []uint8(s)
 		buf = append(buf, 0)
-		s = string(buf)
+		s = buf
 
 		tok2 := tok1.Next
 		for ; tok2 != nil && tok2.Kind == TK_STR; tok2 = tok2.Next {

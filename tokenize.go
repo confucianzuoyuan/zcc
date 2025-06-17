@@ -33,7 +33,7 @@ type Token struct {
 	Location      int       // Token location
 	Length        int       // Token length
 	Ty            *CType    // Used if TK_NUM or TK_STR
-	StringLiteral string    // String literal contents including terminating '\0'
+	StringLiteral []uint8   // String literal contents including terminating '\0'
 
 	File              *File    //Source location
 	LineNo            int      // Line number
@@ -321,7 +321,7 @@ func readStringLiteral(src *[]uint8, start int, quote int) *Token {
 
 	tok := newToken(TK_STR, start, end+1)
 	tok.Ty = arrayOf(TyChar, len+1)
-	tok.StringLiteral = string(str)
+	tok.StringLiteral = str
 	return tok
 }
 
@@ -358,7 +358,7 @@ func readUTF32StringLiteral(src *[]uint8, start int, quote int, ty *CType) *Toke
 		bytes = append(bytes, uint8(buf[i]>>24))
 	}
 	bytes = append(bytes, 0)
-	tok.StringLiteral = string(bytes)
+	tok.StringLiteral = bytes
 	return tok
 }
 
@@ -407,7 +407,7 @@ func readUTF16StringLiteral(src *[]uint8, start int, quote int) *Token {
 		bytes = append(bytes, uint8(str[i]>>8))
 	}
 	bytes = append(bytes, 0)
-	tok.StringLiteral = string(bytes)
+	tok.StringLiteral = bytes
 	return tok
 }
 
