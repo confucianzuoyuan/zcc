@@ -389,12 +389,23 @@ func arrayDesignator(rest **Token, tok *Token, ty *CType) int64 {
 
 // struct-designator = "." ident
 func structDesignator(rest **Token, tok *Token, ty *CType) *Member {
+	start := tok
 	tok = skip(tok, ".")
 	if tok.Kind != TK_IDENT {
 		errorTok(tok, "expected a field designator")
 	}
 
 	for mem := ty.Members; mem != nil; mem = mem.Next {
+		// Anonymous struct member
+		if mem.Ty.Kind == TY_STRUCT && mem.Name == nil {
+			if getStructMember(mem.Ty, tok) != nil {
+				*rest = start
+				return mem
+			}
+			continue
+		}
+
+		// Regular struct member
 		tokName := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 		if mem.Name.isEqual(tokName) {
 			*rest = tok.Next
