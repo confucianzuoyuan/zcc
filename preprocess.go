@@ -970,6 +970,11 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if tok.Kind == TK_PP_NUM {
+			readLineMarker(&tok, tok)
+			continue
+		}
+
 		if tok.isEqual("error") {
 			errorTok(tok, "error")
 		}
