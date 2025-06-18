@@ -1062,6 +1062,16 @@ func tokenizeFile(path string) *Token {
 		return nil
 	}
 
+	// UTF-8 texts may start with a 3-byte "BOM" marker sequence.
+	// If exists, just skip them because they are useless bytes.
+	// (It is actually not recommended to add BOM markers to UTF-8
+	// texts, but it's not uncommon particularly on Windows.)
+	if len(*src) > 3 {
+		if B2S((*src)[:3]) == "\xef\xbb\xbf" {
+			*src = (*src)[3:]
+		}
+	}
+
 	canonicalizeNewLine(src)
 	removeBackslashNewline(src)
 	convertUniversalChars(src)
