@@ -313,19 +313,39 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 	*rest = tok.Next
 }
 
+// An array length can be omitted if an array has an initializer
+// (e.g. `int x[] = {1,2,3}`). If it's omitted, count the number
+// of initializer elements.
 func countArrayInitElements(tok *Token, ty *CType) int {
-	dummy := newInitializer(ty.Base, false)
+	first := true
+	dummy := newInitializer(ty.Base, true)
 	i := 0
+	max := 0
 
-	for ; !consumeEnd(&tok, tok); i++ {
-		if i > 0 {
+	for !consumeEnd(&tok, tok) {
+		if !first {
 			tok = skip(tok, ",")
 		}
+		first = false
 
-		initializer2(&tok, tok, dummy)
+		if tok.isEqual("[") {
+			i = int(constExpr(&tok, tok.Next))
+			if tok.isEqual("...") {
+				i = int(constExpr(&tok, tok.Next))
+			}
+			tok = skip(tok, "]")
+			designation(&tok, tok, dummy)
+		} else {
+			initializer2(&tok, tok, dummy)
+		}
+
+		i++
+		if max < i {
+			max = i
+		}
 	}
 
-	return i
+	return max
 }
 
 // array-designator = "[" const-expr "]"
@@ -395,6 +415,12 @@ func debugToken(tok *Token) {
 // array-initializer1 = "{" initializer ("," initializer)* ","? "}"
 func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
+
+	if init.IsFlexible {
+		length := countArrayInitElements(tok, init.Ty)
+		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
+	}
+
 	first := true
 
 	if init.IsFlexible {
