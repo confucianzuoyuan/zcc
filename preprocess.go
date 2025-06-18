@@ -567,6 +567,16 @@ func paste(lhs *Token, rhs *Token) *Token {
 	return tok
 }
 
+func hasVarargs(args *MacroArg) bool {
+	for ap := args; ap != nil; ap = ap.Next {
+		if ap.Name == "__VA_ARGS__" {
+			return ap.Tok.Kind != TK_EOF
+		}
+	}
+
+	return false
+}
+
 // Replace func-like macro parameters with given arguments.
 func subst(tok *Token, args *MacroArg) *Token {
 	head := Token{}
@@ -638,6 +648,20 @@ func subst(tok *Token, args *MacroArg) *Token {
 			}
 
 			tok = tok.Next
+			continue
+		}
+
+		// If __VA_ARG__ is empty, __VA_OPT__(x) is expanded to the
+		// empty token list. Otherwise, __VA_OPT__(x) is expanded to x.
+		if tok.isEqual("__VA_OPT__") && tok.Next.isEqual("(") {
+			arg := readMacroArgOne(&tok, tok.Next.Next, true)
+			if hasVarargs(args) {
+				for t := arg.Tok; t.Kind != TK_EOF; t = t.Next {
+					cur.Next = t
+					cur = cur.Next
+				}
+			}
+			tok = skip(tok, ")")
 			continue
 		}
 
