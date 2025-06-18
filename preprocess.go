@@ -1034,6 +1034,10 @@ func timestampMacro(tmpl *Token) *Token {
 	return newStringToken(formatted, tmpl)
 }
 
+func baseFileMacro(tmpl *Token) *Token {
+	return newStringToken(baseFile, tmpl)
+}
+
 // __DATE__ is expanded to the current date, e.g. "May 17 2020".
 // formatDate 格式化时间为类似 __DATE__ 的字符串，带双引号，比如 "May 17 2020"
 func formatDate(t time.Time) string {
@@ -1120,6 +1124,7 @@ func initMacros() {
 	addBuiltin("__LINE__", lineMacro)
 	addBuiltin("__COUNTER__", counterMacro)
 	addBuiltin("__TIMESTAMP__", timestampMacro)
+	addBuiltin("__BASE_FILE__", baseFileMacro)
 
 	now := time.Now() // 当前时间，包含本地时区
 	defineMacro("__DATE__", formatDate(now))
