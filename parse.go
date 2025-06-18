@@ -328,6 +328,51 @@ func countArrayInitElements(tok *Token, ty *CType) int {
 	return i
 }
 
+// array-designator = "[" const-expr "]"
+//
+// C99 added the designated initializer to the language, which allows
+// programmers to move the "cursor" of an initializer to any element.
+// The syntax looks like this:
+//
+//	int x[10] = { 1, 2, [5]=3, 4, 5, 6, 7 };
+//
+// `[5]` moves the cursor to the 5th element, so the 5th element of x
+// is set to 3. Initialization then continues forward in order, so
+// 6th, 7th, 8th and 9th elements are initialized with 4, 5, 6 and 7,
+// respectively. Unspecified elements (in this case, 3rd and 4th
+// elements) are initialized with zero.
+//
+// Nesting is allowed, so the following initializer is valid:
+//
+//	int x[5][10] = { [5][8]=1, 2, 3 };
+//
+// It sets x[5][8], x[5][9] and x[6][0] to 1, 2 and 3, respectively.
+func arrayDesignator(rest **Token, tok *Token, ty *CType) int64 {
+	start := tok
+	i := constExpr(&tok, tok.Next)
+	if i >= ty.ArrayLength {
+		errorTok(start, "array designator index exceeds array bounds")
+	}
+	*rest = skip(tok, "]")
+	return i
+}
+
+// designation = ("[" const-expr "]")* "=" initializer
+func designation(rest **Token, tok *Token, init *Initializer) {
+	if tok.isEqual("[") {
+		if init.Ty.Kind != TY_ARRAY {
+			errorTok(tok, "array index in non-array initializer")
+		}
+		i := arrayDesignator(&tok, tok, init.Ty)
+		designation(&tok, tok, init.Children[i])
+		arrayInitializer2(rest, tok, init, i+1)
+		return
+	}
+
+	tok = skip(tok, "=")
+	initializer2(rest, tok, init)
+}
+
 func debugToken(tok *Token) {
 	switch tok.Kind {
 	case TK_EOF:
@@ -350,6 +395,7 @@ func debugToken(tok *Token) {
 // array-initializer1 = "{" initializer ("," initializer)* ","? "}"
 func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
+	first := true
 
 	if init.IsFlexible {
 		length := countArrayInitElements(tok, init.Ty)
@@ -357,8 +403,15 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	for i := int64(0); !consumeEnd(rest, tok); i++ {
-		if i > 0 {
+		if !first {
 			tok = skip(tok, ",")
+		}
+		first = false
+
+		if tok.isEqual("[") {
+			i = arrayDesignator(&tok, tok, init.Ty)
+			designation(&tok, tok, init.Children[i])
+			continue
 		}
 
 		if i < init.Ty.ArrayLength {
@@ -370,15 +423,21 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 }
 
 // array-initializer2 = initializer ("," initializer)*
-func arrayInitializer2(rest **Token, tok *Token, init *Initializer) {
+func arrayInitializer2(rest **Token, tok *Token, init *Initializer, i int64) {
 	if init.IsFlexible {
 		length := countArrayInitElements(tok, init.Ty)
 		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
 	}
 
-	for i := 0; i < int(init.Ty.ArrayLength) && !tok.isEnd(); i += 1 {
+	for ; i < init.Ty.ArrayLength && !tok.isEnd(); i += 1 {
+		start := tok
 		if i > 0 {
 			tok = skip(tok, ",")
+		}
+
+		if tok.isEqual("[") {
+			*rest = start
+			return
 		}
 		initializer2(&tok, tok, init.Children[i])
 	}
@@ -446,7 +505,7 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 		if tok.isEqual("{") {
 			arrayInitializer1(rest, tok, init)
 		} else {
-			arrayInitializer2(rest, tok, init)
+			arrayInitializer2(rest, tok, init, 0)
 		}
 		return
 	}
