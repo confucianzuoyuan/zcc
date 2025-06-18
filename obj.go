@@ -18,7 +18,7 @@ type Obj struct {
 	IsStatic     bool
 
 	// Global variable
-	InitData []uint8
+	InitData []int8
 	Rel      *Relocation
 
 	// Function

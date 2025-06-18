@@ -170,7 +170,7 @@ func pushScope(name string) *VarScope {
 
 func pushTagScope(tok *Token, ty *CType) *TagScope {
 	sc := &TagScope{}
-	sc.Name = string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	sc.Name = B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	sc.Ty = ty
 	sc.Next = scope.Tags
 	scope.Tags = sc
@@ -295,14 +295,16 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 		}
 	} else if init.Ty.Base.Size == 2 {
 		str := tok.StringLiteral
-		for i := 0; i < int(length); i++ {
-			val := (uint16(str[2*i+1]) << 8) | uint16(str[2*i])
+		for i := range int(length) {
+			lo := uint16(uint8(str[2*i]))
+			hi := uint16(uint8(str[2*i+1])) << 8
+			val := hi | lo
 			init.Children[i].Expr = newNum(int64(val), tok)
 		}
 	} else if init.Ty.Base.Size == 4 {
 		str := tok.StringLiteral
 		for i := 0; i < int(length); i++ {
-			val := (uint32(str[4*i+3]) << 24) | (uint32(str[4*i+2]) << 16) | (uint32(str[4*i+1]) << 8) | uint32(str[4*i])
+			val := (uint32(uint8(str[4*i+3])) << 24) | (uint32(uint8(str[4*i+2])) << 16) | (uint32(uint8(str[4*i+1])) << 8) | uint32(uint8(str[4*i]))
 			init.Children[i].Expr = newNum(int64(val), tok)
 		}
 	} else {
@@ -342,7 +344,7 @@ func debugToken(tok *Token) {
 		println("string")
 	}
 
-	fmt.Printf("%s\r\n", string((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
+	fmt.Printf("%s\r\n", B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
 }
 
 // array-initializer1 = "{" initializer ("," initializer)* ","? "}"
@@ -619,7 +621,7 @@ func newAnonGlobalVar(ty *CType) *Obj {
 	return newGlobalVar(newUniqueName(), ty)
 }
 
-func newStringLiteral(lit []uint8, ty *CType) *Obj {
+func newStringLiteral(lit []int8, ty *CType) *Obj {
 	variable := newAnonGlobalVar(ty)
 	variable.InitData = lit
 	return variable
@@ -629,7 +631,7 @@ func (tok *Token) getIdent() string {
 	if tok.Kind != TK_IDENT {
 		errorTok(tok, "expected an identifier")
 	}
-	return string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	return B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 }
 
 func findTypeDef(tok *Token) *CType {
@@ -1076,7 +1078,7 @@ func getStructMember(ty *CType, tok *Token) *Member {
 		}
 
 		// Regular struct member
-		if mem.Name.isEqual(string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
+		if mem.Name.isEqual(B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
 			return mem
 		}
 	}
@@ -1348,7 +1350,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 	return node
 }
 
-func readBuf(buf *[]uint8, offset int64, sz int64) uint64 {
+func readBuf(buf *[]int8, offset int64, sz int64) uint64 {
 	if sz == 1 {
 		return uint64((*buf)[offset+0])
 	}
@@ -1381,29 +1383,29 @@ func readBuf(buf *[]uint8, offset int64, sz int64) uint64 {
 	panic("unreachable")
 }
 
-func writeBuf(buf *[]uint8, offset int64, val uint64, sz int64) {
+func writeBuf(buf *[]int8, offset int64, val uint64, sz int64) {
 	if sz == 1 {
-		(*buf)[offset] = uint8(val)
+		(*buf)[offset] = int8(val)
 		return
 	}
 
 	if sz == 2 {
-		(*buf)[offset] = uint8(val)
-		(*buf)[offset+1] = uint8(val >> 8)
+		(*buf)[offset] = int8(val)
+		(*buf)[offset+1] = int8(val >> 8)
 		return
 	}
 
 	if sz == 4 {
-		(*buf)[offset] = uint8(val)
-		(*buf)[offset+1] = uint8(val >> 8)
-		(*buf)[offset+2] = uint8(val >> 16)
-		(*buf)[offset+3] = uint8(val >> 24)
+		(*buf)[offset] = int8(val)
+		(*buf)[offset+1] = int8(val >> 8)
+		(*buf)[offset+2] = int8(val >> 16)
+		(*buf)[offset+3] = int8(val >> 24)
 		return
 	}
 
 	if sz == 8 {
 		for i := int64(0); i < 8; i++ {
-			(*buf)[offset+i] = uint8(val >> (i * 8))
+			(*buf)[offset+i] = int8(val >> (i * 8))
 		}
 		return
 	}
@@ -1411,7 +1413,7 @@ func writeBuf(buf *[]uint8, offset int64, val uint64, sz int64) {
 	panic("writeBuf: unsupported size")
 }
 
-func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]uint8, offset int64) *Relocation {
+func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]int8, offset int64) *Relocation {
 	if ty.Kind == TY_ARRAY {
 		sz := ty.Base.Size
 		for i := int64(0); i < ty.ArrayLength; i++ {
@@ -1451,23 +1453,23 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]ui
 
 	if ty.Kind == TY_FLOAT {
 		val := math.Float32bits(float32(evalDouble(init.Expr)))
-		(*buf)[offset] = uint8(val)
-		(*buf)[offset+1] = uint8(val >> 8)
-		(*buf)[offset+2] = uint8(val >> 16)
-		(*buf)[offset+3] = uint8(val >> 24)
+		(*buf)[offset+0] = int8(val)
+		(*buf)[offset+1] = int8(val >> 8)
+		(*buf)[offset+2] = int8(val >> 16)
+		(*buf)[offset+3] = int8(val >> 24)
 		return cur
 	}
 
 	if ty.Kind == TY_DOUBLE {
 		val := math.Float64bits(evalDouble(init.Expr))
-		(*buf)[offset] = uint8(val)
-		(*buf)[offset+1] = uint8(val >> 8)
-		(*buf)[offset+2] = uint8(val >> 16)
-		(*buf)[offset+3] = uint8(val >> 24)
-		(*buf)[offset+4] = uint8(val >> 32)
-		(*buf)[offset+5] = uint8(val >> 40)
-		(*buf)[offset+6] = uint8(val >> 48)
-		(*buf)[offset+7] = uint8(val >> 56)
+		(*buf)[offset+0] = int8(val)
+		(*buf)[offset+1] = int8(val >> 8)
+		(*buf)[offset+2] = int8(val >> 16)
+		(*buf)[offset+3] = int8(val >> 24)
+		(*buf)[offset+4] = int8(val >> 32)
+		(*buf)[offset+5] = int8(val >> 40)
+		(*buf)[offset+6] = int8(val >> 48)
+		(*buf)[offset+7] = int8(val >> 56)
 		return cur
 	}
 
@@ -1500,7 +1502,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 
 	head := Relocation{}
 	// char *buf = calloc(1, var->ty->size);
-	buf := make([]uint8, variable.Ty.Size)
+	buf := make([]int8, variable.Ty.Size)
 	writeGlobalVarData(&head, init, variable.Ty, &buf, 0)
 	variable.InitData = buf
 	variable.Rel = head.Next
@@ -2732,7 +2734,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.Kind == TK_STR {
-		v := newStringLiteral([]uint8(tok.StringLiteral), tok.Ty)
+		v := newStringLiteral(tok.StringLiteral, tok.Ty)
 		*rest = tok.Next
 		return newVarNode(v, tok)
 	}
@@ -2823,10 +2825,11 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	// current function name.
 	buf := []uint8(fn.Name)
 	buf = append(buf, 0)
-	pushScope("__func__").Variable = newStringLiteral(buf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+	newBuf := U82I8(buf)
+	pushScope("__func__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
 
 	// [GNU] __FUNCTION__ is yet another name of __func__.
-	pushScope("__FUNCTION__").Variable = newStringLiteral(buf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+	pushScope("__FUNCTION__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
 
 	fn.Body = compoundStmt(&tok, tok)
 	fn.Locals = locals

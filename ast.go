@@ -99,7 +99,7 @@ type AstNode struct {
 func (node *AstNode) String() string {
 	s := ""
 	if node.Kind == ND_VAR {
-		s = s + "var: " + string((*node.Tok.File.Contents)[node.Tok.Location:node.Tok.Location+node.Tok.Length]) + "\n"
+		s = s + "var: " + B2S((*node.Tok.File.Contents)[node.Tok.Location:node.Tok.Location+node.Tok.Length]) + "\n"
 	}
 	return s
 }

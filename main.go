@@ -311,7 +311,7 @@ func printTokens(tok *Token) {
 		if tok.HasSpace && !tok.AtBeginningOfLine {
 			fmt.Fprintf(out, " ")
 		}
-		fmt.Fprintf(out, "%s", string((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
+		fmt.Fprintf(out, "%s", B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
 		line += 1
 	}
 	fmt.Fprintf(out, "\n")

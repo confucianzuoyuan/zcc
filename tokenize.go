@@ -22,7 +22,7 @@ const (
 type File struct {
 	Name     string
 	FileNo   int
-	Contents *[]uint8
+	Contents *[]int8
 }
 
 type Token struct {
@@ -33,7 +33,7 @@ type Token struct {
 	Location      int       // Token location
 	Length        int       // Token length
 	Ty            *CType    // Used if TK_NUM or TK_STR
-	StringLiteral []uint8   // String literal contents including terminating '\0'
+	StringLiteral []int8    // String literal contents including terminating '\0'
 
 	File              *File    //Source location
 	LineNo            int      // Line number
@@ -96,13 +96,21 @@ func (t *Token) append(other *Token) *Token {
 	return head.Next
 }
 
+func B2S(bs []int8) string {
+	b := make([]byte, len(bs))
+	for i, v := range bs {
+		b[i] = byte(v)
+	}
+	return string(b)
+}
+
 /*
  * Reports an error message in the following format and exit.
  *
  * foo.c:10: x = y + 1;
  *               ^ <error message here>
  */
-func verrorAt(filename string, input *[]uint8, line_no int, loc int, msg string) {
+func verrorAt(filename string, input *[]int8, line_no int, loc int, msg string) {
 	// Find a line containing `loc`
 	line := loc
 	for 0 < line && (*input)[line-1] != '\n' {
@@ -116,7 +124,7 @@ func verrorAt(filename string, input *[]uint8, line_no int, loc int, msg string)
 
 	// Print out the line.
 	indent, _ := fmt.Fprintf(os.Stderr, "%s:%d: ", filename, line_no)
-	fmt.Fprintf(os.Stderr, "%s", string((*input)[line:end+1]))
+	fmt.Fprintf(os.Stderr, "%s", B2S((*input)[line:end+1]))
 
 	// Show the error message
 	pos := loc - line + indent
@@ -149,12 +157,12 @@ func warnTok(tok *Token, msg string) {
 }
 
 func (t *Token) isEqual(s string) bool {
-	return string((*t.File.Contents)[t.Location:t.Location+t.Length]) == s
+	return B2S((*t.File.Contents)[t.Location:t.Location+t.Length]) == s
 }
 
 // Read an identifier and returns the length of it.
 // If p does not point to a valid identifier, 0 is returned.
-func readIdent(src *[]uint8, start int) int {
+func readIdent(src *[]int8, start int) int {
 	p := start
 	c, newPos := decodeUTF8(src, p)
 	p = newPos
@@ -171,7 +179,7 @@ func readIdent(src *[]uint8, start int) int {
 	}
 }
 
-func fromHex(c uint8) uint8 {
+func fromHex(c int8) int8 {
 	if '0' <= c && c <= '9' {
 		return c - '0'
 	}
@@ -203,23 +211,23 @@ func (tok *Token) isKeyword() bool {
 	return false
 }
 
-func isHexDigit(c uint8) bool {
+func isHexDigit(c int8) bool {
 	if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
 		return true
 	}
 	return false
 }
 
-func isBinDigit(c uint8) bool {
+func isBinDigit(c int8) bool {
 	return c == '0' || c == '1'
 }
 
-func isOctalDigit(c uint8) bool {
+func isOctalDigit(c int8) bool {
 	return c >= '0' && c <= '7'
 }
 
 // 返回：(读取的值, new_pos)
-func readEscapedChar(src *[]uint8, p int) (int8, int) {
+func readEscapedChar(src *[]int8, p int) (int, int) {
 	buf := src
 	if '0' <= (*buf)[p] && (*buf)[p] <= '7' {
 		// Read an octal number.
@@ -234,7 +242,7 @@ func readEscapedChar(src *[]uint8, p int) (int8, int) {
 			}
 		}
 
-		return int8(c), p
+		return c, p
 	}
 
 	if (*buf)[p] == 'x' {
@@ -246,9 +254,9 @@ func readEscapedChar(src *[]uint8, p int) (int8, int) {
 
 		c := int(0)
 		for ; isHexDigit((*buf)[p]); p += 1 {
-			c = int(uint8(c<<4) + fromHex((*buf)[p]))
+			c = c<<4 + int(fromHex((*buf)[p]))
 		}
-		return int8(c), p
+		return c, p
 	}
 
 	// Escape sequences are defined using themselves here. E.g.
@@ -281,12 +289,12 @@ func readEscapedChar(src *[]uint8, p int) (int8, int) {
 		// [GNU] \e for the ASCII escape character is a GNU C extension.
 		return 27, p + 1
 	default:
-		return int8((*buf)[p]), p + 1
+		return int((*buf)[p]), p + 1
 	}
 }
 
 // Find a closing double-quote.
-func stringLiteralEnd(src *[]uint8, p int) int {
+func stringLiteralEnd(src *[]int8, p int) int {
 	buf := src
 	start := p
 	for ; (*buf)[p] != '"'; p += 1 {
@@ -300,16 +308,16 @@ func stringLiteralEnd(src *[]uint8, p int) int {
 	return p
 }
 
-func readStringLiteral(src *[]uint8, start int, quote int) *Token {
+func readStringLiteral(src *[]int8, start int, quote int) *Token {
 	buf := src
 	end := stringLiteralEnd(src, quote+1)
-	str := make([]uint8, end-quote)
+	str := make([]int8, end-quote)
 	var len int64 = 0
 
 	for p := quote + 1; p < end; {
 		if (*buf)[p] == '\\' {
 			c, new_pos := readEscapedChar(src, p+1)
-			str[len] = uint8(c)
+			str[len] = int8(c)
 			len += 1
 			p = new_pos
 		} else {
@@ -349,21 +357,15 @@ func readUTF32StringLiteral(file *File, start int, quote int, ty *CType) *Token 
 		}
 	}
 
-	for i := 0; i < length; i++ {
-		if int32(buf[i]) < -1 {
-			buf[i] = uint32(int32(buf[i]) + 256)
-		}
-	}
-
 	tok := newToken(TK_STR, start, end+1)
 	tok.File = file
 	tok.Ty = arrayOf(ty, int64(length+1))
-	bytes := []uint8{}
+	bytes := []int8{}
 	for i := 0; i < length+1; i++ {
-		bytes = append(bytes, uint8(buf[i]))
-		bytes = append(bytes, uint8(buf[i]>>8))
-		bytes = append(bytes, uint8(buf[i]>>16))
-		bytes = append(bytes, uint8(buf[i]>>24))
+		bytes = append(bytes, int8(buf[i]))
+		bytes = append(bytes, int8(buf[i]>>8))
+		bytes = append(bytes, int8(buf[i]>>16))
+		bytes = append(bytes, int8(buf[i]>>24))
 	}
 	tok.StringLiteral = bytes
 	return tok
@@ -410,16 +412,16 @@ func readUTF16StringLiteral(file *File, start int, quote int) *Token {
 	tok := newToken(TK_STR, start, end+1)
 	tok.File = file
 	tok.Ty = arrayOf(TyUShort, int64(length+1))
-	bytes := []uint8{}
+	bytes := []int8{}
 	for i := 0; i < length+1; i++ {
-		bytes = append(bytes, uint8(str[i]))
-		bytes = append(bytes, uint8(str[i]>>8))
+		bytes = append(bytes, int8(str[i]))
+		bytes = append(bytes, int8(str[i]>>8))
 	}
 	tok.StringLiteral = bytes
 	return tok
 }
 
-func readCharLiteral(src *[]uint8, start int, quote int, ty *CType) *Token {
+func readCharLiteral(src *[]int8, start int, quote int, ty *CType) *Token {
 	currentInput := src
 	p := quote + 1
 	if (*currentInput)[p] == 0 {
@@ -473,28 +475,28 @@ func convertPpInt(tok *Token) bool {
 		for isDecimalDigit((*currentInput)[end]) {
 			end += 1
 		}
-		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 10, 64)
+		val, _ = strconv.ParseUint(B2S((*currentInput)[p:end]), 10, 64)
 		p = end
 	} else if base == 2 {
 		end := p
 		for isBinDigit((*currentInput)[end]) {
 			end += 1
 		}
-		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 2, 64)
+		val, _ = strconv.ParseUint(B2S((*currentInput)[p:end]), 2, 64)
 		p = end
 	} else if base == 16 {
 		end := p
 		for isHexDigit((*currentInput)[end]) {
 			end += 1
 		}
-		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 16, 64)
+		val, _ = strconv.ParseUint(B2S((*currentInput)[p:end]), 16, 64)
 		p = end
 	} else if base == 8 {
 		end := p
 		for isOctalDigit((*currentInput)[end]) {
 			end += 1
 		}
-		val, _ = strconv.ParseUint(string((*currentInput)[p:end]), 8, 64)
+		val, _ = strconv.ParseUint(B2S((*currentInput)[p:end]), 8, 64)
 		p = end
 	} else {
 		errorAt(p, "invalid base")
@@ -506,13 +508,13 @@ func convertPpInt(tok *Token) bool {
 
 	suffix3 := ""
 	if p+3 < len(*currentInput) {
-		suffix3 = string((*currentInput)[p : p+3])
+		suffix3 = B2S((*currentInput)[p : p+3])
 	}
 	suffix2 := ""
 	if p+2 < len(*currentInput) {
-		suffix2 = string((*currentInput)[p : p+2])
+		suffix2 = B2S((*currentInput)[p : p+2])
 	}
-	suffix1 := string((*currentInput)[p : p+1])
+	suffix1 := B2S((*currentInput)[p : p+1])
 	if suffix3 == "LLU" || suffix3 == "LLu" || suffix3 == "llU" || suffix3 == "llu" || suffix3 == "ULL" || suffix3 == "Ull" || suffix3 == "uLL" || suffix3 == "ull" {
 		p += 3
 		u = true
@@ -625,10 +627,10 @@ func convertPpNumber(tok *Token) {
 
 	var value float64
 	if (*src)[end-1] == 'f' || (*src)[end-1] == 'F' {
-		value, _ = strconv.ParseFloat(string((*src)[tok.Location:end-1]), 64)
+		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end-1]), 64)
 		end -= 1
 	} else {
-		value, _ = strconv.ParseFloat(string((*src)[tok.Location:end]), 64)
+		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end]), 64)
 	}
 
 	var ty *CType
@@ -662,7 +664,7 @@ func convertPpTokens(tok *Token) {
 }
 
 // Initialize line info for all tokens.
-func addLineNumbers(src *[]uint8, tok *Token) {
+func addLineNumbers(src *[]int8, tok *Token) {
 	p := 0
 	n := 1
 
@@ -685,14 +687,14 @@ func addLineNumbers(src *[]uint8, tok *Token) {
 	}
 }
 
-func isDecimalDigit(c uint8) bool {
+func isDecimalDigit(c int8) bool {
 	if c >= '0' && c <= '9' {
 		return true
 	}
 	return false
 }
 
-func isAlphaNumber(c uint8) bool {
+func isAlphaNumber(c int8) bool {
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
@@ -845,14 +847,12 @@ func tokenize(file *File) *Token {
 		}
 
 		// Identifier or keyword
-		if isIdentFirstChar(uint32((*src)[p])) {
-			identLength := readIdent(src, p)
-			if identLength != 0 {
-				cur.Next = newToken(TK_IDENT, p, p+identLength)
-				cur = cur.Next
-				p += cur.Length
-				continue
-			}
+		identLength := readIdent(src, p)
+		if identLength != 0 {
+			cur.Next = newToken(TK_IDENT, p, p+identLength)
+			cur = cur.Next
+			p += cur.Length
+			continue
 		}
 
 		// Punctuators
@@ -873,7 +873,7 @@ func tokenize(file *File) *Token {
 }
 
 // Read a punctuator token from p and returns its length.
-func readPunct(src *[]uint8, p int) int {
+func readPunct(src *[]int8, p int) int {
 	punctuators := []string{
 		"<<=", ">>=", "...", "==", "!=", "<=", ">=", "->", "+=",
 		"-=", "*=", "/=", "++", "--", "%=", "&=", "|=", "^=", "&&",
@@ -886,7 +886,7 @@ func readPunct(src *[]uint8, p int) int {
 
 	for _, punct := range punctuators {
 		punctLen := len(punct)
-		if string((*src)[p:p+punctLen]) == punct {
+		if B2S((*src)[p:p+punctLen]) == punct {
 			return punctLen
 		}
 	}
@@ -895,7 +895,7 @@ func readPunct(src *[]uint8, p int) int {
 }
 
 // Returns the contents of a given file.
-func readFile(path string) *[]uint8 {
+func readFile(path string) *[]int8 {
 	var src []uint8
 	var err error
 	if path == "-" {
@@ -921,10 +921,15 @@ func readFile(path string) *[]uint8 {
 	// add '\0' in the end of src
 	src = append(src, 0)
 
-	return &src
+	srcInInt8 := []int8{}
+	for _, b := range src {
+		srcInInt8 = append(srcInInt8, int8(b))
+	}
+
+	return &srcInInt8
 }
 
-func newFile(name string, fileNo int, contents *[]uint8) *File {
+func newFile(name string, fileNo int, contents *[]int8) *File {
 	file := &File{
 		Name:     name,
 		FileNo:   fileNo,
@@ -934,7 +939,7 @@ func newFile(name string, fileNo int, contents *[]uint8) *File {
 }
 
 // Replaces \r or \r\n with \n.
-func canonicalizeNewLine(src *[]uint8) {
+func canonicalizeNewLine(src *[]int8) {
 	i := 0
 	j := 0
 
@@ -957,7 +962,7 @@ func canonicalizeNewLine(src *[]uint8) {
 	(*src)[j] = 0
 }
 
-func readUniversalChar(src *[]uint8, p int, len int) uint32 {
+func readUniversalChar(src *[]int8, p int, len int) uint32 {
 	c := uint32(0)
 	for i := 0; i < len; i += 1 {
 		if !isHexDigit((*src)[p+i]) {
@@ -969,7 +974,7 @@ func readUniversalChar(src *[]uint8, p int, len int) uint32 {
 }
 
 // Replace \u or \U escape sequences with corresponding UTF-8 bytes.
-func convertUniversalChars(src *[]uint8) {
+func convertUniversalChars(src *[]int8) {
 	p := 0
 	q := 0
 
@@ -1012,7 +1017,7 @@ func convertUniversalChars(src *[]uint8) {
 }
 
 // Removes backslashes followed by a newline.
-func removeBackslashNewline(src *[]uint8) {
+func removeBackslashNewline(src *[]int8) {
 	i := 0
 	j := 0
 

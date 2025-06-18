@@ -42,7 +42,7 @@ const (
 )
 
 func (tok *Token) getStringKind() StringKind {
-	s := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	s := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	if s == "u8" {
 		return STR_UTF8
 	}
@@ -108,10 +108,19 @@ type Hideset struct {
 var condIncl *CondIncl
 var macros *Macro
 
+func U82I8(arr []uint8) []int8 {
+	res := []int8{}
+	for _, b := range arr {
+		res = append(res, int8(b))
+	}
+	return res
+}
+
 func newNumberToken(val int, tmpl *Token) *Token {
 	buf := []uint8(fmt.Sprintf("%d\n", val))
 	buf = append(buf, 0)
-	return tokenize(newFile(tmpl.File.Name, tmpl.File.FileNo, &buf))
+	newBuf := U82I8(buf)
+	return tokenize(newFile(tmpl.File.Name, tmpl.File.FileNo, &newBuf))
 }
 
 func readConstExpr(rest **Token, tok *Token) *Token {
@@ -277,13 +286,14 @@ func quoteString(s string) []uint8 {
 func newStringToken(s string, tmpl *Token) *Token {
 	buf := quoteString(s)
 	buf = append(buf, 0)
-	f := newFile(tmpl.File.Name, tmpl.File.FileNo, &buf)
+	newBuf := U82I8(buf)
+	f := newFile(tmpl.File.Name, tmpl.File.FileNo, &newBuf)
 	return tokenize(f)
 }
 
 // Concatenates all tokens in `tok` and returns a new string.
-func (tok *Token) joinTokens(end *Token) []uint8 {
-	buf := []uint8{}
+func (tok *Token) joinTokens(end *Token) []int8 {
+	buf := []int8{}
 
 	for t := tok; t != end && t.Kind != TK_EOF; t = t.Next {
 		if t != tok && t.HasSpace {
@@ -301,7 +311,7 @@ func stringize(hash *Token, arg *Token) *Token {
 	// source location for error reporting function, so we use a macro
 	// name token as a template.
 	buf := arg.joinTokens(nil)
-	return newStringToken(string(buf), hash)
+	return newStringToken(B2S(buf), hash)
 }
 
 // Read an #include argument.
@@ -315,7 +325,7 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 		// So we don't want to use token->str.
 		*isDoubleQuote = true
 		*rest = skipLine(tok.Next)
-		return string((*tok.File.Contents)[tok.Location+1 : tok.Location+tok.Length-1])
+		return B2S((*tok.File.Contents)[tok.Location+1 : tok.Location+tok.Length-1])
 	}
 
 	// Pattern 2: #include <foo.h>
@@ -333,7 +343,7 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 
 		*isDoubleQuote = false
 		*rest = skipLine(tok.Next)
-		return string(start.Next.joinTokens(tok))
+		return B2S(start.Next.joinTokens(tok))
 	}
 
 	// Pattern 3: #include FOO
@@ -405,7 +415,7 @@ func readMacroParams(rest **Token, tok *Token, isVariadic *bool) *MacroParam {
 		}
 
 		m := &MacroParam{
-			Name: string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length]),
+			Name: B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length]),
 		}
 
 		cur.Next = m
@@ -421,7 +431,7 @@ func readMacroDefinition(rest **Token, tok *Token) {
 	if tok.Kind != TK_IDENT {
 		errorTok(tok, "macro name must be an identifier")
 	}
-	name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	tok = tok.Next
 
 	if !tok.HasSpace && tok.isEqual("(") {
@@ -511,7 +521,7 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, isVariadic bool
 
 func findArg(args *MacroArg, tok *Token) *MacroArg {
 	for ap := args; ap != nil; ap = ap.Next {
-		if ap.Name == string((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]) {
+		if ap.Name == B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]) {
 			return ap
 		}
 	}
@@ -522,13 +532,14 @@ func findArg(args *MacroArg, tok *Token) *MacroArg {
 // Concatenate two tokens to create a new token.
 func paste(lhs *Token, rhs *Token) *Token {
 	// Paste the two tokens.
-	lhsString := string((*lhs.File.Contents)[lhs.Location : lhs.Location+lhs.Length])
-	rhsString := string((*rhs.File.Contents)[rhs.Location : rhs.Location+rhs.Length])
+	lhsString := B2S((*lhs.File.Contents)[lhs.Location : lhs.Location+lhs.Length])
+	rhsString := B2S((*rhs.File.Contents)[rhs.Location : rhs.Location+rhs.Length])
 	buf := []uint8(lhsString + rhsString)
 	buf = append(buf, 0)
+	newBuf := U82I8(buf)
 
 	// Tokenize the resulting string
-	tok := tokenize(newFile(lhs.File.Name, lhs.File.FileNo, &buf))
+	tok := tokenize(newFile(lhs.File.Name, lhs.File.FileNo, &newBuf))
 	if tok.Next.Kind != TK_EOF {
 		errorTok(lhs, fmt.Sprintf("pasting forms '%s', an invalid token", string(buf)))
 	}
@@ -637,7 +648,7 @@ func subst(tok *Token, args *MacroArg) *Token {
 // If tok is a macro, expand it and return true.
 // Otherwise, do nothing and return false.
 func expandMacro(rest **Token, tok *Token) bool {
-	if tok.Hideset.contains(string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
+	if tok.Hideset.contains(B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
 		return false
 	}
 
@@ -846,7 +857,7 @@ func preprocess2(tok *Token) *Token {
 			if tok.Kind != TK_IDENT {
 				errorTok(tok, "macro name must be an identifier")
 			}
-			name := string((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+			name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 			undefMacro(name)
 			tok = skipLine(tok.Next)
 
@@ -955,7 +966,8 @@ func undefMacro(name string) {
 func defineMacro(name string, buf string) {
 	b := []uint8(buf)
 	b = append(b, 0)
-	tok := tokenize(newFile("<built-in>", 1, &b))
+	newB := U82I8(b)
+	tok := tokenize(newFile("<built-in>", 1, &newB))
 	addMacro(name, true, tok)
 }
 
@@ -1129,7 +1141,7 @@ func joinAdjacentStringLiterals(tok *Token) {
 			length = length + t.Ty.ArrayLength - 1
 		}
 
-		buf := make([]uint8, tok1.Ty.Base.Size*length)
+		buf := make([]int8, tok1.Ty.Base.Size*length)
 
 		i := 0
 		for t := tok1; t != tok2; t = t.Next {
