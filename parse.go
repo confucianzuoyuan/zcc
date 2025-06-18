@@ -74,6 +74,10 @@ type Initializer struct {
 	// If it's an initializer for an aggregate type (e.g. array or struct),
 	// `children` has initializers for its children.
 	Children []*Initializer // Initializers for children
+
+	// Only one member can be initialized for a union.
+	// `mem` is used to clarify which member is initialized.
+	Member *Member
 }
 
 // For local variable initializer.
@@ -421,6 +425,13 @@ func designation(rest **Token, tok *Token, init *Initializer) {
 		return
 	}
 
+	if tok.isEqual(".") && init.Ty.Kind == TY_UNION {
+		mem := structDesignator(&tok, tok, init.Ty)
+		init.Member = mem
+		designation(rest, tok, init.Children[mem.Index])
+		return
+	}
+
 	if tok.isEqual(".") {
 		errorTok(tok, "field name not in struct or union initializer")
 	}
@@ -560,7 +571,18 @@ func structInitializer2(rest **Token, tok *Token, init *Initializer, mem *Member
 
 func unionInitializer(rest **Token, tok *Token, init *Initializer) {
 	// Unlike structs, union initializers take only one initializer,
-	// and that initializes the first union member.
+	// and that initializes the first union member by default.
+	// You can initialize other member using a designated initializer.
+	if tok.isEqual("{") && tok.Next.isEqual(".") {
+		mem := structDesignator(&tok, tok.Next, init.Ty)
+		init.Member = mem
+		designation(&tok, tok, init.Children[mem.Index])
+		*rest = skip(tok, "}")
+		return
+	}
+
+	init.Member = init.Ty.Members
+
 	if tok.isEqual("{") {
 		initializer2(&tok, tok.Next, init.Children[0])
 		consume(&tok, tok, ",")
@@ -685,8 +707,15 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 	}
 
 	if ty.Kind == TY_UNION {
-		desg2 := InitDesg{desg, 0, init.Ty.Members, nil}
-		return createLocalVarInit(init.Children[0], ty.Members.Ty, &desg2, tok)
+		mem := ty.Members
+		if init.Member != nil {
+			mem = init.Member
+		}
+		desg2 := InitDesg{}
+		desg2.Next = desg
+		desg2.Index = 0
+		desg2.Member = mem
+		return createLocalVarInit(init.Children[mem.Index], mem.Ty, &desg2, tok)
 	}
 
 	if init.Expr == nil {
@@ -1583,7 +1612,10 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	}
 
 	if ty.Kind == TY_UNION {
-		return writeGlobalVarData(cur, init.Children[0], ty.Members.Ty, buf, offset)
+		if init.Member == nil {
+			return cur
+		}
+		return writeGlobalVarData(cur, init.Children[init.Member.Index], init.Member.Ty, buf, offset)
 	}
 
 	if init.Expr == nil {
