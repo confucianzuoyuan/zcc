@@ -166,6 +166,27 @@ func readConstExpr(rest **Token, tok *Token) *Token {
 	return head.Next
 }
 
+// Read #line arguments
+func readLineMarker(rest **Token, tok *Token) {
+	start := tok
+	tok = preprocess(copyLine(rest, tok))
+
+	if tok.Kind != TK_NUM || tok.Ty.Kind != TY_INT {
+		errorTok(tok, "invalid line marker")
+	}
+	start.File.LineDelta = int(tok.Value) - start.LineNo
+
+	tok = tok.Next
+	if tok.Kind == TK_EOF {
+		return
+	}
+
+	if tok.Kind != TK_STR {
+		errorTok(tok, "filename expected")
+	}
+	start.File.DisplayName = B2S(tok.StringLiteral[:len(tok.StringLiteral)-1])
+}
+
 func (t *Token) newEOF() *Token {
 	newToken := t.copy()
 	newToken.Kind = TK_EOF
@@ -811,6 +832,8 @@ func preprocess2(tok *Token) *Token {
 
 		// Pass through if it is not a "#".
 		if !tok.isHash() {
+			tok.LineDelta = tok.File.LineDelta
+			tok.Filename = tok.File.DisplayName
 			cur.Next = tok
 			cur = cur.Next
 			tok = tok.Next
@@ -942,6 +965,11 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if tok.isEqual("line") {
+			readLineMarker(&tok, tok.Next)
+			continue
+		}
+
 		if tok.isEqual("error") {
 			errorTok(tok, "error")
 		}
@@ -981,7 +1009,7 @@ func fileMacro(tmpl *Token) *Token {
 	for tmpl.Origin != nil {
 		tmpl = tmpl.Next
 	}
-	return newStringToken(tmpl.File.Name, tmpl)
+	return newStringToken(tmpl.File.DisplayName, tmpl)
 }
 
 // __DATE__ is expanded to the current date, e.g. "May 17 2020".
@@ -1009,7 +1037,8 @@ func lineMacro(tmpl *Token) *Token {
 	for tmpl.Origin != nil {
 		tmpl = tmpl.Next
 	}
-	return newNumberToken(tmpl.LineNo, tmpl)
+	i := tmpl.LineNo + tmpl.File.LineDelta
+	return newNumberToken(i, tmpl)
 }
 
 var counter int = 0
@@ -1167,5 +1196,10 @@ func preprocess(tok *Token) *Token {
 	}
 	convertPpTokens(tok)
 	joinAdjacentStringLiterals(tok)
+
+	for t := tok; t != nil; t = t.Next {
+		t.LineNo += t.LineDelta
+	}
+
 	return tok
 }

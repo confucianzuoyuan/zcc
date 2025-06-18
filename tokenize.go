@@ -23,6 +23,10 @@ type File struct {
 	Name     string
 	FileNo   int
 	Contents *[]int8
+
+	// For #line directive
+	DisplayName string
+	LineDelta   int
 }
 
 type Token struct {
@@ -35,8 +39,10 @@ type Token struct {
 	Ty            *CType    // Used if TK_NUM or TK_STR
 	StringLiteral []int8    // String literal contents including terminating '\0'
 
-	File              *File    //Source location
+	File              *File    // Source location
+	Filename          string   // Filename
 	LineNo            int      // Line number
+	LineDelta         int      // Line number
 	AtBeginningOfLine bool     // True if this token is at beginning of line
 	HasSpace          bool     // True if this token follows a space character
 	Hideset           *Hideset // For macro expansion
@@ -65,6 +71,7 @@ func newToken(kind TokenKind, start int, end int) *Token {
 		File:              currentFile,
 		AtBeginningOfLine: atBeginningOfLine,
 		HasSpace:          hasSpace,
+		Filename:          currentFile.DisplayName,
 	}
 
 	atBeginningOfLine = false
@@ -308,15 +315,15 @@ func stringLiteralEnd(src *[]int8, p int) int {
 	return p
 }
 
-func readStringLiteral(src *[]int8, start int, quote int) *Token {
-	buf := src
-	end := stringLiteralEnd(src, quote+1)
+func readStringLiteral(file *File, start int, quote int) *Token {
+	buf := file.Contents
+	end := stringLiteralEnd(buf, quote+1)
 	str := make([]int8, end-quote)
 	var len int64 = 0
 
 	for p := quote + 1; p < end; {
 		if (*buf)[p] == '\\' {
-			c, new_pos := readEscapedChar(src, p+1)
+			c, new_pos := readEscapedChar(buf, p+1)
 			str[len] = int8(c)
 			len += 1
 			p = new_pos
@@ -328,6 +335,7 @@ func readStringLiteral(src *[]int8, start int, quote int) *Token {
 	}
 
 	tok := newToken(TK_STR, start, end+1)
+	tok.File = file
 	tok.Ty = arrayOf(TyChar, len+1)
 	tok.StringLiteral = str
 	return tok
@@ -816,7 +824,7 @@ func tokenize(file *File) *Token {
 
 		// String literal
 		if (*src)[p] == '"' {
-			cur.Next = readStringLiteral(src, p, p)
+			cur.Next = readStringLiteral(currentFile, p, p)
 			cur = cur.Next
 			p += cur.Length
 			continue
@@ -824,7 +832,7 @@ func tokenize(file *File) *Token {
 
 		// UTF-8 string literal
 		if (*src)[p] == 'u' && (*src)[p+1] == '8' && (*src)[p+2] == '"' {
-			cur.Next = readStringLiteral(src, p, p+2)
+			cur.Next = readStringLiteral(currentFile, p, p+2)
 			cur = cur.Next
 			p += cur.Length
 			continue
@@ -931,9 +939,10 @@ func readFile(path string) *[]int8 {
 
 func newFile(name string, fileNo int, contents *[]int8) *File {
 	file := &File{
-		Name:     name,
-		FileNo:   fileNo,
-		Contents: contents,
+		Name:        name,
+		FileNo:      fileNo,
+		Contents:    contents,
+		DisplayName: name,
 	}
 	return file
 }
