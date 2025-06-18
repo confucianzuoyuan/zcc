@@ -1017,6 +1017,14 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if tok.isEqual("pragma") {
+			tok = tok.Next
+			for !tok.AtBeginningOfLine {
+				tok = tok.Next
+			}
+			continue
+		}
+
 		if tok.isEqual("error") {
 			errorTok(tok, "error")
 		}
