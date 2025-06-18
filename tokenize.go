@@ -127,7 +127,7 @@ func verrorAt(filename string, input *[]int8, line_no int, loc int, msg string) 
 	fmt.Fprintf(os.Stderr, "%s", B2S((*input)[line:end+1]))
 
 	// Show the error message
-	pos := loc - line + indent
+	pos := displayWidth(input, line, loc-line) + indent
 
 	fmt.Fprintf(os.Stderr, "%*s", pos, "") // print pos spaces.
 	fmt.Fprintf(os.Stderr, "^ %s\n", msg)
