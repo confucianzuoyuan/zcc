@@ -1017,6 +1017,23 @@ func fileMacro(tmpl *Token) *Token {
 	return newStringToken(tmpl.File.DisplayName, tmpl)
 }
 
+// __TIMESTAMP__ is expanded to a string describing the last
+// modification time of the current file. E.g.
+// "Fri Jul 24 01:32:50 2020"
+func timestampMacro(tmpl *Token) *Token {
+	fi, err := os.Stat(tmpl.File.Name)
+	if err != nil {
+		return newStringToken("??? ??? ?? ??:??:?? ????", tmpl)
+	}
+	modTime := fi.ModTime()
+
+	// 格式化成类似 "Fri Jul 24 01:32:50 2020"
+	// Go 的 time.Format 需要用参考时间 Mon Jan 2 15:04:05 MST 2006
+	formatted := modTime.Format("Mon Jan 02 15:04:05 2006")
+
+	return newStringToken(formatted, tmpl)
+}
+
 // __DATE__ is expanded to the current date, e.g. "May 17 2020".
 // formatDate 格式化时间为类似 __DATE__ 的字符串，带双引号，比如 "May 17 2020"
 func formatDate(t time.Time) string {
@@ -1102,6 +1119,7 @@ func initMacros() {
 	addBuiltin("__FILE__", fileMacro)
 	addBuiltin("__LINE__", lineMacro)
 	addBuiltin("__COUNTER__", counterMacro)
+	addBuiltin("__TIMESTAMP__", timestampMacro)
 
 	now := time.Now() // 当前时间，包含本地时区
 	defineMacro("__DATE__", formatDate(now))
