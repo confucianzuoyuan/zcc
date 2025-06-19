@@ -1308,7 +1308,6 @@ func emitData(prog *Obj) {
 		if v.Ty.Kind == TY_ARRAY && v.Ty.Size >= 16 {
 			align = int64(math.Max(16, float64(v.Align)))
 		}
-		printlnToFile("  .align %d", align)
 
 		// Common symbol
 		if opt_fcommon && v.IsTentative {
@@ -1323,6 +1322,10 @@ func emitData(prog *Obj) {
 			} else {
 				printlnToFile("  .data")
 			}
+
+			printlnToFile("  .type %s, @object", v.Name)
+			printlnToFile("  .size %s, %d", v.Name, v.Ty.Size)
+			printlnToFile("  .align %d", align)
 			printlnToFile("%s:", v.Name)
 
 			rel := v.Rel
@@ -1348,6 +1351,7 @@ func emitData(prog *Obj) {
 			printlnToFile("  .bss")
 		}
 
+		printlnToFile("  .align %d", align)
 		printlnToFile("%s:", v.Name)
 		printlnToFile("  .zero %d", v.Ty.Size)
 	}
@@ -1372,6 +1376,7 @@ func emitText(prog *Obj) {
 		}
 
 		printlnToFile("  .text")
+		printlnToFile("  .type %s, @function", fn.Name)
 		printlnToFile("%s:", fn.Name)
 		currentFn = fn
 
