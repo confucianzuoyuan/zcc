@@ -12,8 +12,18 @@ import (
 	"syscall"
 )
 
+type FileType int
+
+const (
+	FILE_NONE FileType = iota
+	FILE_C
+	FILE_ASM
+	FILE_OBJ
+)
+
 var includePaths []string
 
+var opt_x FileType
 var opt_include []string
 var opt_fcommon bool = true
 var opt_E bool
@@ -47,7 +57,7 @@ func usage(status int) {
 }
 
 func takeArg(arg string) bool {
-	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include"
+	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include" || arg == "-x"
 }
 
 func parseArgs(args []string) {
@@ -154,6 +164,17 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-x" {
+			idx++
+			opt_x = parseOptX(args[idx])
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-x") {
+			opt_x = parseOptX(args[idx][2:])
+			continue
+		}
+
 		if args[idx] == "-cc1-input" {
 			baseFile = args[idx+1]
 			idx += 1
@@ -189,6 +210,39 @@ func parseArgs(args []string) {
 	if len(inputPaths) == 0 {
 		panic("no input files")
 	}
+}
+
+func getFileType(filename string) FileType {
+	if strings.HasSuffix(filename, ".o") {
+		return FILE_OBJ
+	}
+
+	if opt_x != FILE_NONE {
+		return opt_x
+	}
+
+	if strings.HasSuffix(filename, ".c") {
+		return FILE_C
+	}
+
+	if strings.HasSuffix(filename, ".s") {
+		return FILE_ASM
+	}
+
+	panic("<command line>: unknown file extension: " + filename)
+}
+
+func parseOptX(s string) FileType {
+	if s == "c" {
+		return FILE_C
+	}
+	if s == "assembler" {
+		return FILE_ASM
+	}
+	if s == "none" {
+		return FILE_NONE
+	}
+	panic("<command line>: unknown argument for -x: " + s)
 }
 
 func runSubprocess(args []string) {
@@ -514,23 +568,24 @@ func main() {
 			output = replaceExtension(input, ".o")
 		}
 
+		filetype := getFileType(input)
+
 		// Handle .o
-		if strings.HasSuffix(input, ".o") {
+		if filetype == FILE_OBJ {
 			ldArgs = append(ldArgs, input)
 			continue
 		}
 
 		// Handle .s
-		if strings.HasSuffix(input, ".s") {
+		if filetype == FILE_ASM {
 			if !opt_S {
 				assemble(input, output)
 			}
 			continue
 		}
 
-		// Handle .c
-		if !strings.HasSuffix(input, ".c") && input != "-" {
-			panic("unknown file extension: " + input)
+		if filetype != FILE_C {
+			panic("must be .c file")
 		}
 
 		// Just preprocess
