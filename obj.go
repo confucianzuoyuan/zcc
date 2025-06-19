@@ -28,6 +28,11 @@ type Obj struct {
 	Locals    *Obj
 	VaArea    *Obj // Variable argument area
 	StackSize int64
+
+	// Static inline function
+	IsLive bool
+	IsRoot bool
+	Refs   []string
 }
 
 // Global variable can be initialized either by a constant expression

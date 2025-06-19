@@ -1292,6 +1292,12 @@ func emitText(prog *Obj) {
 			continue
 		}
 
+		// No code is emitted for "static inline" functions
+		// if no one is referencing them.
+		if !fn.IsLive {
+			continue
+		}
+
 		if fn.IsStatic {
 			printlnToFile("  .local %s", fn.Name)
 		} else {

@@ -2936,6 +2936,36 @@ func genericSelection(rest **Token, tok *Token) *AstNode {
 	return ret
 }
 
+func findFunction(name string) *Obj {
+	sc := scope
+	for sc.Next != nil {
+		sc = sc.Next
+	}
+
+	for sc2 := sc.Variables; sc2 != nil; sc2 = sc2.Next {
+		if sc2.Name == name && sc2.Variable != nil && sc2.Variable.IsFunction {
+			return sc2.Variable
+		}
+	}
+
+	return nil
+}
+
+func markLive(v *Obj) {
+	if !v.IsFunction || v.IsLive {
+		return
+	}
+
+	v.IsLive = true
+
+	for i := range v.Refs {
+		fn := findFunction(v.Refs[i])
+		if fn != nil {
+			markLive(fn)
+		}
+	}
+}
+
 /*
  * primary = "(" "{" stmt+ "}" ")"
  *         | "(" expr ")"
@@ -3027,6 +3057,15 @@ func primary(rest **Token, tok *Token) *AstNode {
 		sc := findVariable(tok)
 		*rest = tok.Next
 
+		// For "static inline" function
+		if sc != nil && sc.Variable != nil && sc.Variable.IsFunction {
+			if currentFunction != nil {
+				currentFunction.Refs = append(currentFunction.Refs, sc.Variable.Name)
+			} else {
+				sc.Variable.IsRoot = true
+			}
+		}
+
 		if sc != nil {
 			if sc.Variable != nil {
 				return newVarNode(sc.Variable, tok)
@@ -3104,6 +3143,7 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	fn.IsDefinition = !consume(&tok, tok, ";")
 	fn.IsStatic = attr.IsStatic || (attr.IsInline && !attr.IsExtern)
 	fn.IsInline = attr.IsInline
+	fn.IsRoot = !(fn.IsStatic && fn.IsInline)
 
 	if !fn.IsDefinition {
 		return tok
@@ -3209,6 +3249,12 @@ func parse(tok *Token) *Obj {
 
 		// Global variable
 		tok = globalVariable(tok, basety, &attr)
+	}
+
+	for v := globals; v != nil; v = v.Next {
+		if v.IsRoot {
+			markLive(v)
+		}
 	}
 
 	return globals
