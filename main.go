@@ -14,6 +14,7 @@ import (
 
 var includePaths []string
 
+var opt_include []string
 var opt_fcommon bool = true
 var opt_E bool
 var opt_S bool
@@ -46,7 +47,7 @@ func usage(status int) {
 }
 
 func takeArg(arg string) bool {
-	return arg == "-o" || arg == "-I" || arg == "-idirafter"
+	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include"
 }
 
 func parseArgs(args []string) {
@@ -144,6 +145,12 @@ func parseArgs(args []string) {
 
 		if strings.HasPrefix(args[idx], "-U") {
 			undefMacro(args[idx][2:])
+			continue
+		}
+
+		if args[idx] == "-include" {
+			idx++
+			opt_include = append(opt_include, args[idx])
 			continue
 		}
 
@@ -285,12 +292,51 @@ func createTmpfile() string {
 	return path
 }
 
-func cc1() {
-	// Tokenize and parse.
-	tok := tokenizeFile(baseFile)
+func mustTokenzieFile(path string) *Token {
+	tok := tokenizeFile(path)
 	if tok == nil {
-		panic(baseFile + ": error")
+		panic(path)
 	}
+	return tok
+}
+
+func appendTokens(tok1 *Token, tok2 *Token) *Token {
+	if tok1 == nil || tok1.Kind == TK_EOF {
+		return tok2
+	}
+
+	t := tok1
+	for t.Next.Kind != TK_EOF {
+		t = t.Next
+	}
+	t.Next = tok2
+	return tok1
+}
+
+func cc1() {
+	var tok *Token = nil
+
+	// Process -include option
+	for i := 0; i < len(opt_include); i++ {
+		incl := opt_include[i]
+
+		path := ""
+		if fileExists(incl) {
+			path = incl
+		} else {
+			path = searchIncludePaths(incl)
+			if path == "" {
+				panic(fmt.Sprintf("-include: %s", incl))
+			}
+		}
+
+		tok2 := mustTokenzieFile(path)
+		tok = appendTokens(tok, tok2)
+	}
+
+	// Tokenize and parse.
+	tok2 := mustTokenzieFile(baseFile)
+	tok = appendTokens(tok, tok2)
 	tok = preprocess(tok)
 
 	// If -E is given, print out preprocessed C code as a result.

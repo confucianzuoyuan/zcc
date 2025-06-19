@@ -179,4 +179,11 @@ check '-fcommon'
 echo 'int foo;' | ./zcc -fno-common -S -o- - | grep -q '^foo:'
 check '-fno-common'
 
+# -include
+echo foo > $tmp/out.h
+echo bar | ./zcc -include $tmp/out.h -E -o- - | grep -q -z 'foo.*bar'
+check -include
+echo NULL | ./zcc -Iinclude -include stdio.h -E -o- - | grep -q 0
+check -include
+
 echo OK
