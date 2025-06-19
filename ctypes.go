@@ -190,9 +190,9 @@ func pointerTo(base *CType) *CType {
 }
 
 func funcType(returnTy *CType) *CType {
-	ty := &CType{
-		Kind: TY_FUNC,
-	}
+	// The C spec disallows sizeof(<function type>), but
+	// GCC allows that and the expression is evaluated to 1.
+	ty := newType(TY_FUNC, 1, 1)
 	ty.ReturnType = returnTy
 	return ty
 }
