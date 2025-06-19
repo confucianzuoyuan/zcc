@@ -1,3 +1,3 @@
 int main() {
-    return sizeof(5.l);
+    return 5.l;
 }

@@ -746,10 +746,10 @@ func genExpr(node *AstNode) {
 			printlnToFile("  movq %%rax, %%xmm0")
 			return
 		case TY_LDOUBLE:
-			u := math.Float64bits(node.FloatValue)
-			printlnToFile("  mov $%d, %%rax  # long double %f", 0, node.FloatValue)
+			u := NewFromFloat64(node.FloatValue)
+			printlnToFile("  mov $%d, %%rax  # long double %f", u.m, node.FloatValue)
 			printlnToFile("  mov %%rax, -16(%%rsp)")
-			printlnToFile("  mov $%d, %%rax", u)
+			printlnToFile("  mov $%d, %%rax", u.se)
 			printlnToFile("  mov %%rax, -8(%%rsp)")
 			printlnToFile("  fldt -16(%%rsp)")
 			return
