@@ -1330,6 +1330,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 					continue
 				}
 			} else if ty.Kind == TY_LDOUBLE {
+				// DO NOTHING
 			} else {
 				gp += 1
 				if gp-1 < GP_MAX {
