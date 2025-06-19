@@ -2847,12 +2847,63 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 }
 
 /*
+	generic-selection = "(" assign "," generic-assoc ("," generic-assoc)* ")"
+
+//
+// generic-assoc = type-name ":" assign
+//               | "default" ":" assign
+*/
+func genericSelection(rest **Token, tok *Token) *AstNode {
+	start := tok
+	tok = skip(tok, "(")
+
+	ctrl := assign(&tok, tok)
+	ctrl.addType()
+
+	t1 := ctrl.Ty
+	if t1.Kind == TY_FUNC {
+		t1 = pointerTo(t1)
+	} else if t1.Kind == TY_ARRAY {
+		t1 = pointerTo(t1.Base)
+	}
+
+	var ret *AstNode = nil
+
+	for !consume(rest, tok, ")") {
+		tok = skip(tok, ",")
+
+		if tok.isEqual("default") {
+			tok = skip(tok.Next, ":")
+			node := assign(&tok, tok)
+			if ret == nil {
+				ret = node
+			}
+			continue
+		}
+
+		t2 := typeName(&tok, tok)
+		tok = skip(tok, ":")
+		node := assign(&tok, tok)
+		if t1.isCompatibleWith(t2) {
+			ret = node
+		}
+	}
+
+	if ret == nil {
+		errorTok(start, "controlling expression type not compatible with any generic association type")
+	}
+
+	return ret
+}
+
+/*
  * primary = "(" "{" stmt+ "}" ")"
  *         | "(" expr ")"
  *         | "sizeof" "(" type-name ")"
  *         | "sizeof" unary
  *         | "_Alignof" "(" type-name ")"
  *         | "_Alignof" unary
+ *         | "_Generic" generic-selection
  *         | "__builtin_types_compatible_p" "(" type-name, type-name, ")"
  *         | "__builtin_reg_class" "(" type-name ")"
  *         | ident
@@ -2898,6 +2949,10 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node := unary(rest, tok.Next)
 		node.addType()
 		return newULong(node.Ty.Align, tok)
+	}
+
+	if tok.isEqual("_Generic") {
+		return genericSelection(rest, tok.Next)
 	}
 
 	if tok.isEqual("__builtin_types_compatible_p") {

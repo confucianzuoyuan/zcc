@@ -58,6 +58,9 @@ func (t *CType) print() {
 		println("float")
 	case TY_DOUBLE:
 		println("double")
+	case TY_PTR:
+		print("ptr to ")
+		t.Base.print()
 	}
 }
 
