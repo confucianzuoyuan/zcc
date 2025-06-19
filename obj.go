@@ -22,6 +22,7 @@ type Obj struct {
 	Rel      *Relocation
 
 	// Function
+	IsInline  bool
 	Params    *Obj
 	Body      *AstNode
 	Locals    *Obj
