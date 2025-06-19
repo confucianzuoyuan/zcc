@@ -210,6 +210,11 @@ func parseArgs(args []string) {
 	if len(inputPaths) == 0 {
 		panic("no input files")
 	}
+
+	// -E implies that the input is the C macro language.
+	if opt_E {
+		opt_x = FILE_C
+	}
 }
 
 func getFileType(filename string) FileType {

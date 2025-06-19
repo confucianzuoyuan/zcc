@@ -196,4 +196,8 @@ echo 'int x;' > $tmp/foo.c
 ./zcc -c -x assembler -x none -o $tmp/foo.o $tmp/foo.c
 check '-x none'
 
+# -E
+echo foo | ./zcc -E - | grep -q foo
+check -E
+
 echo OK
