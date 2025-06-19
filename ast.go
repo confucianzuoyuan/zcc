@@ -46,6 +46,7 @@ const (
 	ND_NUM                          // Integer
 	ND_CAST                         // Type cast
 	ND_MEMZERO                      // Zero-clear a stack variable
+	ND_ASM                          // "asm"
 )
 
 type AstNode struct {
@@ -87,6 +88,9 @@ type AstNode struct {
 	// Switch-cases
 	CaseNext    *AstNode
 	DefaultCase *AstNode
+
+	// "asm" string literal
+	AsmStr string
 
 	// Variable
 	Variable *Obj

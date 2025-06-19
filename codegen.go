@@ -1163,6 +1163,9 @@ func genStmt(node *AstNode) {
 	case ND_EXPR_STMT:
 		genExpr(node.Lhs)
 		return
+	case ND_ASM:
+		printlnToFile("  %s", node.AsmStr)
+		return
 	}
 
 	errorTok(node.Tok, "invalid statement")

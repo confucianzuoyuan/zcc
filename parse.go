@@ -1732,6 +1732,7 @@ func (tok *Token) isTypename() bool {
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
  *	    | "do" stmt "while" "(" expr ")" ";"
+ *      | "asm" asm-stmt
  *      | "goto" ident ";"
  *      | "break" ";"
  *	    | "continue" ";"
@@ -1899,6 +1900,10 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		tok = skip(tok, ")")
 		*rest = skip(tok, ";")
 		return node
+	}
+
+	if tok.isEqual("asm") {
+		return asmStmt(rest, tok)
 	}
 
 	if tok.isEqual("goto") {
@@ -2301,6 +2306,26 @@ func expr(rest **Token, tok *Token) *AstNode {
 	}
 
 	*rest = tok
+	return node
+}
+
+// asm-stmt = "asm" ("volatile" | "inline")* "(" string-literal ")"
+func asmStmt(rest **Token, tok *Token) *AstNode {
+	node := newNode(ND_ASM, tok)
+	tok = tok.Next
+
+	for tok.isEqual("volatile") || tok.isEqual("inline") {
+		tok = tok.Next
+	}
+
+	tok = skip(tok, "(")
+	if tok.Kind != TK_STR || tok.Ty.Base.Kind != TY_CHAR {
+		errorTok(tok, "expected string literal")
+	}
+
+	node.AsmStr = B2S(tok.StringLiteral)
+	*rest = skip(tok.Next, ")")
+
 	return node
 }
 
