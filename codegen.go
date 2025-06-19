@@ -1260,7 +1260,7 @@ func emitData(prog *Obj) {
 		}
 		printlnToFile("  .align %d", align)
 
-		if v.IsTentative {
+		if opt_fcommon && v.IsTentative {
 			printlnToFile("  .comm %s, %d, %d", v.Name, v.Ty.Size, align)
 			continue
 		}

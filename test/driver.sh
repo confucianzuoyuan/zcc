@@ -168,4 +168,15 @@ check -idirafter
 echo "#include \"idirafter\"" | ./zcc -idirafter $tmp/dir1 -I$tmp/dir2 -E - | grep -q bar
 check -idirafter
 
+# -fcommon
+echo 'int foo;' | ./zcc -S -o- - | grep -q '\.comm foo'
+check '-fcommon (default)'
+
+echo 'int foo;' | ./zcc -fcommon -S -o- - | grep -q '\.comm foo'
+check '-fcommon'
+
+# -fno-common
+echo 'int foo;' | ./zcc -fno-common -S -o- - | grep -q '^foo:'
+check '-fno-common'
+
 echo OK
