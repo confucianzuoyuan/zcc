@@ -2304,13 +2304,25 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// conditional = logor ("?" expr ":" conditional)?
+// conditional = logor ("?" expr? ":" conditional)?
 func conditional(rest **Token, tok *Token) *AstNode {
 	cond := logor(&tok, tok)
 
 	if !tok.isEqual("?") {
 		*rest = tok
 		return cond
+	}
+
+	if tok.Next.isEqual(":") {
+		// [GNU] Compile `a ?: b` as `tmp = a, tmp ? tmp : b`.
+		cond.addType()
+		v := newLocalVar("", cond.Ty)
+		lhs := newBinary(ND_ASSIGN, newVarNode(v, tok), cond, tok)
+		rhs := newNode(ND_COND, tok)
+		rhs.Cond = newVarNode(v, tok)
+		rhs.Then = newVarNode(v, tok)
+		rhs.Else = conditional(rest, tok.Next.Next)
+		return newBinary(ND_COMMA, lhs, rhs, tok)
 	}
 
 	node := newNode(ND_COND, tok)
