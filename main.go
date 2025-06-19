@@ -45,7 +45,7 @@ func usage(status int) {
 }
 
 func takeArg(arg string) bool {
-	return arg == "-o" || arg == "-I"
+	return arg == "-o" || arg == "-I" || arg == "-idirafter"
 }
 
 func parseArgs(args []string) {
@@ -58,6 +58,8 @@ func parseArgs(args []string) {
 			}
 		}
 	}
+
+	idirafter := []string{}
 
 	for idx := 1; idx < len(args); idx += 1 {
 		if args[idx] == "-###" {
@@ -146,6 +148,12 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-idirafter" {
+			idirafter = append(idirafter, args[idx])
+			idx++
+			continue
+		}
+
 		if strings.HasPrefix(args[idx], "-O") || strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-g") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" {
 			continue
 		}
@@ -157,6 +165,8 @@ func parseArgs(args []string) {
 
 		inputPaths = append(inputPaths, args[idx])
 	}
+
+	includePaths = append(includePaths, idirafter...)
 
 	if len(inputPaths) == 0 {
 		panic("no input files")
