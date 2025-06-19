@@ -835,6 +835,13 @@ func genExpr(node *AstNode) {
 		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_FUNCALL:
+		if node.Lhs.Kind == ND_VAR && node.Lhs.Variable.Name == "alloca" {
+			genExpr(node.Args)
+			printlnToFile("  mov %%rax, %%rdi")
+			builtin_alloca()
+			return
+		}
+
 		stackArgs := pushArgs(node)
 		genExpr(node.Lhs)
 
@@ -1249,6 +1256,34 @@ func assignLocalVariableOffsets(prog *Obj) {
 	}
 }
 
+func builtin_alloca() {
+	// Align size to 16 bytes.
+	printlnToFile("  add $15, %%rdi")
+	printlnToFile("  and $0xfffffff0, %%edi")
+
+	// Shift the temporary area by %rdi.
+	printlnToFile("  mov %d(%%rbp), %%rcx", currentFn.AllocaBottom.Offset)
+	printlnToFile("  sub %%rsp, %%rcx")
+	printlnToFile("  mov %%rsp, %%rax")
+	printlnToFile("  sub %%rdi, %%rsp")
+	printlnToFile("  mov %%rsp, %%rdx")
+	printlnToFile("1:")
+	printlnToFile("  cmp $0, %%rcx")
+	printlnToFile("  je 2f")
+	printlnToFile("  mov (%%rax), %%r8b")
+	printlnToFile("  mov %%r8b, (%%rdx)")
+	printlnToFile("  inc %%rdx")
+	printlnToFile("  inc %%rax")
+	printlnToFile("  dec %%rcx")
+	printlnToFile("  jmp 1b")
+	printlnToFile("2:")
+
+	// Move alloca_bottom pointer.
+	printlnToFile("  mov %d(%%rbp), %%rax", currentFn.AllocaBottom.Offset)
+	printlnToFile("  sub %%rdi, %%rax")
+	printlnToFile("  mov %%rax, %d(%%rbp)", currentFn.AllocaBottom.Offset)
+}
+
 func emitData(prog *Obj) {
 	for v := prog; v != nil; v = v.Next {
 		if v.IsFunction || !v.IsDefinition {
@@ -1336,6 +1371,7 @@ func emitText(prog *Obj) {
 		printlnToFile("  push %%rbp")
 		printlnToFile("  mov %%rsp, %%rbp")
 		printlnToFile("  sub $%d, %%rsp", fn.StackSize)
+		printlnToFile("  mov %%rsp, %d(%%rbp)", fn.AllocaBottom.Offset)
 
 		// Save arg registers if function is variadic
 		if fn.VaArea != nil {

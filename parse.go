@@ -3170,6 +3170,7 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	if ty.IsVariadic {
 		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))
 	}
+	fn.AllocaBottom = newLocalVar("__alloca_size__", pointerTo(TyChar))
 
 	tok = skip(tok, "{")
 
@@ -3189,6 +3190,13 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	leaveScope()
 	resolveGotoLabels()
 	return tok
+}
+
+func declareBuiltinFunctions() {
+	ty := funcType(pointerTo(TyVoid))
+	ty.Params = TyInt.copy()
+	builtin := newGlobalVar("alloca", ty)
+	builtin.IsDefinition = false
 }
 
 func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
@@ -3268,6 +3276,7 @@ func (tok *Token) isFunction() bool {
 
 // program = (function-definition | global-variable)*
 func parse(tok *Token) *Obj {
+	declareBuiltinFunctions()
 	globals = nil
 
 	for tok.Kind != TK_EOF {
