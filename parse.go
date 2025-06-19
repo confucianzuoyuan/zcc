@@ -56,6 +56,7 @@ type VarAttr struct {
 	IsStatic  bool
 	IsExtern  bool
 	IsInline  bool
+	IsTls     bool
 	Align     int64
 }
 
@@ -860,6 +861,7 @@ func typeofSpecifier(rest **Token, tok *Token) *CType {
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef" | "static" | "extern" | "inline"
+ *             | "_Thread_local" | "__thread"
  *             | "signed" | "unsigned"
  *             | struct-decl | union-decl | typedef-name
  *             | enum-specifier | typeof-specifier
@@ -902,7 +904,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 	for tok.isTypename() {
 		// Handle storage class specifiers.
-		if tok.isEqual("typedef") || tok.isEqual("static") || tok.isEqual("extern") || tok.isEqual("inline") {
+		if tok.isEqual("typedef") || tok.isEqual("static") || tok.isEqual("extern") || tok.isEqual("inline") || tok.isEqual("_Thread_local") || tok.isEqual("__thread") {
 			if attr == nil {
 				errorTok(tok, "storage class specifier is not allowed in this context")
 			}
@@ -912,13 +914,15 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				attr.IsStatic = true
 			} else if tok.isEqual("extern") {
 				attr.IsExtern = true
-			} else {
+			} else if tok.isEqual("inline") {
 				attr.IsInline = true
+			} else {
+				attr.IsTls = true
 			}
 
 			if attr.IsTypeDef {
-				if attr.IsExtern || attr.IsStatic || attr.IsInline {
-					errorTok(tok, "typedef may not be used together with static, extern or inline")
+				if attr.IsExtern || attr.IsStatic || attr.IsInline || attr.IsTls {
+					errorTok(tok, "typedef may not be used together with static, extern, inline, __thread or _Thread_local")
 				}
 			}
 			tok = tok.Next
@@ -1714,7 +1718,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn", "float", "double", "typeof", "inline",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn", "float", "double", "typeof", "inline", "_Thread_local", "__thread",
 	}
 
 	for _, k := range kw {
@@ -3204,12 +3208,13 @@ func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 		variable := newGlobalVar(ty.Name.getIdent(), ty)
 		variable.IsDefinition = !attr.IsExtern
 		variable.IsStatic = attr.IsStatic
+		variable.IsTls = attr.IsTls
 		if attr.Align > 0 {
 			variable.Align = attr.Align
 		}
 		if tok.isEqual("=") {
 			globalVarInitializer(&tok, tok.Next, variable)
-		} else if !attr.IsExtern {
+		} else if !attr.IsExtern && !attr.IsTls {
 			variable.IsTentative = true
 		}
 	}

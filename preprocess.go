@@ -1152,7 +1152,6 @@ func initMacros() {
 	defineMacro("__STDC_HOSTED__", "1")
 	defineMacro("__STDC_NO_ATOMICS__", "1")
 	defineMacro("__STDC_NO_COMPLEX__", "1")
-	defineMacro("__STDC_NO_THREADS__", "1")
 	defineMacro("__STDC_NO_VLA__", "1")
 	defineMacro("__STDC_VERSION__", "201112L")
 	defineMacro("__STDC__", "1")

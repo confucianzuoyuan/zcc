@@ -351,6 +351,13 @@ func genAddr(node *AstNode) {
 			printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
 			return
 		}
+
+		// Thread-local variable
+		if node.Variable.IsTls {
+			printlnToFile("  mov %%fs:0, %%rax")
+			printlnToFile("  add $%s@tpoff, %%rax", node.Variable.Name)
+			return
+		}
 		// Here, we generate an absolute address of a function or a global
 		// variable. Even though they exist at a certain address at runtime,
 		// their addresses are not known at link-time for the following
@@ -1260,13 +1267,19 @@ func emitData(prog *Obj) {
 		}
 		printlnToFile("  .align %d", align)
 
+		// Common symbol
 		if opt_fcommon && v.IsTentative {
 			printlnToFile("  .comm %s, %d, %d", v.Name, v.Ty.Size, align)
 			continue
 		}
 
+		// .data or .tdata
 		if v.InitData != nil {
-			printlnToFile("  .data")
+			if v.IsTls {
+				printlnToFile("  .section .tdata,\"awT\",@progbits")
+			} else {
+				printlnToFile("  .data")
+			}
 			printlnToFile("%s:", v.Name)
 
 			rel := v.Rel
@@ -1285,7 +1298,13 @@ func emitData(prog *Obj) {
 			continue
 		}
 
-		printlnToFile("  .bss")
+		// .bss or .tbss
+		if v.IsTls {
+			printlnToFile("  .section .tbss,\"awT\",@nobits")
+		} else {
+			printlnToFile("  .bss")
+		}
+
 		printlnToFile("%s:", v.Name)
 		printlnToFile("  .zero %d", v.Ty.Size)
 	}

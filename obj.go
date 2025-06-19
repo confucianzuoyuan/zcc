@@ -19,6 +19,7 @@ type Obj struct {
 
 	// Global variable
 	IsTentative bool
+	IsTls       bool
 	InitData    []int8
 	Rel         *Relocation
 
