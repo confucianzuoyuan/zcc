@@ -90,6 +90,8 @@ type InitDesg struct {
 	Variable *Obj // Variable to initialize
 }
 
+var builtinAlloca *Obj = nil
+
 var uniqueNameId int = 0
 
 // All local variable instances created during parsing are
@@ -153,6 +155,63 @@ func findTag(tok *Token) *CType {
 	}
 
 	return nil
+}
+
+// Generate code for computing a VLA size.
+func computeVlaSize(ty *CType, tok *Token) *AstNode {
+	node := newNode(ND_NULL_EXPR, tok)
+	if ty.Base != nil {
+		node = newBinary(ND_COMMA, node, computeVlaSize(ty.Base, tok), tok)
+	}
+
+	if ty.Kind != TY_VLA {
+		return node
+	}
+
+	var baseSize *AstNode
+	if ty.Base.Kind == TY_VLA {
+		baseSize = newVarNode(ty.Base.VlaSize, tok)
+	} else {
+		baseSize = newNum(ty.Base.Size, tok)
+	}
+
+	ty.VlaSize = newLocalVar("", TyULong)
+	expr := newBinary(ND_ASSIGN, newVarNode(ty.VlaSize, tok), newBinary(ND_MUL, ty.VlaLen, baseSize, tok), tok)
+	return newBinary(ND_COMMA, node, expr, tok)
+}
+
+func newAlloca(sz *AstNode) *AstNode {
+	node := newUnary(ND_FUNCALL, newVarNode(builtinAlloca, sz.Tok), sz.Tok)
+	node.FuncType = builtinAlloca.Ty
+	node.Ty = builtinAlloca.Ty.ReturnType
+	node.Args = sz
+	sz.addType()
+	return node
+}
+
+func (node *AstNode) isConstExpr() bool {
+	node.addType()
+
+	switch node.Kind {
+	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR, ND_EQ, ND_NE, ND_LT, ND_LE, ND_LOGAND, ND_LOGOR:
+		return node.Lhs.isConstExpr() && node.Rhs.isConstExpr()
+	case ND_COND:
+		if !node.Cond.isConstExpr() {
+			return false
+		}
+		if eval(node.Cond) != 0 {
+			return node.Then.isConstExpr()
+		} else {
+			return node.Else.isConstExpr()
+		}
+	case ND_COMMA:
+		return node.Rhs.isConstExpr()
+	case ND_NEG, ND_NOT, ND_BITNOT, ND_CAST:
+		return node.Lhs.isConstExpr()
+	case ND_NUM:
+		return true
+	}
+	return false
 }
 
 func newCast(expr *AstNode, ty *CType) *AstNode {
@@ -1393,10 +1452,14 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 		return arrayOf(ty, -1)
 	}
 
-	sz := constExpr(&tok, tok)
+	expr := conditional(&tok, tok)
 	tok = skip(tok, "]")
 	ty = typeSuffix(rest, tok, ty)
-	return arrayOf(ty, sz)
+
+	if ty.Kind == TY_VLA || !expr.isConstExpr() {
+		return vlaOf(ty, expr)
+	}
+	return arrayOf(ty, eval(expr))
 }
 
 /*
@@ -1526,6 +1589,27 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			if tok.isEqual("=") {
 				globalVarInitializer(&tok, tok.Next, variable)
 			}
+			continue
+		}
+
+		// Generate code for computing a VLA size. We need to do this
+		// even if ty is not VLA because ty may be a pointer to VLA
+		// (e.g. int (*foo)[n][m] where n and m are variables.)
+		cur.Next = newUnary(ND_EXPR_STMT, computeVlaSize(ty, tok), tok)
+		cur = cur.Next
+
+		if ty.Kind == TY_VLA {
+			if tok.isEqual("=") {
+				errorTok(tok, "variable-sized object may not be initialized")
+			}
+			// Variable length arrays (VLAs) are translated to alloca() calls.
+			// For example, `int x[n+2]` is translated to `tmp = n + 2,
+			// x = alloca(tmp)`.
+			v := newLocalVar(ty.Name.getIdent(), ty)
+			tok := ty.Name
+			expr := newBinary(ND_ASSIGN, newVarNode(v, tok), newAlloca(newVarNode(ty.VlaSize, tok)), tok)
+			cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
+			cur = cur.Next
 			continue
 		}
 
@@ -2998,6 +3082,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("sizeof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
 		ty := typeName(&tok, tok.Next.Next)
 		*rest = skip(tok, ")")
+		if ty.Kind == TY_VLA {
+			return newVarNode(ty.VlaSize, tok)
+		}
 		return newULong(ty.Size, start)
 	}
 
@@ -3010,6 +3097,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("sizeof") {
 		node := unary(rest, tok.Next)
 		node.addType()
+		if node.Ty.Kind == TY_VLA {
+			return newVarNode(node.Ty.VlaSize, tok)
+		}
 		return newULong(node.Ty.Size, tok)
 	}
 
@@ -3195,8 +3285,8 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 func declareBuiltinFunctions() {
 	ty := funcType(pointerTo(TyVoid))
 	ty.Params = TyInt.copy()
-	builtin := newGlobalVar("alloca", ty)
-	builtin.IsDefinition = false
+	builtinAlloca = newGlobalVar("alloca", ty)
+	builtinAlloca.IsDefinition = false
 }
 
 func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {

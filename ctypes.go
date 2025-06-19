@@ -15,6 +15,7 @@ const (
 	TY_PTR
 	TY_FUNC
 	TY_ARRAY
+	TY_VLA // variable-length array
 	TY_STRUCT
 	TY_UNION
 )
@@ -33,6 +34,10 @@ type CType struct {
 	NamePos *Token
 
 	ArrayLength int64
+
+	// Variable-length array
+	VlaLen  *AstNode
+	VlaSize *Obj
 
 	// Struct
 	Members    *Member
@@ -82,6 +87,13 @@ func (ty *CType) copy() *CType {
 		return ret
 	}
 	return ret
+}
+
+func vlaOf(base *CType, length *AstNode) *CType {
+	ty := newType(TY_VLA, 8, 8)
+	ty.Base = base
+	ty.VlaLen = length
+	return ty
 }
 
 var TyVoid = &CType{
@@ -314,7 +326,7 @@ func (node *AstNode) addType() {
 		node.Ty = TyInt
 		return
 	case ND_FUNCALL:
-		node.Ty = TyLong
+		node.Ty = node.FuncType.ReturnType
 		return
 	case ND_NOT, ND_LOGAND, ND_LOGOR:
 		node.Ty = TyInt
