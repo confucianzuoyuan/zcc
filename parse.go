@@ -840,12 +840,28 @@ func consume(rest **Token, tok *Token, str string) bool {
 	return false
 }
 
+// typeof-specifier = "(" (expr | typename) ")"
+func typeofSpecifier(rest **Token, tok *Token) *CType {
+	tok = skip(tok, "(")
+
+	var ty *CType
+	if tok.isTypename() {
+		ty = typeName(&tok, tok)
+	} else {
+		node := expr(&tok, tok)
+		node.addType()
+		ty = node.Ty
+	}
+	*rest = skip(tok, ")")
+	return ty
+}
+
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef" | "static" | "extern"
  *             | "signed" | "unsigned"
  *             | struct-decl | union-decl | typedef-name
- *             | enum-specifier
+ *             | enum-specifier | typeof-specifier
  *             | "const" | "volatile" | "auto" | "register" | "restrict"
  *             | "__restrict" | "__restrict__" | "_Noreturn")+
  *
@@ -928,7 +944,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 		// Handle user-defined types.
 		ty2 := findTypeDef(tok)
-		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || ty2 != nil {
+		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || ty2 != nil {
 			if counter != 0 {
 				break
 			}
@@ -939,6 +955,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				ty = unionDecl(&tok, tok.Next)
 			} else if tok.isEqual("enum") {
 				ty = enumSpecifier(&tok, tok.Next)
+			} else if tok.isEqual("typeof") {
+				ty = typeofSpecifier(&tok, tok.Next)
 			} else {
 				ty = ty2
 				tok = tok.Next
@@ -1693,7 +1711,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
 	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn", "float", "double",
+		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn", "float", "double", "typeof",
 	}
 
 	for _, k := range kw {
