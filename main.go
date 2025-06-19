@@ -175,6 +175,11 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if strings.HasPrefix(args[idx], "-l") {
+			inputPaths = append(inputPaths, args[idx])
+			continue
+		}
+
 		if args[idx] == "-cc1-input" {
 			baseFile = args[idx+1]
 			idx += 1
@@ -563,6 +568,10 @@ func main() {
 
 	for _, p := range inputPaths {
 		input := p
+		if strings.HasPrefix(input, "-l") {
+			ldArgs = append(ldArgs, input)
+			continue
+		}
 		output := ""
 
 		if opt_o != "" {
