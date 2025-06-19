@@ -3209,10 +3209,44 @@ func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
 		}
 		if tok.isEqual("=") {
 			globalVarInitializer(&tok, tok.Next, variable)
+		} else if !attr.IsExtern {
+			variable.IsTentative = true
 		}
 	}
 
 	return tok
+}
+
+// Remove redundant tentative definitions.
+func scanGlobals() {
+	head := Obj{}
+	cur := &head
+
+	for v := globals; v != nil; v = v.Next {
+		if !v.IsTentative {
+			cur.Next = v
+			cur = cur.Next
+			continue
+		}
+
+		// Find another definition of the same identifier.
+		v2 := globals
+		for ; v2 != nil; v2 = v2.Next {
+			if v != v2 && v2.IsDefinition && v.Name == v2.Name {
+				break
+			}
+		}
+
+		// If there's another definition, the tentative definition
+		// is redundant
+		if v2 == nil {
+			cur.Next = v
+			cur = cur.Next
+		}
+	}
+
+	cur.Next = nil
+	globals = head.Next
 }
 
 // Lookahead tokens and returns true if a given token is a start
@@ -3257,5 +3291,7 @@ func parse(tok *Token) *Obj {
 		}
 	}
 
+	// Remove redundant tentative definitions.
+	scanGlobals()
 	return globals
 }

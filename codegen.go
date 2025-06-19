@@ -1260,6 +1260,11 @@ func emitData(prog *Obj) {
 		}
 		printlnToFile("  .align %d", align)
 
+		if v.IsTentative {
+			printlnToFile("  .comm %s, %d, %d", v.Name, v.Ty.Size, align)
+			continue
+		}
+
 		if v.InitData != nil {
 			printlnToFile("  .data")
 			printlnToFile("%s:", v.Name)

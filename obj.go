@@ -18,8 +18,9 @@ type Obj struct {
 	IsStatic     bool
 
 	// Global variable
-	InitData []int8
-	Rel      *Relocation
+	IsTentative bool
+	InitData    []int8
+	Rel         *Relocation
 
 	// Function
 	IsInline  bool
