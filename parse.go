@@ -3104,7 +3104,13 @@ func primary(rest **Token, tok *Token) *AstNode {
 		ty := typeName(&tok, tok.Next.Next)
 		*rest = skip(tok, ")")
 		if ty.Kind == TY_VLA {
-			return newVarNode(ty.VlaSize, tok)
+			if ty.VlaSize != nil {
+				return newVarNode(ty.VlaSize, tok)
+			}
+
+			lhs := computeVlaSize(ty, tok)
+			rhs := newVarNode(ty.VlaSize, tok)
+			return newBinary(ND_COMMA, lhs, rhs, tok)
 		}
 		return newULong(ty.Size, start)
 	}
