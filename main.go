@@ -19,6 +19,8 @@ const (
 	FILE_C
 	FILE_ASM
 	FILE_OBJ
+	FILE_AR
+	FILE_DSO
 )
 
 var includePaths []string
@@ -229,12 +231,18 @@ func parseArgs(args []string) {
 }
 
 func getFileType(filename string) FileType {
-	if strings.HasSuffix(filename, ".o") {
-		return FILE_OBJ
-	}
-
 	if opt_x != FILE_NONE {
 		return opt_x
+	}
+
+	if strings.HasSuffix(filename, ".a") {
+		return FILE_AR
+	}
+	if strings.HasSuffix(filename, ".so") {
+		return FILE_DSO
+	}
+	if strings.HasSuffix(filename, ".o") {
+		return FILE_OBJ
 	}
 
 	if strings.HasSuffix(filename, ".c") {
@@ -591,8 +599,8 @@ func main() {
 
 		filetype := getFileType(input)
 
-		// Handle .o
-		if filetype == FILE_OBJ {
+		// Handle .o or .a
+		if filetype == FILE_OBJ || filetype == FILE_AR || filetype == FILE_DSO {
 			ldArgs = append(ldArgs, input)
 			continue
 		}
