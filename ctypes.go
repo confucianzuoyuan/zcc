@@ -21,9 +21,10 @@ const (
 
 type CType struct {
 	Kind       CTypeKind
-	Size       int64 // sizeof() value
-	Align      int64 // alignment
-	IsUnsigned bool  // unsigned or signed
+	Size       int64  // sizeof() value
+	Align      int64  // alignment
+	IsUnsigned bool   // unsigned or signed
+	Origin     *CType // for type compatibility check
 
 	Base *CType
 
@@ -74,6 +75,7 @@ func (ty *CType) copy() *CType {
 		}
 
 		ret.Members = head.Next
+		ret.Origin = ty
 		return ret
 	}
 	return ret
@@ -365,4 +367,58 @@ func (node *AstNode) addType() {
 		errorTok(node.Tok, "statement expression returning void is not supported")
 		return
 	}
+}
+
+func (t1 *CType) isCompatibleWith(t2 *CType) bool {
+	if t1 == t2 {
+		return true
+	}
+
+	if t1.Origin != nil {
+		return t1.Origin.isCompatibleWith(t2)
+	}
+
+	if t2.Origin != nil {
+		return t1.isCompatibleWith(t2.Origin)
+	}
+
+	if t1.Kind != t2.Kind {
+		return false
+	}
+
+	switch t1.Kind {
+	case TY_CHAR, TY_SHORT, TY_INT, TY_LONG:
+		return t1.IsUnsigned == t2.IsUnsigned
+	case TY_FLOAT, TY_DOUBLE:
+		return true
+	case TY_PTR:
+		return t1.Base.isCompatibleWith(t2.Base)
+	case TY_FUNC:
+		if !t1.ReturnType.isCompatibleWith(t2.ReturnType) {
+			return false
+		}
+		if t1.IsVariadic != t2.IsVariadic {
+			return false
+		}
+
+		p1 := t1.Params
+		p2 := t2.Params
+		for p1 != nil && p2 != nil {
+			if !p1.isCompatibleWith(p2) {
+				return false
+			}
+
+			p1 = p1.Next
+			p2 = p2.Next
+		}
+
+		return p1 == nil && p2 == nil
+	case TY_ARRAY:
+		if !t1.Base.isCompatibleWith(t2.Base) {
+			return false
+		}
+		return t1.ArrayLength < 0 && t2.ArrayLength < 0 && t1.ArrayLength == t2.ArrayLength
+	}
+
+	return false
 }

@@ -2853,6 +2853,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
  *         | "sizeof" unary
  *         | "_Alignof" "(" type-name ")"
  *         | "_Alignof" unary
+ *         | "__builtin_types_compatible_p" "(" type-name, type-name, ")"
  *         | "__builtin_reg_class" "(" type-name ")"
  *         | ident
  *         | str
@@ -2897,6 +2898,18 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node := unary(rest, tok.Next)
 		node.addType()
 		return newULong(node.Ty.Align, tok)
+	}
+
+	if tok.isEqual("__builtin_types_compatible_p") {
+		tok = skip(tok.Next, "(")
+		t1 := typeName(&tok, tok)
+		tok = skip(tok, ",")
+		t2 := typeName(&tok, tok)
+		*rest = skip(tok, ")")
+		if t1.isCompatibleWith(t2) {
+			return newNum(1, start)
+		}
+		return newNum(0, start)
 	}
 
 	if tok.isEqual("__builtin_reg_class") {
