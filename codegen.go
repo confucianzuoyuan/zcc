@@ -71,8 +71,12 @@ func pushArgs2(args *AstNode, firstPass bool) {
 
 	if args.Ty.Kind == TY_STRUCT || args.Ty.Kind == TY_UNION {
 		pushStruct(args.Ty)
-	} else if args.Ty.isFloat() {
+	} else if args.Ty.Kind == TY_FLOAT || args.Ty.Kind == TY_DOUBLE {
 		pushf()
+	} else if args.Ty.Kind == TY_LDOUBLE {
+		printlnToFile("  sub $16, %%rsp")
+		printlnToFile("  fstpt (%%rsp)")
+		depth += 2
 	} else {
 		push()
 	}
@@ -109,7 +113,7 @@ func (ty *CType) hasFloatNumber(lo int64, hi int64, offset int64) bool {
 		return true
 	}
 
-	return offset < lo || hi <= offset || ty.isFloat()
+	return offset < lo || hi <= offset || ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE
 }
 
 func (ty *CType) hasFloatNumber1() bool {
@@ -186,12 +190,15 @@ func pushArgs(node *AstNode) int {
 					stack += int(alignTo(arg.Ty.Size, 8) / 8)
 				}
 			}
-		} else if arg.Ty.isFloat() {
+		} else if arg.Ty.Kind == TY_FLOAT || arg.Ty.Kind == TY_DOUBLE {
 			if fp >= FP_MAX {
 				arg.PassByStack = true
 				stack += 1
 			}
 			fp += 1
+		} else if arg.Ty.Kind == TY_LDOUBLE {
+			arg.PassByStack = true
+			stack += 2
 		} else {
 			if gp >= GP_MAX {
 				arg.PassByStack = true
@@ -445,6 +452,11 @@ func load(ty *CType) {
 		return
 	}
 
+	if ty.Kind == TY_LDOUBLE {
+		printlnToFile("  fldt (%%rax)")
+		return
+	}
+
 	insn := ""
 	if ty.IsUnsigned {
 		insn = "movz"
@@ -490,6 +502,11 @@ func store(ty *CType) {
 		return
 	}
 
+	if ty.Kind == TY_LDOUBLE {
+		printlnToFile("  fstpt (%%rdi)")
+		return
+	}
+
 	if ty.Size == 1 {
 		printlnToFile("  mov %%al, (%%rdi)")
 	} else if ty.Size == 2 {
@@ -514,6 +531,13 @@ func cmpZero(ty *CType) {
 		return
 	}
 
+	if ty.Kind == TY_LDOUBLE {
+		printlnToFile("  fldz")
+		printlnToFile("  fucomip")
+		printlnToFile("  fstp %%st(0)")
+		return
+	}
+
 	if ty.isInteger() && ty.Size <= 4 {
 		printlnToFile("  cmp $0, %%eax")
 	} else {
@@ -532,6 +556,7 @@ const (
 	U64
 	F32
 	F64
+	F80
 )
 
 func getTypeId(ty *CType) int {
@@ -564,6 +589,8 @@ func getTypeId(ty *CType) int {
 		return F32
 	case TY_DOUBLE:
 		return F64
+	case TY_LDOUBLE:
+		return F80
 	}
 	return U64
 }
@@ -576,18 +603,23 @@ const I32U16 = "movzwl %ax, %eax"
 const I32F32 = "cvtsi2ssl %eax, %xmm0"
 const I32I64 = "movsxd %eax, %rax"
 const I32F64 = "cvtsi2sdl %eax, %xmm0"
+const I32F80 = "mov %eax, -4(%rsp); fildl -4(%rsp)"
 
 const U32F32 = "mov %eax, %eax; cvtsi2ssq %rax, %xmm0"
 const U32I64 = "mov %eax, %eax"
 const U32F64 = "mov %eax, %eax; cvtsi2sdq %rax, %xmm0"
+const U32F80 = "mov %eax, %eax; mov %rax, -8(%rsp); fildll -8(%rsp)"
 
 const I64F32 = "cvtsi2ssq %rax, %xmm0"
 const I64F64 = "cvtsi2sdq %rax, %xmm0"
+const I64F80 = "movq %rax, -8(%rsp); fildll -8(%rsp)"
 
 const U64F32 = "cvtsi2ssq %rax, %xmm0"
 const U64F64 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2sd %rax,%xmm0; jmp 2f; 
-  1: mov %rax,%rdi; and $1,%eax; pxor %xmm0,%xmm0; shr %rdi; 
-  or %rax,%rdi; cvtsi2sd %rdi,%xmm0; addsd %xmm0,%xmm0; 2:`
+                1: mov %rax,%rdi; and $1,%eax; pxor %xmm0,%xmm0; shr %rdi; 
+                or %rax,%rdi; cvtsi2sd %rdi,%xmm0; addsd %xmm0,%xmm0; 2:`
+const U64F80 = `mov %rax, -8(%rsp); fildq -8(%rsp); test %rax, %rax; jns 1f;
+                mov $1602224128, %eax; mov %eax, -4(%rsp); fadds -4(%rsp); 1:`
 
 const F32I8 = "cvttss2sil %xmm0, %eax; movsbl %al, %eax"
 const F32U8 = "cvttss2sil %xmm0, %eax; movzbl %al, %eax"
@@ -598,6 +630,7 @@ const F32U32 = "cvttss2siq %xmm0, %rax"
 const F32I64 = "cvttss2siq %xmm0, %rax"
 const F32U64 = "cvttss2siq %xmm0, %rax"
 const F32F64 = "cvtss2sd %xmm0, %xmm0"
+const F32F80 = "movss %xmm0, -4(%rsp); flds -4(%rsp)"
 
 const F64I8 = "cvttsd2sil %xmm0, %eax; movsbl %al, %eax"
 const F64U8 = "cvttsd2sil %xmm0, %eax; movzbl %al, %eax"
@@ -608,19 +641,35 @@ const F64U32 = "cvttsd2siq %xmm0, %rax"
 const F64F32 = "cvtsd2ss %xmm0, %xmm0"
 const F64I64 = "cvttsd2siq %xmm0, %rax"
 const F64U64 = "cvttsd2siq %xmm0, %rax"
+const F64F80 = "movsd %xmm0, -8(%rsp); fldl -8(%rsp)"
+
+const FROM_F80_1 = "fnstcw -10(%rsp); movzwl -10(%rsp), %eax; or $12, %ah; " + "mov %ax, -12(%rsp); fldcw -12(%rsp); "
+const FROM_F80_2 = " -24(%rsp); fldcw -10(%rsp); "
+
+const F80I8 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movsbl -24(%rsp), %eax"
+const F80U8 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movzbl -24(%rsp), %eax"
+const F80I16 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movzbl -24(%rsp), %eax"
+const F80U16 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "movswl -24(%rsp), %eax"
+const F80I32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov -24(%rsp), %eax"
+const F80U32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov -24(%rsp), %eax"
+const F80I64 = FROM_F80_1 + "fistpq" + FROM_F80_2 + "mov -24(%rsp), %rax"
+const F80U64 = FROM_F80_1 + "fistpq" + FROM_F80_2 + "mov -24(%rsp), %rax"
+const F80F32 = "fstps -8(%rsp); movss -8(%rsp), %xmm0"
+const F80F64 = "fstpl -8(%rsp); movsd -8(%rsp), %xmm0"
 
 var CastTable = [][]string{
-	// i8 i16 i32 i64 u8 u16 u32 u64 f32 f64
-	{"", "", "", I32I64, I32U8, I32I16, "", I32I64, I32F32, I32F64},            // i8
-	{I32I8, "", "", I32I64, I32U8, I32U16, "", I32I64, I32F32, I32F64},         // i16
-	{I32I8, I32I16, "", I32I64, I32U8, I32U16, "", I32I64, I32F32, I32F64},     // i32
-	{I32I8, I32I16, "", "", I32U8, I32U16, "", "", I64F32, I64F64},             // i64
-	{I32I8, "", "", I32I64, "", "", "", I32I64, I32F32, I32F64},                // u8
-	{I32I8, I32I16, "", I32I64, I32U8, "", "", I32I64, I32F32, I32F64},         // u16
-	{I32I8, I32I16, "", U32I64, I32U8, I32U16, "", U32I64, U32F32, U32F64},     // u32
-	{I32I8, I32I16, "", "", I32U8, I32U16, "", "", U64F32, U64F64},             // u64
-	{F32I8, F32I16, F32I32, F32I64, F32U8, F32U16, F32U32, F32U64, "", F32F64}, //f32
-	{F64I8, F64I16, F64I32, F64I64, F64U8, F64U16, F64U32, F64U64, F64F32, ""}, //f64
+	// i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 f80
+	{"", "", "", I32I64, I32U8, I32I16, "", I32I64, I32F32, I32F64, I32F80},            // i8
+	{I32I8, "", "", I32I64, I32U8, I32U16, "", I32I64, I32F32, I32F64, I32F80},         // i16
+	{I32I8, I32I16, "", I32I64, I32U8, I32U16, "", I32I64, I32F32, I32F64, I32F80},     // i32
+	{I32I8, I32I16, "", "", I32U8, I32U16, "", "", I64F32, I64F64, I64F80},             // i64
+	{I32I8, "", "", I32I64, "", "", "", I32I64, I32F32, I32F64, I32F80},                // u8
+	{I32I8, I32I16, "", I32I64, I32U8, "", "", I32I64, I32F32, I32F64, I32F80},         // u16
+	{I32I8, I32I16, "", U32I64, I32U8, I32U16, "", U32I64, U32F32, U32F64, U32F80},     // u32
+	{I32I8, I32I16, "", "", I32U8, I32U16, "", "", U64F32, U64F64, U64F80},             // u64
+	{F32I8, F32I16, F32I32, F32I64, F32U8, F32U16, F32U32, F32U64, "", F32F64, F32F80}, //f32
+	{F64I8, F64I16, F64I32, F64I64, F64U8, F64U16, F64U32, F64U64, F64F32, "", F64F80}, //f64
+	{F80I8, F80I16, F80I32, F80I64, F80U8, F80U16, F80U32, F80U64, F80F32, F80F64, ""}, // f80
 }
 
 func cast(from *CType, to *CType) {
@@ -696,6 +745,14 @@ func genExpr(node *AstNode) {
 			printlnToFile("  mov $%d, %%rax  # double %f", u, node.FloatValue)
 			printlnToFile("  movq %%rax, %%xmm0")
 			return
+		case TY_LDOUBLE:
+			u := math.Float64bits(node.FloatValue)
+			printlnToFile("  mov $%d, %%rax  # long double %f", 0, node.FloatValue)
+			printlnToFile("  mov %%rax, -16(%%rsp)")
+			printlnToFile("  mov $%d, %%rax", u)
+			printlnToFile("  mov %%rax, -8(%%rsp)")
+			printlnToFile("  fldt -16(%%rsp)")
+			return
 		}
 		printlnToFile("  mov $%d, %%rax", node.Value)
 		return
@@ -715,6 +772,11 @@ func genExpr(node *AstNode) {
 			printlnToFile("  shl $63, %%rax")
 			printlnToFile("  movq %%rax, %%xmm1")
 			printlnToFile("  xorpd %%xmm1, %%xmm0")
+			return
+		}
+
+		if node.Ty.Kind == TY_LDOUBLE {
+			printlnToFile("  fchs")
 			return
 		}
 
@@ -892,11 +954,13 @@ func genExpr(node *AstNode) {
 					}
 				}
 
-			} else if ty.isFloat() {
+			} else if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
 				if fp < FP_MAX {
 					popf(fp)
 					fp += 1
 				}
+			} else if ty.Kind == TY_LDOUBLE {
+				// DO NOTHING
 			} else {
 				if gp < GP_MAX {
 					pop(argreg64[gp])
@@ -945,7 +1009,7 @@ func genExpr(node *AstNode) {
 		return
 	}
 
-	if node.Lhs.Ty.isFloat() {
+	if node.Lhs.Ty.Kind == TY_FLOAT || node.Lhs.Ty.Kind == TY_DOUBLE {
 		genExpr(node.Rhs)
 		pushf()
 		genExpr(node.Lhs)
@@ -987,6 +1051,42 @@ func genExpr(node *AstNode) {
 			}
 
 			printlnToFile("  and $1, %%al")
+			printlnToFile("  movzb %%al, %%rax")
+			return
+		}
+
+		errorTok(node.Tok, "invalid expression")
+	} else if node.Lhs.Ty.Kind == TY_LDOUBLE {
+		genExpr(node.Lhs)
+		genExpr(node.Rhs)
+
+		switch node.Kind {
+		case ND_ADD:
+			printlnToFile("  faddp")
+			return
+		case ND_SUB:
+			printlnToFile("  fsubrp")
+			return
+		case ND_MUL:
+			printlnToFile("  fmulp")
+			return
+		case ND_DIV:
+			printlnToFile("  fdivrp")
+			return
+		case ND_EQ, ND_NE, ND_LT, ND_LE:
+			printlnToFile("  fcomip")
+			printlnToFile("  fstp %%st(0)")
+
+			if node.Kind == ND_EQ {
+				printlnToFile("  sete %%al")
+			} else if node.Kind == ND_NE {
+				printlnToFile("  setne %%al")
+			} else if node.Kind == ND_LT {
+				printlnToFile("  seta %%al")
+			} else {
+				printlnToFile("  setae %%al")
+			}
+
 			printlnToFile("  movzb %%al, %%rax")
 			return
 		}
@@ -1224,11 +1324,12 @@ func assignLocalVariableOffsets(prog *Obj) {
 						continue
 					}
 				}
-			} else if ty.isFloat() {
+			} else if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
 				fp += 1
 				if fp-1 < FP_MAX {
 					continue
 				}
+			} else if ty.Kind == TY_LDOUBLE {
 			} else {
 				gp += 1
 				if gp-1 < GP_MAX {
@@ -1455,7 +1556,7 @@ func emitText(prog *Obj) {
 						gp += 1
 					}
 				}
-			} else if ty.isFloat() {
+			} else if ty.Kind == TY_DOUBLE || ty.Kind == TY_FLOAT {
 				storeFp(fp, v.Offset, ty.Size)
 				fp += 1
 			} else {
@@ -1467,7 +1568,7 @@ func emitText(prog *Obj) {
 		// Emit code
 		genStmt(fn.Body)
 		if depth != 0 {
-			panic("depth is not zero.")
+			panic(fmt.Sprintf("depth is not zero: %d", depth))
 		}
 
 		// [https://www.sigbus.info/n1570#5.1.2.2.3p1] The C spec defines

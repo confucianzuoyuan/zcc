@@ -637,6 +637,9 @@ func convertPpNumber(tok *Token) {
 	if (*src)[end-1] == 'f' || (*src)[end-1] == 'F' {
 		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end-1]), 64)
 		end -= 1
+	} else if (*src)[end-1] == 'l' || (*src)[end-1] == 'L' {
+		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end-1]), 64)
+		end -= 1
 	} else {
 		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end]), 64)
 	}
@@ -646,7 +649,7 @@ func convertPpNumber(tok *Token) {
 		ty = TyFloat
 		end += 1
 	} else if (*src)[end] == 'l' || (*src)[end] == 'L' {
-		ty = TyDouble
+		ty = TyLDouble
 		end += 1
 	} else {
 		ty = TyDouble

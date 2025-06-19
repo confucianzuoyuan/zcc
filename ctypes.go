@@ -11,6 +11,7 @@ const (
 	TY_LONG
 	TY_FLOAT
 	TY_DOUBLE
+	TY_LDOUBLE
 	TY_ENUM
 	TY_PTR
 	TY_FUNC
@@ -172,6 +173,12 @@ var TyDouble = &CType{
 	Align: 8,
 }
 
+var TyLDouble = &CType{
+	Kind:  TY_LDOUBLE,
+	Size:  16,
+	Align: 16,
+}
+
 func newType(kind CTypeKind, size int64, align int64) *CType {
 	ty := &CType{
 		Kind:  kind,
@@ -187,7 +194,7 @@ func (t *CType) isInteger() bool {
 }
 
 func (t *CType) isFloat() bool {
-	return t.Kind == TY_FLOAT || t.Kind == TY_DOUBLE
+	return t.Kind == TY_FLOAT || t.Kind == TY_DOUBLE || t.Kind == TY_LDOUBLE
 }
 
 func (t *CType) isNumeric() bool {
@@ -234,6 +241,10 @@ func (ty *CType) getCommonType(other *CType) *CType {
 	}
 	if other.Kind == TY_FUNC {
 		return pointerTo(other)
+	}
+
+	if ty.Kind == TY_LDOUBLE || other.Kind == TY_LDOUBLE {
+		return TyLDouble
 	}
 
 	if ty.Kind == TY_DOUBLE || other.Kind == TY_DOUBLE {
@@ -404,7 +415,7 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 	switch t1.Kind {
 	case TY_CHAR, TY_SHORT, TY_INT, TY_LONG:
 		return t1.IsUnsigned == t2.IsUnsigned
-	case TY_FLOAT, TY_DOUBLE:
+	case TY_FLOAT, TY_DOUBLE, TY_LDOUBLE:
 		return true
 	case TY_PTR:
 		return t1.Base.isCompatibleWith(t2.Base)
