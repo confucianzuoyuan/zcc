@@ -334,7 +334,7 @@ func (node *AstNode) addType() {
 	case ND_BITNOT, ND_SHL, ND_SHR:
 		node.Ty = node.Lhs.Ty
 		return
-	case ND_VAR:
+	case ND_VAR, ND_VLA_PTR:
 		node.Ty = node.Variable.Ty
 		return
 	case ND_COND:

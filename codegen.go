@@ -346,6 +346,11 @@ func alignTo(n int64, align int64) int64 {
 func genAddr(node *AstNode) {
 	switch node.Kind {
 	case ND_VAR:
+		// Variable-length array, which is always local.
+		if node.Variable.Ty.Kind == TY_VLA {
+			printlnToFile("  mov %d(%%rbp), %%rax", node.Variable.Offset)
+			return
+		}
 		// Local variable
 		if node.Variable.IsLocal {
 			printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
@@ -410,6 +415,9 @@ func genAddr(node *AstNode) {
 			genExpr(node)
 			return
 		}
+	case ND_VLA_PTR:
+		printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
+		return
 	}
 
 	errorTok(node.Tok, "not an lvalue")
@@ -417,7 +425,7 @@ func genAddr(node *AstNode) {
 
 // Load a value from where %rax is pointing to.
 func load(ty *CType) {
-	if ty.Kind == TY_ARRAY || ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_FUNC {
+	if ty.Kind == TY_ARRAY || ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_FUNC || ty.Kind == TY_VLA {
 		// If it is an array, do not attempt to load a value to the
 		// register because in general we can't load an entire array to a
 		// register. As a result, the result of an evaluation of an array

@@ -1607,7 +1607,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// x = alloca(tmp)`.
 			v := newLocalVar(ty.Name.getIdent(), ty)
 			tok := ty.Name
-			expr := newBinary(ND_ASSIGN, newVarNode(v, tok), newAlloca(newVarNode(ty.VlaSize, tok)), tok)
+			expr := newBinary(ND_ASSIGN, newVlaPtr(v, tok), newAlloca(newVarNode(ty.VlaSize, tok)), tok)
 			cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
 			cur = cur.Next
 			continue
@@ -2636,6 +2636,12 @@ func shift(rest **Token, tok *Token) *AstNode {
 	}
 }
 
+func newVlaPtr(v *Obj, tok *Token) *AstNode {
+	node := newNode(ND_VLA_PTR, tok)
+	node.Variable = v
+	return node
+}
+
 // In C, `+` operator is overloaded to perform the pointer arithmetic.
 // If p is a pointer, p+n adds not n but sizeof(*p)*n to the value of p,
 // so that p+n points to the location n elements (not bytes) ahead of p.
@@ -2661,6 +2667,12 @@ func newAdd(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 		rhs = tmp
 	}
 
+	// VLA + num
+	if lhs.Ty.Base.Kind == TY_VLA {
+		rhs = newBinary(ND_MUL, rhs, newVarNode(lhs.Ty.Base.VlaSize, tok), tok)
+		return newBinary(ND_ADD, lhs, rhs, tok)
+	}
+
 	// ptr + num
 	rhs = newBinary(ND_MUL, rhs, newLong(lhs.Ty.Base.Size, tok), tok)
 	return newBinary(ND_ADD, lhs, rhs, tok)
@@ -2674,6 +2686,15 @@ func newSub(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 	// num - num
 	if lhs.Ty.isNumeric() && rhs.Ty.isNumeric() {
 		return newBinary(ND_SUB, lhs, rhs, tok)
+	}
+
+	// VLA - num
+	if lhs.Ty.Base.Kind == TY_VLA {
+		rhs = newBinary(ND_MUL, rhs, newVarNode(lhs.Ty.Base.VlaSize, tok), tok)
+		rhs.addType()
+		node := newBinary(ND_SUB, lhs, rhs, tok)
+		node.Ty = lhs.Ty
+		return node
 	}
 
 	// ptr - num
