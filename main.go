@@ -22,6 +22,7 @@ const (
 )
 
 var includePaths []string
+var ldExtraArgs []string
 
 var opt_x FileType
 var opt_include []string
@@ -177,6 +178,11 @@ func parseArgs(args []string) {
 
 		if strings.HasPrefix(args[idx], "-l") {
 			inputPaths = append(inputPaths, args[idx])
+			continue
+		}
+
+		if args[idx] == "-s" {
+			ldExtraArgs = append(ldExtraArgs, "-s")
 			continue
 		}
 
@@ -535,6 +541,7 @@ func runLinker(inputs []string, output string) {
 	arr = append(arr, "-L/usr/lib")
 	arr = append(arr, "-L/lib")
 
+	arr = append(arr, ldExtraArgs...)
 	arr = append(arr, inputs...)
 
 	arr = append(arr, "-lc")
