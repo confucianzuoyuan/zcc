@@ -1235,12 +1235,24 @@ func genStmt(node *AstNode) {
 		genExpr(node.Cond)
 
 		for n := node.CaseNext; n != nil; n = n.CaseNext {
-			reg := "%eax"
+			ax := "%eax"
+			di := "%edi"
 			if node.Cond.Ty.Size == 8 {
-				reg = "%rax"
+				ax = "%rax"
+				di = "%rdi"
 			}
-			printlnToFile("  cmp $%d, %s", n.Value, reg)
-			printlnToFile("  je %s", n.Label)
+
+			if n.Begin == n.End {
+				printlnToFile("  cmp $%d, %s", n.Begin, ax)
+				printlnToFile("  je %s", n.Label)
+				continue
+			}
+
+			// [GNU] Case ranges
+			printlnToFile("  mov %s, %s", ax, di)
+			printlnToFile("  sub $%d, %s", n.Begin, di)
+			printlnToFile("  cmp $%d, %s", n.End-n.Begin, di)
+			printlnToFile("  jbe %s", n.Label)
 		}
 
 		if node.DefaultCase != nil {

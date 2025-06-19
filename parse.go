@@ -1818,7 +1818,7 @@ func (tok *Token) isTypename() bool {
  * stmt = "return" expr? ";"
  *	    | "if" "(" expr ")" stmt ("else" stmt)?
  *      | "switch" "(" expr ")" stmt
- *	    | "case" const-expr ":" stmt
+ *	    | "case" const-expr ("..." const-expr)? ":" stmt
  *	    | "default" ":" stmt
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
@@ -1888,11 +1888,24 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 
 		node := newNode(ND_CASE, tok)
-		val := constExpr(&tok, tok.Next)
+		begin := constExpr(&tok, tok.Next)
+		end := int64(0)
+
+		if tok.isEqual("...") {
+			// [GNU] Case ranges, e.g. "case 1 ... 5:"
+			end = constExpr(&tok, tok.Next)
+			if end < begin {
+				errorTok(tok, "empty case range specified")
+			}
+		} else {
+			end = begin
+		}
+
 		tok = skip(tok, ":")
 		node.Label = newUniqueName()
 		node.Lhs = stmt(rest, tok)
-		node.Value = val
+		node.Begin = begin
+		node.End = end
 		node.CaseNext = currentSwitch.CaseNext
 		currentSwitch.CaseNext = node
 		return node

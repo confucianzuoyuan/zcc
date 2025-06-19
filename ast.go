@@ -86,9 +86,13 @@ type AstNode struct {
 	UniqueLabel string
 	GotoNext    *AstNode
 
-	// Switch-cases
+	// Switch
 	CaseNext    *AstNode
 	DefaultCase *AstNode
+
+	// Case
+	Begin int64
+	End   int64
 
 	// "asm" string literal
 	AsmStr string
