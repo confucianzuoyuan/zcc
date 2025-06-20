@@ -438,14 +438,24 @@ func countArrayInitElements(tok *Token, ty *CType) int {
 //	struct { int a, b, c; } x = { .c=5 };
 //
 // The above initializer sets x.c to 5.
-func arrayDesignator(rest **Token, tok *Token, ty *CType) int64 {
-	start := tok
-	i := constExpr(&tok, tok.Next)
-	if i >= ty.ArrayLength {
-		errorTok(start, "array designator index exceeds array bounds")
+func arrayDesignator(rest **Token, tok *Token, ty *CType, begin *int64, end *int64) {
+	*begin = constExpr(&tok, tok.Next)
+	if *begin >= ty.ArrayLength {
+		errorTok(tok, "array designator index exceeds array bounds")
+	}
+
+	if tok.isEqual("...") {
+		*end = constExpr(&tok, tok.Next)
+		if *end >= ty.ArrayLength {
+			errorTok(tok, "array designator index exceeds array bounds")
+		}
+		if *end < *begin {
+			errorTok(tok, fmt.Sprintf("array designator range [%d, %d] is empty", *begin, *end))
+		}
+	} else {
+		*end = *begin
 	}
 	*rest = skip(tok, "]")
-	return i
 }
 
 // struct-designator = "." ident
@@ -483,9 +493,16 @@ func designation(rest **Token, tok *Token, init *Initializer) {
 		if init.Ty.Kind != TY_ARRAY {
 			errorTok(tok, "array index in non-array initializer")
 		}
-		i := arrayDesignator(&tok, tok, init.Ty)
-		designation(&tok, tok, init.Children[i])
-		arrayInitializer2(rest, tok, init, i+1)
+
+		begin := int64(0)
+		end := int64(0)
+		arrayDesignator(&tok, tok, init.Ty, &begin, &end)
+
+		var tok2 *Token
+		for i := begin; i <= end; i++ {
+			designation(&tok2, tok, init.Children[i])
+		}
+		arrayInitializer2(rest, tok2, init, begin+1)
 		return
 	}
 
@@ -557,8 +574,16 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 		first = false
 
 		if tok.isEqual("[") {
-			i = arrayDesignator(&tok, tok, init.Ty)
-			designation(&tok, tok, init.Children[i])
+			begin := int64(0)
+			end := int64(0)
+			arrayDesignator(&tok, tok, init.Ty, &begin, &end)
+
+			var tok2 *Token
+			for j := begin; j <= end; j++ {
+				designation(&tok2, tok, init.Children[j])
+			}
+			tok = tok2
+			i = end
 			continue
 		}
 
