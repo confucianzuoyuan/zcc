@@ -26,19 +26,10 @@ import (
 // Scope for local, global variables or typedefs
 // or enum constants
 type VarScope struct {
-	Next      *VarScope
-	Name      string
 	Variable  *Obj
 	TypeDef   *CType
 	EnumType  *CType
 	EnumValue int
-}
-
-// Scope for struct, union or enum tags
-type TagScope struct {
-	Next *TagScope
-	Name string // Struct tag name
-	Ty   *CType
 }
 
 // Represents a block scope.
@@ -46,8 +37,8 @@ type Scope struct {
 	Next *Scope
 	// C has two block scopes; one is for variables/typedefs and the other is
 	// for struct/union/enum tags.
-	Variables *VarScope
-	Tags      *TagScope
+	Vars map[string]*VarScope
+	Tags map[string]*CType
 }
 
 // Variable attributes such as typedef or extern.
@@ -135,10 +126,10 @@ func leaveScope() {
 // Find a variable by name.
 func findVariable(tok *Token) *VarScope {
 	for sc := scope; sc != nil; sc = sc.Next {
-		for sc2 := sc.Variables; sc2 != nil; sc2 = sc2.Next {
-			if tok.isEqual(sc2.Name) {
-				return sc2
-			}
+		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+		sc2 := sc.Vars[name]
+		if sc2 != nil {
+			return sc2
 		}
 	}
 
@@ -147,10 +138,10 @@ func findVariable(tok *Token) *VarScope {
 
 func findTag(tok *Token) *CType {
 	for sc := scope; sc != nil; sc = sc.Next {
-		for sc2 := sc.Tags; sc2 != nil; sc2 = sc2.Next {
-			if tok.isEqual(sc2.Name) {
-				return sc2.Ty
-			}
+		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+		ty := sc.Tags[name]
+		if ty != nil {
+			return ty
 		}
 	}
 
@@ -227,19 +218,19 @@ func newCast(expr *AstNode, ty *CType) *AstNode {
 
 func pushScope(name string) *VarScope {
 	sc := &VarScope{}
-	sc.Name = name
-	sc.Next = scope.Variables
-	scope.Variables = sc
+	if scope.Vars == nil {
+		scope.Vars = make(map[string]*VarScope)
+	}
+	scope.Vars[name] = sc
 	return sc
 }
 
-func pushTagScope(tok *Token, ty *CType) *TagScope {
-	sc := &TagScope{}
-	sc.Name = B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
-	sc.Ty = ty
-	sc.Next = scope.Tags
-	scope.Tags = sc
-	return sc
+func pushTagScope(tok *Token, ty *CType) {
+	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	if scope.Tags == nil {
+		scope.Tags = make(map[string]*CType)
+	}
+	scope.Tags[name] = ty
 }
 
 func newNode(kind AstNodeKind, tok *Token) *AstNode {
@@ -1279,11 +1270,11 @@ func structUnionDecl(rest **Token, tok *Token) *CType {
 	if tag != nil {
 		// If this is a redefinition, overwrite a previous type.
 		// Otherwise, register the struct type.
-		for sc := scope.Tags; sc != nil; sc = sc.Next {
-			if tag.isEqual(sc.Name) {
-				*sc.Ty = *ty
-				return sc.Ty
-			}
+		name := B2S((*tag.File.Contents)[tag.Location : tag.Location+tag.Length])
+		ty2 := scope.Tags[name]
+		if ty2 != nil {
+			*ty2 = *ty
+			return ty2
 		}
 		pushTagScope(tag, ty)
 	}
@@ -3111,10 +3102,9 @@ func findFunction(name string) *Obj {
 		sc = sc.Next
 	}
 
-	for sc2 := sc.Variables; sc2 != nil; sc2 = sc2.Next {
-		if sc2.Name == name && sc2.Variable != nil && sc2.Variable.IsFunction {
-			return sc2.Variable
-		}
+	sc2 := sc.Vars[name]
+	if sc2 != nil && sc2.Variable != nil && sc2.Variable.IsFunction {
+		return sc2.Variable
 	}
 
 	return nil
