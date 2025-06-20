@@ -380,6 +380,18 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 
 var IncludeGuards = make(map[string]string)
 var PragmaOnce = make(map[string]int)
+var IncludeNextIdx int
+
+func searchIncludeNext(filename string) string {
+	for ; IncludeNextIdx < len(includePaths); IncludeNextIdx++ {
+		path := includePaths[IncludeNextIdx] + "/" + filename
+		if fileExists(path) {
+			return path
+		}
+	}
+
+	return ""
+}
 
 func includeFile(tok *Token, path string, filenameToken *Token) *Token {
 	// Check for "#pragma once"
@@ -921,12 +933,13 @@ func searchIncludePaths(filename string) string {
 	}
 
 	// Search a file from the include paths.
-	for _, f := range includePaths {
+	for i, f := range includePaths {
 		path := f + "/" + filename
 		if !fileExists(path) {
 			continue
 		}
 		Cache[filename] = path
+		IncludeNextIdx = i + 1
 		return path
 	}
 
