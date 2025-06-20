@@ -1849,7 +1849,7 @@ func (tok *Token) isTypename() bool {
  *	    | "while" "(" expr ")" stmt
  *	    | "do" stmt "while" "(" expr ")" ";"
  *      | "asm" asm-stmt
- *      | "goto" ident ";"
+ *      | "goto" (ident | "*" expr) ";"
  *      | "break" ";"
  *	    | "continue" ";"
  *	    | ident ":" stmt
@@ -2036,6 +2036,14 @@ func stmt(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.isEqual("goto") {
+		if tok.Next.isEqual("*") {
+			// [GNU] `goto *ptr` jumps to the address specified by `ptr`.
+			node := newNode(ND_GOTO_EXPR, tok)
+			node.Lhs = expr(&tok, tok.Next.Next)
+			*rest = skip(tok, ";")
+			return node
+		}
+
 		node := newNode(ND_GOTO, tok)
 		node.Label = tok.Next.getIdent()
 		node.GotoNext = gotos
@@ -2079,7 +2087,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 }
 
 /*
- * This function matches gotos with labels.
+ * This function matches gotos or labels-as-values with labels.
  *
  * We cannot resolve gotos as we parse a function because gotos
  * can refer a label that appears later in the function.
@@ -2829,6 +2837,7 @@ func castExpr(rest **Token, tok *Token) *AstNode {
 /*
  * unary = ("+" | "-" | "*" | "&" | "!" | "~") cast
  *       | ("++" | "--") unary
+ *       | "&&" ident
  *       | postfix
  */
 func unary(rest **Token, tok *Token) *AstNode {
@@ -2879,6 +2888,16 @@ func unary(rest **Token, tok *Token) *AstNode {
 	// Read --i as i-=1
 	if tok.isEqual("--") {
 		return toAssign(newSub(unary(rest, tok.Next), newNum(1, tok), tok))
+	}
+
+	// [GNU] labels-as-values
+	if tok.isEqual("&&") {
+		node := newNode(ND_LABEL_VAL, tok)
+		node.Label = tok.Next.getIdent()
+		node.GotoNext = gotos
+		gotos = node
+		*rest = tok.Next.Next
+		return node
 	}
 
 	return postfix(rest, tok)

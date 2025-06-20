@@ -392,6 +392,9 @@ func (node *AstNode) addType() {
 		}
 		errorTok(node.Tok, "statement expression returning void is not supported")
 		return
+	case ND_LABEL_VAL:
+		node.Ty = pointerTo(TyVoid)
+		return
 	}
 }
 

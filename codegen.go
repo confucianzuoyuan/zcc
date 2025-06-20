@@ -733,6 +733,9 @@ func genExpr(node *AstNode) {
 	switch node.Kind {
 	case ND_NULL_EXPR:
 		return
+	case ND_LABEL_VAL:
+		printlnToFile("  lea %s(%%rip), %%rax", node.UniqueLabel)
+		return
 	case ND_NUM:
 		switch node.Ty.Kind {
 		case TY_FLOAT:
@@ -1278,6 +1281,10 @@ func genStmt(node *AstNode) {
 	case ND_LABEL:
 		printlnToFile("%s:", node.UniqueLabel)
 		genStmt(node.Lhs)
+		return
+	case ND_GOTO_EXPR:
+		genExpr(node.Lhs)
+		printlnToFile("  jmp *%%rax")
 		return
 	case ND_RETURN:
 		if node.Lhs != nil {
