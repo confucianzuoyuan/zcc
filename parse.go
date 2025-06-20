@@ -23,6 +23,38 @@ import (
 	"math"
 )
 
+var TypeNames = map[string]struct{}{
+	"void":          {},
+	"char":          {},
+	"short":         {},
+	"int":           {},
+	"long":          {},
+	"struct":        {},
+	"union":         {},
+	"typedef":       {},
+	"_Bool":         {},
+	"enum":          {},
+	"static":        {},
+	"extern":        {},
+	"_Alignas":      {},
+	"signed":        {},
+	"unsigned":      {},
+	"const":         {},
+	"volatile":      {},
+	"auto":          {},
+	"register":      {},
+	"restrict":      {},
+	"__restrict":    {},
+	"__restrict__":  {},
+	"_Noreturn":     {},
+	"float":         {},
+	"double":        {},
+	"typeof":        {},
+	"inline":        {},
+	"_Thread_local": {},
+	"__thread":      {},
+}
+
 // Scope for local, global variables or typedefs
 // or enum constants
 type VarScope struct {
@@ -1817,14 +1849,10 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
-	kw := []string{
-		"void", "char", "short", "int", "long", "struct", "union", "typedef", "_Bool", "enum", "static", "extern", "_Alignas", "signed", "unsigned", "const", "volatile", "auto", "register", "restrict", "__restrict", "__restrict__", "_Noreturn", "float", "double", "typeof", "inline", "_Thread_local", "__thread",
-	}
-
-	for _, k := range kw {
-		if tok.isEqual(k) {
-			return true
-		}
+	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	_, ok := TypeNames[name]
+	if ok {
+		return true
 	}
 
 	return findTypeDef(tok) != nil

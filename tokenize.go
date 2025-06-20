@@ -7,6 +7,17 @@ import (
 	"strconv"
 )
 
+var Keywords = map[string]struct{}{
+	"return": {}, "if": {}, "else": {}, "for": {}, "while": {}, "int": {}, "sizeof": {}, "char": {},
+	"struct": {}, "union": {}, "short": {}, "long": {}, "void": {}, "typedef": {}, "_Bool": {},
+	"enum": {}, "static": {}, "goto": {}, "break": {}, "continue": {}, "switch": {}, "case": {},
+	"default": {}, "extern": {}, "_Alignof": {}, "_Alignas": {}, "do": {}, "signed": {},
+	"unsigned": {}, "const": {}, "volatile": {}, "auto": {}, "register": {}, "restrict": {},
+	"__restrict": {}, "__restrict__": {}, "_Noreturn": {}, "float": {}, "double": {},
+	"typeof": {}, "asm": {}, "_Thread_local": {}, "__thread": {}, "_Atomic": {},
+	"__attribute__": {},
+}
+
 type TokenKind int
 
 const (
@@ -199,23 +210,9 @@ func fromHex(c int8) int8 {
 }
 
 func (tok *Token) isKeyword() bool {
-	keywords := []string{
-		"return", "if", "else", "for", "while", "int", "sizeof", "char",
-		"struct", "union", "short", "long", "void", "typedef", "_Bool",
-		"enum", "static", "goto", "break", "continue", "switch", "case",
-		"default", "extern", "_Alignof", "_Alignas", "do", "signed",
-		"unsigned", "const", "volatile", "auto", "register", "restrict",
-		"__restrict", "__restrict__", "_Noreturn", "float", "double",
-		"typeof", "asm", "_Thread_local", "__thread", "_Atomic",
-		"__attribute__",
-	}
-
-	for _, k := range keywords {
-		if tok.isEqual(k) {
-			return true
-		}
-	}
-	return false
+	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	_, ok := Keywords[name]
+	return ok
 }
 
 func isHexDigit(c int8) bool {
