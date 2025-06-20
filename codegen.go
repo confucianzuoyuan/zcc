@@ -1453,7 +1453,7 @@ func emitData(prog *Obj) {
 			pos := 0
 			for pos < int(v.Ty.Size) {
 				if rel != nil && rel.Offset == int64(pos) {
-					printlnToFile("  .quad %s%+d", rel.Label, rel.Addend)
+					printlnToFile("  .quad %s%+d", *rel.Label, rel.Addend)
 					rel = rel.Next
 					pos += 8
 				} else {

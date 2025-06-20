@@ -44,6 +44,6 @@ type Obj struct {
 type Relocation struct {
 	Next   *Relocation
 	Offset int64
-	Label  string
+	Label  *string
 	Addend int64
 }

@@ -1793,10 +1793,10 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 		return cur
 	}
 
-	label := ""
+	var label *string = nil
 	val := eval2(init.Expr, &label)
 
-	if label == "" {
+	if label == nil {
 		writeBuf(buf, offset, uint64(val), ty.Size)
 		return cur
 	}
@@ -2218,7 +2218,7 @@ func evalDouble(node *AstNode) float64 {
 // is a pointer to a global variable and n is a postiive/negative
 // number. The latter form is accepted only as an initialization
 // expression for a global variable.
-func eval2(node *AstNode, label *string) int64 {
+func eval2(node *AstNode, label **string) int64 {
 	node.addType()
 
 	if node.Ty.isFloat() {
@@ -2348,6 +2348,9 @@ func eval2(node *AstNode, label *string) int64 {
 		return val
 	case ND_ADDR:
 		return evalRval(node.Lhs, label)
+	case ND_LABEL_VAL:
+		*label = &node.UniqueLabel
+		return 0
 	case ND_MEMBER:
 		if label == nil {
 			errorTok(node.Tok, "not a compile-time constant")
@@ -2363,7 +2366,7 @@ func eval2(node *AstNode, label *string) int64 {
 		if node.Variable.Ty.Kind != TY_ARRAY && node.Variable.Ty.Kind != TY_FUNC {
 			errorTok(node.Tok, "invalid initializer")
 		}
-		*label = node.Variable.Name
+		*label = &node.Variable.Name
 		return 0
 	case ND_NUM:
 		return node.Value
@@ -2377,13 +2380,13 @@ func eval(node *AstNode) int64 {
 	return eval2(node, nil)
 }
 
-func evalRval(node *AstNode, label *string) int64 {
+func evalRval(node *AstNode, label **string) int64 {
 	switch node.Kind {
 	case ND_VAR:
 		if node.Variable.IsLocal {
 			errorTok(node.Tok, "not a compile-time constant")
 		}
-		*label = node.Variable.Name
+		*label = &node.Variable.Name
 		return 0
 	case ND_DEREF:
 		return eval2(node.Lhs, label)
