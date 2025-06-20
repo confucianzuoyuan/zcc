@@ -79,13 +79,11 @@ type CondIncl struct {
 type MacroHandlerFn func(*Token) *Token
 
 type Macro struct {
-	Next       *Macro
 	Name       string
 	IsObjlike  bool
 	Params     *MacroParam
 	VaArgsName string
 	Body       *Token
-	Deleted    bool
 	Handler    MacroHandlerFn
 }
 
@@ -107,7 +105,7 @@ type Hideset struct {
 }
 
 var condIncl *CondIncl
-var macros *Macro
+var macros = make(map[string]*Macro)
 
 func U82I8(arr []uint8) []int8 {
 	res := []int8{}
@@ -393,27 +391,17 @@ func findMacro(tok *Token) *Macro {
 		return nil
 	}
 
-	for m := macros; m != nil; m = m.Next {
-		if tok.isEqual(m.Name) {
-			if m.Deleted {
-				return nil
-			} else {
-				return m
-			}
-		}
-	}
-
-	return nil
+	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	return macros[name]
 }
 
 func addMacro(name string, isObjlike bool, body *Token) *Macro {
 	m := &Macro{
-		Next:      macros,
 		Name:      name,
 		Body:      body,
 		IsObjlike: isObjlike,
 	}
-	macros = m
+	macros[name] = m
 	return m
 }
 
@@ -1050,8 +1038,7 @@ func preprocess2(tok *Token) *Token {
 }
 
 func undefMacro(name string) {
-	m := addMacro(name, true, nil)
-	m.Deleted = true
+	delete(macros, name)
 }
 
 func defineMacro(name string, buf string) {
