@@ -998,6 +998,19 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if tok.isEqual("include_next") {
+			ignore := false
+			filename := readIncludeFilename(&tok, tok.Next, &ignore)
+			path := searchIncludeNext(filename)
+			if path != "" {
+				tok = includeFile(tok, path, start.Next.Next)
+			} else {
+				tok = includeFile(tok, filename, start.Next.Next)
+			}
+
+			continue
+		}
+
 		if tok.isEqual("define") {
 			readMacroDefinition(&tok, tok.Next)
 			continue
