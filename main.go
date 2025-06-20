@@ -25,15 +25,23 @@ const (
 
 var includePaths []string
 var ldExtraArgs []string
+var stdIncludePaths []string
 
+var opt_fpic bool
 var opt_x FileType
 var opt_include []string
 var opt_fcommon bool = true
 var opt_E bool
+var opt_M bool
+var opt_MD bool
+var opt_MMD bool
+var opt_MP bool
 var opt_S bool
 var opt_c bool
 var opt_cc1 bool
 var opt_hash_hash_hash bool
+var opt_MF string
+var opt_MT string
 var opt_o string = ""
 var dump_ir bool = false
 var baseFile string = ""
@@ -41,6 +49,41 @@ var outputFile string = ""
 
 var inputPaths []string
 var tmpfiles []string
+
+func quoteMakefile(s string) string {
+	buf := make([]uint8, len(s)+1)
+
+	i := 0
+	j := 0
+	for ; i < len(s); i++ {
+		switch s[i] {
+		case '$':
+			buf[j] = '$'
+			j++
+			buf[j] = '$'
+			j++
+		case '#':
+			buf[j] = '\\'
+			j++
+			buf[j] = '#'
+			j++
+		case ' ', '\t':
+			for k := i - 1; k >= 0 && s[k] == '\\'; k-- {
+				buf[j] = '\\'
+				j++
+			}
+			buf[j] = '\\'
+			j++
+			buf[j] = s[i]
+			j++
+		default:
+			buf[j] = s[i]
+			j++
+		}
+	}
+
+	return string(buf[:len(buf)-1])
+}
 
 func define(str string) {
 	eq := strings.Index(str, "=")
@@ -60,7 +103,7 @@ func usage(status int) {
 }
 
 func takeArg(arg string) bool {
-	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include" || arg == "-x"
+	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include" || arg == "-x" || arg == "-MF" || arg == "-MT"
 }
 
 func parseArgs(args []string) {
@@ -188,6 +231,61 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-M" {
+			opt_M = true
+			continue
+		}
+
+		if args[idx] == "-MF" {
+			idx++
+			opt_MF = args[idx]
+			continue
+		}
+
+		if args[idx] == "-MP" {
+			opt_MP = true
+			continue
+		}
+
+		if args[idx] == "-MT" {
+			if opt_MT == "" {
+				idx++
+				opt_MT = args[idx]
+			} else {
+				idx++
+				opt_MT += " " + args[idx]
+			}
+			continue
+		}
+
+		if args[idx] == "-MD" {
+			opt_MD = true
+			continue
+		}
+
+		if args[idx] == "-MQ" {
+			if opt_MT == "" {
+				idx++
+				opt_MT = quoteMakefile(args[idx])
+			} else {
+				idx++
+				opt_MT += " " + quoteMakefile(args[idx])
+			}
+
+			continue
+		}
+
+		if args[idx] == "-MMD" {
+			opt_MMD = true
+			opt_MD = true
+			continue
+		}
+
+		if args[idx] == "-fpic" || args[idx] == "-fPIC" {
+			opt_fpic = true
+			continue
+		}
+
 		if args[idx] == "-cc1-input" {
 			baseFile = args[idx+1]
 			idx += 1
@@ -227,6 +325,65 @@ func parseArgs(args []string) {
 	// -E implies that the input is the C macro language.
 	if opt_E {
 		opt_x = FILE_C
+	}
+}
+
+func inStdIncludePath(path string) bool {
+	for i := range stdIncludePaths {
+		dir := stdIncludePaths[i]
+		length := len(dir)
+		if strings.HasPrefix(path, dir) && path[length] == '/' {
+			return true
+		}
+	}
+
+	return false
+}
+
+// If -M options is given, the compiler write a list of input files to
+// stdout in a format that "make" command can read. This feature is
+// used to automate file dependency management.
+func printDependencies() {
+	path := ""
+	if opt_MF != "" {
+		path = opt_MF
+	} else if opt_MD {
+		if opt_o != "" {
+			path = opt_o
+		} else {
+			path = replaceExtension(baseFile, ".d")
+		}
+	} else if opt_o != "" {
+		path = opt_o
+	} else {
+		path = "-"
+	}
+
+	out, _ := openFile(path)
+	if opt_MT != "" {
+		fmt.Fprintf(out, "%s:", opt_MT)
+	} else {
+		fmt.Fprintf(out, "%s:", quoteMakefile(replaceExtension(baseFile, ".o")))
+	}
+
+	files := getInputFiles()
+
+	for i := 0; i < len(files); i++ {
+		if opt_MMD && inStdIncludePath(files[i].Name) {
+			continue
+		}
+		fmt.Fprintf(out, " \\\n  %s", files[i].Name)
+	}
+
+	fmt.Fprintf(out, "\n\n")
+
+	if opt_MP {
+		for i := 1; i < len(files); i++ {
+			if opt_MMD && inStdIncludePath(files[i].Name) {
+				continue
+			}
+			fmt.Fprintf(out, "%s:\n\n", quoteMakefile(files[i].Name))
+		}
 	}
 }
 
@@ -417,6 +574,14 @@ func cc1() {
 	tok = appendTokens(tok, tok2)
 	tok = preprocess(tok)
 
+	// If -M or -MD are given, print file dependencies.
+	if opt_M || opt_MD {
+		printDependencies()
+		if opt_M {
+			return
+		}
+	}
+
 	// If -E is given, print out preprocessed C code as a result.
 	if opt_E {
 		printTokens(tok)
@@ -519,6 +684,9 @@ func addDefaultIncludePaths(argv0 string) {
 	includePaths = append(includePaths, "/usr/local/include")
 	includePaths = append(includePaths, "/usr/include/x86_64-linux-gnu")
 	includePaths = append(includePaths, "/usr/include")
+
+	// Keep a copy of the standard include paths for -MMD option.
+	stdIncludePaths = append(stdIncludePaths, includePaths...)
 }
 
 func runLinker(inputs []string, output string) {
@@ -618,7 +786,7 @@ func main() {
 		}
 
 		// Just preprocess
-		if opt_E {
+		if opt_E || opt_M {
 			run_cc1(args, input, "")
 			continue
 		}

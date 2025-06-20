@@ -216,4 +216,48 @@ echo 'void foo(); void bar(); int main() { foo(); bar(); }' > $tmp/main.c
 ./zcc -o $tmp/foo $tmp/main.c $tmp/foo.so
 check '.so'
 
+# -M
+echo '#include "out2.h"' > $tmp/out.c
+echo '#include "out3.h"' >> $tmp/out.c
+touch $tmp/out2.h $tmp/out3.h
+./zcc -M -I$tmp $tmp/out.c | grep -q -z '^out.o: .*/out\.c .*/out2\.h .*/out3\.h'
+check -M
+
+# -MF
+./zcc -MF $tmp/mf -M -I$tmp $tmp/out.c
+grep -q -z '^out.o: .*/out\.c .*/out2\.h .*/out3\.h' $tmp/mf
+check -MF
+
+# -MP
+./zcc -MF $tmp/mp -MP -M -I$tmp $tmp/out.c
+grep -q '^.*/out2.h:' $tmp/mp
+check -MP
+grep -q '^.*/out3.h:' $tmp/mp
+check -MP
+
+# -MT
+./zcc -MT foo -M -I$tmp $tmp/out.c | grep -q '^foo:'
+check -MT
+./zcc -MT foo -MT bar -M -I$tmp $tmp/out.c | grep -q '^foo bar:'
+check -MT
+
+# -MD
+echo '#include "out2.h"' > $tmp/md2.c
+echo '#include "out3.h"' > $tmp/md3.c
+(cd $tmp; $OLDPWD/zcc -c -MD -I. md2.c md3.c)
+grep -q -z '^md2.o:.* md2\.c .* ./out2\.h' $tmp/md2.d
+check -MD
+grep -q -z '^md3.o:.* md3\.c .* ./out3\.h' $tmp/md3.d
+check -MD
+
+./zcc -c -MD -MF $tmp/md-mf.d -I. $tmp/md2.c
+grep -q -z '^md2.o:.*md2\.c .*/out2\.h' $tmp/md-mf.d
+check -MD
+
+echo 'extern int bar; int foo() { return bar; }' | ./zcc -fPIC -xc -c -o $tmp/foo.o -
+cc -shared -o $tmp/foo.so $tmp/foo.o
+echo 'int foo(); int bar=3; int main() { foo(); }' > $tmp/main.c
+./zcc -o $tmp/foo $tmp/main.c $tmp/foo.so
+check -fPIC
+
 echo OK

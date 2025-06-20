@@ -364,6 +364,21 @@ func genAddr(node *AstNode) {
 			return
 		}
 
+		if opt_fpic {
+			// Thread-local variable
+			if node.Variable.IsTls {
+				printlnToFile("  data16 lea %s@tlsgd(%%rip), %%rdi", node.Variable.Name)
+				printlnToFile("  .value 0x6666")
+				printlnToFile("  rex64")
+				printlnToFile("  call __tls_get_addr@PLT")
+				return
+			}
+
+			// Function or global variable
+			printlnToFile("  mov %s@GOTPCREL(%%rip), %%rax", node.Variable.Name)
+			return
+		}
+
 		// Thread-local variable
 		if node.Variable.IsTls {
 			printlnToFile("  mov %%fs:0, %%rax")

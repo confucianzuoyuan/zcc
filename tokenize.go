@@ -923,7 +923,9 @@ func readFile(path string) *[]int8 {
 	}
 
 	// Make sure that the last line is properly terminated with '\n'.
-	if src[len(src)-1] != '\n' {
+	if len(src) > 0 && src[len(src)-1] != '\n' {
+		src = append(src, '\n')
+	} else {
 		src = append(src, '\n')
 	}
 	// add '\0' in the end of src
