@@ -379,8 +379,14 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 }
 
 var IncludeGuards = make(map[string]string)
+var PragmaOnce = make(map[string]int)
 
 func includeFile(tok *Token, path string, filenameToken *Token) *Token {
+	// Check for "#pragma once"
+	if _, ok := PragmaOnce[path]; ok {
+		return tok
+	}
+
 	// If we read the same file before, and if the file was guarded
 	// by the usual #ifndef ... #endif pattern, we may be able to
 	// skip the file without opening it.
@@ -1081,6 +1087,12 @@ func preprocess2(tok *Token) *Token {
 
 		if tok.Kind == TK_PP_NUM {
 			readLineMarker(&tok, tok)
+			continue
+		}
+
+		if tok.isEqual("pragma") && tok.Next.isEqual("once") {
+			PragmaOnce[tok.File.Name] = 1
+			tok = skipLine(tok.Next.Next)
 			continue
 		}
 
