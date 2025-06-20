@@ -40,6 +40,7 @@ var opt_S bool
 var opt_c bool
 var opt_cc1 bool
 var opt_hash_hash_hash bool
+var opt_static bool
 var opt_MF string
 var opt_MT string
 var opt_o string = ""
@@ -138,6 +139,12 @@ func parseArgs(args []string) {
 			if len(args) == 1 {
 				usage(1)
 			}
+			continue
+		}
+
+		if args[idx] == "-static" {
+			opt_static = true
+			ldExtraArgs = append(ldExtraArgs, "-static")
 			continue
 		}
 
@@ -697,8 +704,6 @@ func runLinker(inputs []string, output string) {
 	arr = append(arr, output)
 	arr = append(arr, "-m")
 	arr = append(arr, "elf_x86_64")
-	arr = append(arr, "-dynamic-linker")
-	arr = append(arr, "/lib64/ld-linux-x86-64.so.2")
 
 	libpath := findLibPath()
 	gccLibpath := findGccLibPath()
@@ -707,8 +712,7 @@ func runLinker(inputs []string, output string) {
 	arr = append(arr, libpath+"/crti.o")
 	arr = append(arr, gccLibpath+"/crtbegin.o")
 	arr = append(arr, "-L"+gccLibpath)
-	arr = append(arr, "-L"+libpath)
-	arr = append(arr, "-L"+libpath+"/..")
+	arr = append(arr, "-L/usr/lib/x86_64-linux-gnu")
 	arr = append(arr, "-L/usr/lib64")
 	arr = append(arr, "-L/lib64")
 	arr = append(arr, "-L/usr/lib/x86_64-linux-gnu")
@@ -717,14 +721,28 @@ func runLinker(inputs []string, output string) {
 	arr = append(arr, "-L/usr/lib")
 	arr = append(arr, "-L/lib")
 
+	if !opt_static {
+		arr = append(arr, "-dynamic-linker")
+		arr = append(arr, "/lib64/ld-linux-x86-64.so.2")
+	}
+
 	arr = append(arr, ldExtraArgs...)
 	arr = append(arr, inputs...)
 
-	arr = append(arr, "-lc")
-	arr = append(arr, "-lgcc")
-	arr = append(arr, "--as-needed")
-	arr = append(arr, "-lgcc_s")
-	arr = append(arr, "--no-as-needed")
+	if opt_static {
+		arr = append(arr, "--start-group")
+		arr = append(arr, "-lgcc")
+		arr = append(arr, "-lgcc_eh")
+		arr = append(arr, "-lc")
+		arr = append(arr, "--end-group")
+	} else {
+		arr = append(arr, "-lc")
+		arr = append(arr, "-lgcc")
+		arr = append(arr, "--as-needed")
+		arr = append(arr, "-lgcc_s")
+		arr = append(arr, "--no-as-needed")
+	}
+
 	arr = append(arr, gccLibpath+"/crtend.o")
 	arr = append(arr, libpath+"/crtn.o")
 
