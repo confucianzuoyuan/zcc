@@ -839,18 +839,26 @@ func skipLine(tok *Token) *Token {
 	return tok
 }
 
+var Cache = make(map[string]string)
+
 func searchIncludePaths(filename string) string {
 	if filename[0] == '/' {
 		return filename
 	}
 
+	cached, ok := Cache[filename]
+	if ok {
+		return cached
+	}
+
 	// Search a file from the include paths.
 	for _, f := range includePaths {
 		path := f + "/" + filename
-		_, err := os.Stat(path)
-		if err == nil {
-			return path
+		if !fileExists(path) {
+			continue
 		}
+		Cache[filename] = path
+		return path
 	}
 
 	return ""
