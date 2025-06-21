@@ -465,6 +465,11 @@ func genAddr(node *AstNode) {
 			genExpr(node)
 			return
 		}
+	case ND_ASSIGN, ND_COND:
+		if node.Ty.Kind == TY_STRUCT || node.Ty.Kind == TY_UNION {
+			genExpr(node)
+			return
+		}
 	case ND_VLA_PTR:
 		printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
 		return
