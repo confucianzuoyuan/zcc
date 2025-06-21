@@ -1246,7 +1246,6 @@ func initMacros() {
 	defineMacro("__SIZEOF_SIZE_T__", "8")
 	defineMacro("__SIZE_TYPE__", "unsigned long")
 	defineMacro("__STDC_HOSTED__", "1")
-	defineMacro("__STDC_NO_ATOMICS__", "1")
 	defineMacro("__STDC_NO_COMPLEX__", "1")
 	defineMacro("__STDC_VERSION__", "201112L")
 	defineMacro("__STDC__", "1")
