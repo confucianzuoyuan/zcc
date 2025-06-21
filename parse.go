@@ -1287,19 +1287,37 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-// attribute = ("__attribute__" "(" "(" "packed" ")" ")")?
-func attribute(tok *Token, ty *CType) *Token {
-	if !tok.isEqual("__attribute__") {
-		return tok
-	}
+// attribute = ("__attribute__" "(" "(" "packed" ")" ")")*
+func attributeList(tok *Token, ty *CType) *Token {
+	for consume(&tok, tok, "__attribute__") {
+		tok = skip(tok, "(")
+		tok = skip(tok, "(")
 
-	tok = tok.Next
-	tok = skip(tok, "(")
-	tok = skip(tok, "(")
-	tok = skip(tok, "packed")
-	tok = skip(tok, ")")
-	tok = skip(tok, ")")
-	ty.IsPacked = true
+		first := true
+
+		for !consume(&tok, tok, ")") {
+			if !first {
+				tok = skip(tok, ",")
+			}
+			first = false
+
+			if consume(&tok, tok, "packed") {
+				ty.IsPacked = true
+				continue
+			}
+
+			if consume(&tok, tok, "aligned") {
+				tok = skip(tok, "(")
+				ty.Align = constExpr(&tok, tok)
+				tok = skip(tok, ")")
+				continue
+			}
+
+			errorTok(tok, "unknown attribute")
+		}
+
+		tok = skip(tok, ")")
+	}
 
 	return tok
 }
@@ -1307,7 +1325,7 @@ func attribute(tok *Token, ty *CType) *Token {
 // struct-union-decl = attribute? ident? ("{" struct-members)?
 func structUnionDecl(rest **Token, tok *Token) *CType {
 	ty := structType()
-	tok = attribute(tok, ty)
+	tok = attributeList(tok, ty)
 
 	// Read a struct tag.
 	var tag *Token = nil
@@ -1333,7 +1351,7 @@ func structUnionDecl(rest **Token, tok *Token) *CType {
 
 	// Construct a struct object.
 	structMembers(&tok, tok, ty)
-	*rest = attribute(tok, ty)
+	*rest = attributeList(tok, ty)
 
 	if tag != nil {
 		// If this is a redefinition, overwrite a previous type.
