@@ -395,6 +395,20 @@ func (node *AstNode) addType() {
 	case ND_LABEL_VAL:
 		node.Ty = pointerTo(TyVoid)
 		return
+	case ND_CAS:
+		node.CasAddr.addType()
+		node.CasOld.addType()
+		node.CasNew.addType()
+		node.Ty = TyBool
+
+		if node.CasAddr.Ty.Kind != TY_PTR {
+			errorTok(node.CasAddr.Tok, "pointer expected")
+		}
+		if node.CasOld.Ty.Kind != TY_PTR {
+			errorTok(node.CasOld.Tok, "pointer expected")
+		}
+
+		return
 	}
 }
 

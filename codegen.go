@@ -342,6 +342,34 @@ func count() int {
 	return i - 1
 }
 
+func regDX(sz int) string {
+	switch sz {
+	case 1:
+		return "%dl"
+	case 2:
+		return "%dx"
+	case 4:
+		return "%edx"
+	case 8:
+		return "%rdx"
+	}
+	panic("unreachable")
+}
+
+func regAX(sz int) string {
+	switch sz {
+	case 1:
+		return "%al"
+	case 2:
+		return "%ax"
+	case 4:
+		return "%eax"
+	case 8:
+		return "%rax"
+	}
+	panic("unreachable")
+}
+
 // Round up `n` to the nearest multiple of `align`. For instance,
 // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
 func alignTo(n int64, align int64) int64 {
@@ -750,6 +778,25 @@ func genExpr(node *AstNode) {
 		return
 	case ND_LABEL_VAL:
 		printlnToFile("  lea %s(%%rip), %%rax", node.UniqueLabel)
+		return
+	case ND_CAS:
+		genExpr(node.CasAddr)
+		push()
+		genExpr(node.CasNew)
+		push()
+		genExpr(node.CasOld)
+		printlnToFile("  mov %%rax, %%r8")
+		load(node.CasOld.Ty.Base)
+		pop("%rdx") // new
+		pop("%rdi") // addr
+
+		sz := int(node.CasAddr.Ty.Base.Size)
+		printlnToFile("  lock cmpxchg %s, (%%rdi)", regDX(sz))
+		printlnToFile("  sete %%cl")
+		printlnToFile("  je 1f")
+		printlnToFile("  mov %s, (%%r8)", regAX(sz))
+		printlnToFile("1:")
+		printlnToFile("  movzbl %%cl, %%eax")
 		return
 	case ND_NUM:
 		switch node.Ty.Kind {

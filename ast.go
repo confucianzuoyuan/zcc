@@ -50,6 +50,7 @@ const (
 	ND_CAST                         // Type cast
 	ND_MEMZERO                      // Zero-clear a stack variable
 	ND_ASM                          // "asm"
+	ND_CAS                          // Atomic compare-and-swap
 )
 
 type AstNode struct {
@@ -98,6 +99,11 @@ type AstNode struct {
 
 	// "asm" string literal
 	AsmStr string
+
+	// Atomic compare-and-swap
+	CasAddr *AstNode
+	CasOld  *AstNode
+	CasNew  *AstNode
 
 	// Variable
 	Variable *Obj

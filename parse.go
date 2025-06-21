@@ -3251,6 +3251,18 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return newNum(2, start)
 	}
 
+	if tok.isEqual("__builtin_compare_and_swap") {
+		node := newNode(ND_CAS, tok)
+		tok = skip(tok.Next, "(")
+		node.CasAddr = assign(&tok, tok)
+		tok = skip(tok, ",")
+		node.CasOld = assign(&tok, tok)
+		tok = skip(tok, ",")
+		node.CasNew = assign(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
 	if tok.Kind == TK_IDENT {
 		// Variable or enum constant
 		sc := findVariable(tok)
