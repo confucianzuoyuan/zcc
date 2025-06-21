@@ -53,6 +53,7 @@ var TypeNames = map[string]struct{}{
 	"inline":        {},
 	"_Thread_local": {},
 	"__thread":      {},
+	"_Atomic":       {},
 }
 
 // Scope for local, global variables or typedefs
@@ -1008,6 +1009,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 	ty := TyInt
 	counter := 0
+	isAtomic := false
 
 	for tok.isTypename() {
 		// Handle storage class specifiers.
@@ -1038,6 +1040,16 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 		// These keywords are recognized but ignored.
 		if consume(&tok, tok, "const") || consume(&tok, tok, "volatile") || consume(&tok, tok, "auto") || consume(&tok, tok, "register") || consume(&tok, tok, "restrict") || consume(&tok, tok, "__restrict") || consume(&tok, tok, "__restrict__") || consume(&tok, tok, "_Noreturn") {
+			continue
+		}
+
+		if tok.isEqual("_Atomic") {
+			tok = tok.Next
+			if tok.isEqual("(") {
+				ty = typeName(&tok, tok.Next)
+				tok = skip(tok, ")")
+			}
+			isAtomic = true
 			continue
 		}
 
@@ -1137,6 +1149,11 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		}
 
 		tok = tok.Next
+	}
+
+	if isAtomic {
+		ty = ty.copy()
+		ty.IsAtomic = true
 	}
 
 	*rest = tok
@@ -2447,7 +2464,74 @@ func toAssign(binary *AstNode) *AstNode {
 		return newBinary(ND_COMMA, expr1, expr4, tok)
 	}
 
-	// Convert `A op= C` to ``tmp = &A, *tmp = *tmp op B`.
+	// If A is an atomic type, Convert `A op= B` to
+	//
+	// ({
+	//   T1 *addr = &A; T2 val = (B); T1 old = *addr; T1 new;
+	//   do {
+	//    new = old op val;
+	//   } while (!atomic_compare_exchange_strong(addr, &old, new));
+	//   new;
+	// })
+	if binary.Lhs.Ty.IsAtomic {
+		head := AstNode{}
+		cur := &head
+
+		addr := newLocalVar("", pointerTo(binary.Lhs.Ty))
+		val := newLocalVar("", binary.Rhs.Ty)
+		old := newLocalVar("", binary.Lhs.Ty)
+		new := newLocalVar("", binary.Lhs.Ty)
+
+		cur.Next =
+			newUnary(ND_EXPR_STMT,
+				newBinary(ND_ASSIGN, newVarNode(addr, tok),
+					newUnary(ND_ADDR, binary.Lhs, tok), tok),
+				tok)
+		cur = cur.Next
+
+		cur.Next =
+			newUnary(ND_EXPR_STMT,
+				newBinary(ND_ASSIGN, newVarNode(val, tok), binary.Rhs, tok),
+				tok)
+		cur = cur.Next
+
+		cur.Next =
+			newUnary(ND_EXPR_STMT,
+				newBinary(ND_ASSIGN, newVarNode(old, tok),
+					newUnary(ND_DEREF, newVarNode(addr, tok), tok), tok),
+				tok)
+		cur = cur.Next
+
+		loop := newNode(ND_DO, tok)
+		loop.BreakLabel = newUniqueName()
+		loop.ContinueLabel = newUniqueName()
+
+		body := newBinary(ND_ASSIGN,
+			newVarNode(new, tok),
+			newBinary(binary.Kind, newVarNode(old, tok),
+				newVarNode(val, tok), tok),
+			tok)
+
+		loop.Then = newNode(ND_BLOCK, tok)
+		loop.Then.Body = newUnary(ND_EXPR_STMT, body, tok)
+
+		cas := newNode(ND_CAS, tok)
+		cas.CasAddr = newVarNode(addr, tok)
+		cas.CasOld = newUnary(ND_ADDR, newVarNode(old, tok), tok)
+		cas.CasNew = newVarNode(new, tok)
+		loop.Cond = newUnary(ND_NOT, cas, tok)
+
+		cur.Next = loop
+		cur = cur.Next
+
+		cur.Next = newUnary(ND_EXPR_STMT, newVarNode(new, tok), tok)
+
+		node := newNode(ND_STMT_EXPR, tok)
+		node.Body = head.Next
+		return node
+	}
+
+	// Convert `A op= B` to ``tmp = &A, *tmp = *tmp op B`.
 	variable := newLocalVar("", pointerTo(binary.Lhs.Ty))
 
 	expr1 := newBinary(ND_ASSIGN, newVarNode(variable, tok), newUnary(ND_ADDR, binary.Lhs, tok), tok)

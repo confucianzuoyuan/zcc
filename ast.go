@@ -106,6 +106,10 @@ type AstNode struct {
 	CasOld  *AstNode
 	CasNew  *AstNode
 
+	// Atomic op= operators
+	AtomicAddr *Obj
+	AtomicExpr *AstNode
+
 	// Variable
 	Variable *Obj
 

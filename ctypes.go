@@ -26,6 +26,7 @@ type CType struct {
 	Size       int64  // sizeof() value
 	Align      int64  // alignment
 	IsUnsigned bool   // unsigned or signed
+	IsAtomic   bool   // true if _Atomic
 	Origin     *CType // for type compatibility check
 
 	Base *CType
