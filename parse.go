@@ -1287,8 +1287,28 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-// struct-union-decl = ident? ("{" struct-members)?
+// attribute = ("__attribute__" "(" "(" "packed" ")" ")")?
+func attribute(tok *Token, ty *CType) *Token {
+	if !tok.isEqual("__attribute__") {
+		return tok
+	}
+
+	tok = tok.Next
+	tok = skip(tok, "(")
+	tok = skip(tok, "(")
+	tok = skip(tok, "packed")
+	tok = skip(tok, ")")
+	tok = skip(tok, ")")
+	ty.IsPacked = true
+
+	return tok
+}
+
+// struct-union-decl = attribute? ident? ("{" struct-members)?
 func structUnionDecl(rest **Token, tok *Token) *CType {
+	ty := structType()
+	tok = attribute(tok, ty)
+
 	// Read a struct tag.
 	var tag *Token = nil
 	if tok.Kind == TK_IDENT {
@@ -1299,12 +1319,11 @@ func structUnionDecl(rest **Token, tok *Token) *CType {
 	if tag != nil && !tok.isEqual("{") {
 		*rest = tok
 
-		ty := findTag(tag)
-		if ty != nil {
-			return ty
+		ty2 := findTag(tag)
+		if ty2 != nil {
+			return ty2
 		}
 
-		ty = structType()
 		ty.Size = -1
 		pushTagScope(tag, ty)
 		return ty
@@ -1313,8 +1332,8 @@ func structUnionDecl(rest **Token, tok *Token) *CType {
 	tok = skip(tok, "{")
 
 	// Construct a struct object.
-	ty := structType()
-	structMembers(rest, tok, ty)
+	structMembers(&tok, tok, ty)
+	*rest = attribute(tok, ty)
 
 	if tag != nil {
 		// If this is a redefinition, overwrite a previous type.
@@ -1356,12 +1375,14 @@ func structDecl(rest **Token, tok *Token) *CType {
 			mem.BitOffset = bits % (sz * 8)
 			bits += mem.BitWidth
 		} else {
-			bits = alignTo(bits, mem.Align*8)
+			if !ty.IsPacked {
+				bits = alignTo(bits, mem.Align*8)
+			}
 			mem.Offset = bits / 8
 			bits += mem.Ty.Size * 8
 		}
 
-		if ty.Align < mem.Align {
+		if !ty.IsPacked && ty.Align < mem.Align {
 			ty.Align = mem.Align
 		}
 	}

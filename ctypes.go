@@ -44,6 +44,7 @@ type CType struct {
 	// Struct
 	Members    *Member
 	IsFlexible bool
+	IsPacked   bool
 
 	ReturnType *CType
 	Params     *CType
