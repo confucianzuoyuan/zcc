@@ -51,6 +51,7 @@ const (
 	ND_MEMZERO                      // Zero-clear a stack variable
 	ND_ASM                          // "asm"
 	ND_CAS                          // Atomic compare-and-swap
+	ND_EXCH                         // Atomic exchange
 )
 
 type AstNode struct {

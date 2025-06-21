@@ -409,6 +409,12 @@ func (node *AstNode) addType() {
 		}
 
 		return
+	case ND_EXCH:
+		if node.Lhs.Ty.Kind != TY_PTR {
+			errorTok(node.CasOld.Tok, "pointer expected")
+		}
+		node.Ty = node.Lhs.Ty.Base
+		return
 	}
 }
 

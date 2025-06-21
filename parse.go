@@ -3251,6 +3251,16 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return newNum(2, start)
 	}
 
+	if tok.isEqual("__builtin_atomic_exchange") {
+		node := newNode(ND_EXCH, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = assign(&tok, tok)
+		tok = skip(tok, ",")
+		node.Rhs = assign(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
 	if tok.isEqual("__builtin_compare_and_swap") {
 		node := newNode(ND_CAS, tok)
 		tok = skip(tok.Next, "(")

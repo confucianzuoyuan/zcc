@@ -779,6 +779,15 @@ func genExpr(node *AstNode) {
 	case ND_LABEL_VAL:
 		printlnToFile("  lea %s(%%rip), %%rax", node.UniqueLabel)
 		return
+	case ND_EXCH:
+		genExpr(node.Lhs)
+		push()
+		genExpr(node.Rhs)
+		pop("%rdi")
+
+		sz := int(node.Lhs.Ty.Base.Size)
+		printlnToFile("  xchg %s, (%%rdi)", regAX(sz))
+		return
 	case ND_CAS:
 		genExpr(node.CasAddr)
 		push()
