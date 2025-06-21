@@ -248,7 +248,7 @@ func parseArgs(args []string) {
 			continue
 		}
 
-		if strings.HasPrefix(args[idx], "-l") {
+		if strings.HasPrefix(args[idx], "-l") || strings.HasPrefix(args[idx], "-Wl,") {
 			inputPaths = append(inputPaths, args[idx])
 			continue
 		}
@@ -802,6 +802,14 @@ func main() {
 			ldArgs = append(ldArgs, input)
 			continue
 		}
+
+		if strings.HasPrefix(input, "-Wl,") {
+			s := input[4:]
+			args := strings.Split(s, ",")
+			ldArgs = append(ldArgs, args...)
+			continue
+		}
+
 		output := ""
 
 		if opt_o != "" {
