@@ -143,6 +143,19 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-L" {
+			ldExtraArgs = append(ldExtraArgs, "-L")
+			idx++
+			ldExtraArgs = append(ldExtraArgs, args[idx])
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-L") {
+			ldExtraArgs = append(ldExtraArgs, "-L")
+			ldExtraArgs = append(ldExtraArgs, args[idx][2:])
+			continue
+		}
+
 		if args[idx] == "-static" {
 			opt_static = true
 			ldExtraArgs = append(ldExtraArgs, "-static")
