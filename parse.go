@@ -3442,15 +3442,32 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	if ty.Name == nil {
 		errorTok(ty.NamePos, "function name omitted")
 	}
+	nameString := ty.Name.getIdent()
 
-	fn := newGlobalVar(ty.Name.getIdent(), ty)
-	fn.IsFunction = true
-	fn.IsDefinition = !consume(&tok, tok, ";")
-	fn.IsStatic = attr.IsStatic || (attr.IsInline && !attr.IsExtern)
-	fn.IsInline = attr.IsInline
+	fn := findFunction(nameString)
+	if fn != nil {
+		// Redeclaration
+		if !fn.IsFunction {
+			errorTok(tok, "redeclared as a different kind of symbol")
+		}
+		if fn.IsDefinition && tok.isEqual("{") {
+			errorTok(tok, "redefinition of "+nameString)
+		}
+		if !fn.IsStatic && attr.IsStatic {
+			errorTok(tok, "static declaration follows a non-static declaration")
+		}
+		fn.IsDefinition = fn.IsDefinition || tok.isEqual("{")
+	} else {
+		fn = newGlobalVar(nameString, ty)
+		fn.IsFunction = true
+		fn.IsDefinition = tok.isEqual("{")
+		fn.IsStatic = attr.IsStatic || (attr.IsInline && !attr.IsExtern)
+		fn.IsInline = attr.IsInline
+	}
+
 	fn.IsRoot = !(fn.IsStatic && fn.IsInline)
 
-	if !fn.IsDefinition {
+	if consume(&tok, tok, ";") {
 		return tok
 	}
 
