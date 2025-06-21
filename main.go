@@ -105,7 +105,7 @@ func usage(status int) {
 }
 
 func takeArg(arg string) bool {
-	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include" || arg == "-x" || arg == "-MF" || arg == "-MT"
+	return arg == "-o" || arg == "-I" || arg == "-idirafter" || arg == "-include" || arg == "-x" || arg == "-MF" || arg == "-MT" || arg == "-Xlinker"
 }
 
 func parseArgs(args []string) {
@@ -140,6 +140,12 @@ func parseArgs(args []string) {
 			if len(args) == 1 {
 				usage(1)
 			}
+			continue
+		}
+
+		if args[idx] == "-Xlinker" {
+			idx++
+			ldExtraArgs = append(ldExtraArgs, args[idx])
 			continue
 		}
 
