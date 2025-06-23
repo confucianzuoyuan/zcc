@@ -884,14 +884,12 @@ func expandMacro(rest **Token, tok *Token) bool {
 	// The token right after the macro. For funclike, after parentheses.
 	var stopToken *Token
 
-	var body *Token
-
 	if m.IsObjlike {
 		stopToken = tok.Next
 		*rest = insertObjlike(m.Body, stopToken, tok)
 	} else {
 		args := readMacroArgs(&stopToken, tok, m.Params, m.VaArgsName)
-		body = subst(m.Body, args)
+		body := subst(m.Body, args)
 		*rest = insertFunclike(body, stopToken, tok)
 	}
 
