@@ -10,7 +10,7 @@ test/%.exe: clean zcc test/%.c
 
 test: $(TESTS)
 	for i in $^; do echo $$i; ./$$i || exit 1; echo; done
-	test/driver.sh
+	sh test/driver.sh
 
 clean:
 	rm -rf zcc tmp* $(TESTS) test/*.s test/*.exe
