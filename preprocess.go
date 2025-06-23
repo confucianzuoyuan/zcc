@@ -942,7 +942,7 @@ func skipLine(tok *Token) *Token {
 	}
 
 	warnTok(tok, "extra token")
-	for tok.AtBeginningOfLine {
+	for !tok.AtBeginningOfLine {
 		tok = tok.Next
 	}
 	return tok
