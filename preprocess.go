@@ -632,11 +632,39 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, vaArgsName stri
 	return head.Next
 }
 
-func findArg(args *MacroArg, tok *Token) *MacroArg {
+func findArg(rest **Token, tok *Token, args *MacroArg) *MacroArg {
 	for ap := args; ap != nil; ap = ap.Next {
-		if ap.Name == B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]) {
+		if tok.isEqual(ap.Name) {
+			if rest != nil {
+				*rest = tok.Next
+			}
 			return ap
 		}
+	}
+
+	// __VA_OPT__(x) is treated like a parameter which expands to parameter-
+	// substituted (x) if macro-expanded __VA_ARGS__ is not empty.
+	if tok.isEqual("__VA_OPT__") && tok.Next.isEqual("(") {
+		arg := readMacroArgOne(&tok, tok.Next.Next, true)
+
+		var va *MacroArg = nil
+		for ap := args; ap != nil; ap = ap.Next {
+			if ap.IsVaArgs {
+				va = ap
+			}
+		}
+
+		if va != nil && expandArg(va).Kind != TK_EOF {
+			arg.Tok = subst(arg.Tok, args)
+		} else {
+			arg.Tok = tok.newEOF()
+		}
+
+		arg.Expanded = arg.Tok
+		if rest != nil {
+			*rest = tok.Next
+		}
+		return arg
 	}
 
 	return nil
@@ -660,32 +688,22 @@ func paste(lhs *Token, rhs *Token) *Token {
 	return tok
 }
 
-func hasVarargs(args *MacroArg) bool {
-	for ap := args; ap != nil; ap = ap.Next {
-		if ap.Name == "__VA_ARGS__" {
-			return ap.Tok.Kind != TK_EOF
-		}
-	}
-
-	return false
-}
-
 // Replace func-like macro parameters with given arguments.
 func subst(tok *Token, args *MacroArg) *Token {
 	head := Token{}
 	cur := &head
 
 	for tok != nil && tok.Kind != TK_EOF {
+		start := tok
 		// "#" followed by a parameter is replaced with stringized actuals.
 		if tok.isEqual("#") {
-			arg := findArg(args, tok.Next)
+			arg := findArg(&tok, tok.Next, args)
 			if arg == nil {
 				errorTok(tok.Next, "'#' is not followed by a macro parameter")
 			}
-			cur.Next = stringize(tok, arg.Tok)
+			cur.Next = stringize(start, arg.Tok)
 			cur = cur.Next
 			alignToken(cur, tok)
-			tok = tok.Next.Next
 			continue
 		}
 
@@ -693,7 +711,7 @@ func subst(tok *Token, args *MacroArg) *Token {
 		// to the empty token list. Otherwise, its expaned to `,` and
 		// __VA_ARGS__.
 		if tok.isEqual(",") && tok.Next.isEqual("##") {
-			arg := findArg(args, tok.Next.Next)
+			arg := findArg(nil, tok.Next.Next, args)
 			if arg != nil && arg.IsVaArgs {
 				if arg.Tok.Kind == TK_EOF {
 					tok = tok.Next.Next.Next
@@ -716,16 +734,17 @@ func subst(tok *Token, args *MacroArg) *Token {
 				errorTok(tok, "'##' cannot appear at end of macro expansion")
 			}
 
-			arg := findArg(args, tok.Next)
+			arg := findArg(&tok, tok.Next, args)
 			if arg != nil {
-				if arg.Tok.Kind != TK_EOF {
-					*cur = *paste(cur, arg.Tok)
-					for t := arg.Tok.Next; t.Kind != TK_EOF; t = t.Next {
-						cur.Next = t.copy()
-						cur = cur.Next
-					}
+				if arg.Tok.Kind == TK_EOF {
+					continue
 				}
-				tok = tok.Next.Next
+
+				*cur = *paste(cur, arg.Tok)
+				for t := arg.Tok.Next; t.Kind != TK_EOF; t = t.Next {
+					cur.Next = t.copy()
+					cur = cur.Next
+				}
 				continue
 			}
 
@@ -734,23 +753,20 @@ func subst(tok *Token, args *MacroArg) *Token {
 			continue
 		}
 
-		arg := findArg(args, tok)
+		arg := findArg(&tok, tok, args)
 
-		if arg != nil && tok.Next.isEqual("##") {
-			rhs := tok.Next.Next
-
+		if arg != nil && tok.isEqual("##") {
 			if arg.Tok.Kind == TK_EOF {
-				arg2 := findArg(args, rhs)
+				arg2 := findArg(&tok, tok.Next, args)
 				if arg2 != nil {
 					for t := arg2.Tok; t.Kind != TK_EOF; t = t.Next {
 						cur.Next = t.copy()
 						cur = cur.Next
 					}
-				} else {
-					cur.Next = rhs.copy()
-					cur = cur.Next
+					continue
 				}
-				tok = rhs.Next
+				cur.Next = tok.Next.copy()
+				cur = cur.Next
 				continue
 			}
 
@@ -759,38 +775,22 @@ func subst(tok *Token, args *MacroArg) *Token {
 				cur = cur.Next
 			}
 
-			tok = tok.Next
 			continue
 		}
 
-		// If __VA_ARG__ is empty, __VA_OPT__(x) is expanded to the
-		// empty token list. Otherwise, __VA_OPT__(x) is expanded to x.
-		if tok.isEqual("__VA_OPT__") && tok.Next.isEqual("(") {
-			arg := readMacroArgOne(&tok, tok.Next.Next, true)
-			if hasVarargs(args) {
-				for t := arg.Tok; t.Kind != TK_EOF; t = t.Next {
-					cur.Next = t
-					cur = cur.Next
-				}
-			}
-			tok = skip(tok, ")")
-			continue
-		}
-
-		// Handle a macro token. Macro arguments are completely macro-expanded
+		// Handle a parameter token. Macro arguments are completely macro-expanded
 		// before they are substituted into a macro body.
 		if arg != nil {
 			t := expandArg(arg)
-			alignToken(t, tok)
+			alignToken(t, start)
 			for ; t.Kind != TK_EOF; t = t.Next {
 				cur.Next = t.copy()
 				cur = cur.Next
 			}
-			tok = tok.Next
 			continue
 		}
 
-		// Handle a non-macro token.
+		// Handle a non-parameter token.
 		cur.Next = tok.copy()
 		cur = cur.Next
 		tok = tok.Next
