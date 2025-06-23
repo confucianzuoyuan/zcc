@@ -542,8 +542,7 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, vaArgsName stri
 	head := MacroArg{}
 	cur := &head
 
-	pp := params
-	for ; pp != nil; pp = pp.Next {
+	for pp := params; pp != nil; pp = pp.Next {
 		if cur != &head {
 			tok = skip(tok, ",")
 		}
@@ -559,7 +558,7 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, vaArgsName stri
 				Tok: tok.newEOF(),
 			}
 		} else {
-			if pp != params {
+			if params != nil {
 				tok = skip(tok, ",")
 			}
 			arg = readMacroArgOne(&tok, tok, true)
