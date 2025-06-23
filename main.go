@@ -560,29 +560,17 @@ func createTmpfile() string {
 	return path
 }
 
-func mustTokenzieFile(path string) *Token {
-	tok := tokenizeFile(path)
+func mustTokenzieFile(path string, end **Token) *Token {
+	tok := tokenizeFile(path, end)
 	if tok == nil {
 		panic(path)
 	}
 	return tok
 }
 
-func appendTokens(tok1 *Token, tok2 *Token) *Token {
-	if tok1 == nil || tok1.Kind == TK_EOF {
-		return tok2
-	}
-
-	t := tok1
-	for t.Next.Kind != TK_EOF {
-		t = t.Next
-	}
-	t.Next = tok2
-	return tok1
-}
-
 func cc1() {
-	var tok *Token = nil
+	head := Token{}
+	cur := &head
 
 	// Process -include option
 	for i := 0; i < len(opt_include); i++ {
@@ -598,14 +586,16 @@ func cc1() {
 			}
 		}
 
-		tok2 := mustTokenzieFile(path)
-		tok = appendTokens(tok, tok2)
+		var end *Token = nil
+		cur.Next = mustTokenzieFile(path, &end)
+		if end != nil {
+			cur = end
+		}
 	}
 
 	// Tokenize and parse.
-	tok2 := mustTokenzieFile(baseFile)
-	tok = appendTokens(tok, tok2)
-	tok = preprocess(tok)
+	cur.Next = mustTokenzieFile(baseFile, nil)
+	tok := preprocess(head.Next)
 
 	// If -M or -MD are given, print file dependencies.
 	if opt_M || opt_MD {

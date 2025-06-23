@@ -707,7 +707,7 @@ func isAlphaNumber(c int8) bool {
 }
 
 // Tokenize a given string and returns new tokens.
-func tokenize(file *File) *Token {
+func tokenize(file *File, end **Token) *Token {
 	currentFile = file
 	src := file.Contents
 
@@ -875,6 +875,9 @@ func tokenize(file *File) *Token {
 		errorAt(p, "invalid token")
 	}
 
+	if end != nil && cur != &head {
+		*end = cur
+	}
 	cur.Next = newToken(TK_EOF, p, p)
 	addLineNumbers(src, head.Next)
 	return head.Next
@@ -1067,7 +1070,7 @@ func getInputFiles() []*File {
 	return inputFiles
 }
 
-func tokenizeFile(path string) *Token {
+func tokenizeFile(path string, end **Token) *Token {
 	src := readFile(path)
 	if src == nil {
 		return nil
@@ -1093,5 +1096,5 @@ func tokenizeFile(path string) *Token {
 	// Save the filename for assembler .file directive.
 	inputFiles = append(inputFiles, file)
 	fileNo += 1
-	return tokenize(file)
+	return tokenize(file, end)
 }

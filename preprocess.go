@@ -119,7 +119,7 @@ func newNumberToken(val int, tmpl *Token) *Token {
 	buf := []uint8(fmt.Sprintf("%d\n", val))
 	buf = append(buf, 0)
 	newBuf := U82I8(buf)
-	return tokenize(newFile(tmpl.File.Name, tmpl.File.FileNo, &newBuf))
+	return tokenize(newFile(tmpl.File.Name, tmpl.File.FileNo, &newBuf), nil)
 }
 
 func readConstExpr(rest **Token, tok *Token) *Token {
@@ -308,7 +308,7 @@ func newStringToken(s string, tmpl *Token) *Token {
 	buf = append(buf, 0)
 	newBuf := U82I8(buf)
 	f := newFile(tmpl.File.Name, tmpl.File.FileNo, &newBuf)
-	return tokenize(f)
+	return tokenize(f, nil)
 }
 
 // Concatenates all tokens in `tok` and returns a new string.
@@ -378,7 +378,6 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 	panic("unreachable")
 }
 
-var IncludeGuards = make(map[string]string)
 var PragmaOnce = make(map[string]int)
 var IncludeNextIdx int
 
@@ -399,12 +398,17 @@ func includeFile(tok *Token, path string, filenameToken *Token) *Token {
 		return tok
 	}
 
-	tok2 := tokenizeFile(path)
-	if tok2 == nil {
+	var end *Token = nil
+	start := tokenizeFile(path, &end)
+	if start == nil {
 		errorTok(filenameToken, "cannot open file")
 	}
+	if end == nil {
+		return tok
+	}
 
-	return tok2.append(tok)
+	end.Next = tok
+	return start
 }
 
 func findMacro(tok *Token) *Macro {
@@ -577,7 +581,7 @@ func paste(lhs *Token, rhs *Token) *Token {
 	newBuf := U82I8(buf)
 
 	// Tokenize the resulting string
-	tok := tokenize(newFile(lhs.File.Name, lhs.File.FileNo, &newBuf))
+	tok := tokenize(newFile(lhs.File.Name, lhs.File.FileNo, &newBuf), nil)
 	if tok.Next.Kind != TK_EOF {
 		errorTok(lhs, fmt.Sprintf("pasting forms '%s', an invalid token", string(buf)))
 	}
@@ -1094,7 +1098,7 @@ func defineMacro(name string, buf string) {
 	b := []uint8(buf)
 	b = append(b, 0)
 	newB := U82I8(b)
-	tok := tokenize(newFile("<built-in>", 1, &newB))
+	tok := tokenize(newFile("<built-in>", 1, &newB), nil)
 	addMacro(name, true, tok)
 }
 
