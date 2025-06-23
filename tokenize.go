@@ -50,15 +50,15 @@ type Token struct {
 	Ty            *CType    // Used if TK_NUM or TK_STR
 	StringLiteral []int8    // String literal contents including terminating '\0'
 
-	File              *File    // Source location
-	Filename          string   // Filename
-	LineNo            int      // Line number
-	LineDelta         int      // Line number
-	AtBeginningOfLine bool     // True if this token is at beginning of line
-	HasSpace          bool     // True if this token follows a space character
-	Hideset           *Hideset // For macro expansion
-	Origin            *Token   // If this is expanded from a macro, the original token
-	GuardFile         string   // The path of a potentially include-guarded file
+	File              *File  // Source location
+	Filename          string // Filename
+	LineNo            int    // Line number
+	LineDelta         int    // Line number
+	AtBeginningOfLine bool   // True if this token is at beginning of line
+	HasSpace          bool   // True if this token follows a space character
+	DontExpand        bool   // True if a macro token is encountered during the macro's expansion
+	Origin            *Token // If this is expanded from a macro, the original token
+	GuardFile         string // The path of a potentially include-guarded file
 }
 
 // Input file

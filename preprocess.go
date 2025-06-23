@@ -12,15 +12,8 @@
 // token T is expanded to U and then to T and the macro expansion
 // stops at that point.
 //
-// To achieve the above behavior, we attach for each token a set of
-// macro names from which the token is expanded. The set is called
-// "hideset". Hideset is initially empty, and every time we expand a
-// macro, the macro name is added to the resulting tokens' hidesets.
-//
-// The above macro expansion algorithm is explained in this document
-// written by Dave Prossor, which is used as a basis for the
-// standard's wording:
-// https://github.com/rui314/chibicc/wiki/cpp.algo.pdf
+// To achieve the above behavior, we lock an expanding macro until
+// the next token following its expansion ("stop_tok") is reached.
 
 package main
 
@@ -81,6 +74,9 @@ type MacroHandlerFn func(*Token) *Token
 type Macro struct {
 	Name       string
 	IsObjlike  bool
+	IsLocked   bool
+	StopToken  *Token
+	LockedNext *Macro
 	Params     *MacroParam
 	VaArgsName string
 	Body       *Token
@@ -99,10 +95,10 @@ type MacroArg struct {
 	Tok      *Token
 }
 
-type Hideset struct {
-	Next *Hideset
-	Name string
-}
+// A linked list of locked macros. Since macro nesting happens in
+// LIFO fashion (inner expansions end first), we only need to check
+// the lastest one for unlocking.
+var LockedMacros *Macro
 
 var condIncl *CondIncl
 var macros = make(map[string]*Macro)
@@ -507,6 +503,14 @@ func readMacroArgOne(rest **Token, tok *Token, readRest bool) *MacroArg {
 	level := 0
 
 	for {
+		popMacroLock(tok)
+		if LockedMacros != nil && tok.Kind == TK_IDENT {
+			m := findMacro(tok)
+			if m != nil && m.IsLocked {
+				tok.DontExpand = true
+			}
+		}
+
 		if level == 0 && tok.isEqual(")") {
 			break
 		}
@@ -537,6 +541,9 @@ func readMacroArgOne(rest **Token, tok *Token, readRest bool) *MacroArg {
 }
 
 func readMacroArgs(rest **Token, tok *Token, params *MacroParam, vaArgsName string) *MacroArg {
+	popMacroLock(tok.Next)
+	popMacroLock(tok.Next.Next)
+
 	tok = tok.Next.Next
 
 	head := MacroArg{}
@@ -568,8 +575,7 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, vaArgsName stri
 		cur.Next = arg
 	}
 
-	skip(tok, ")")
-	*rest = tok
+	*rest = skip(tok, ")")
 	return head.Next
 }
 
@@ -744,12 +750,17 @@ func subst(tok *Token, args *MacroArg) *Token {
 // If tok is a macro, expand it and return true.
 // Otherwise, do nothing and return false.
 func expandMacro(rest **Token, tok *Token) bool {
-	if tok.Hideset.contains(B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
+	if tok.DontExpand {
 		return false
 	}
 
 	m := findMacro(tok)
 	if m == nil {
+		return false
+	}
+
+	if m.IsLocked {
+		tok.DontExpand = true
 		return false
 	}
 
@@ -760,102 +771,52 @@ func expandMacro(rest **Token, tok *Token) bool {
 		return true
 	}
 
-	// Object-like macro application
-	if m.IsObjlike {
-		hs := tok.Hideset.union(newHideset(m.Name))
-		body := addHideset(m.Body, hs)
-		for t := body; t.Kind != TK_EOF; t = t.Next {
-			t.Origin = tok
-		}
-		*rest = body.append(tok.Next)
-		(*rest).AtBeginningOfLine = tok.AtBeginningOfLine
-		(*rest).HasSpace = tok.HasSpace
-		return true
-	}
-
 	// If a funclike macro token is not followed by an argument list,
 	// treat it as a normal identifier.
-	if !tok.Next.isEqual("(") {
+	if !m.IsObjlike && !tok.Next.isEqual("(") {
 		return false
 	}
 
-	// Function-like macro application
-	macroToken := tok
-	args := readMacroArgs(&tok, tok, m.Params, m.VaArgsName)
-	rparen := tok
+	// The token right after the macro. For funclike, after parentheses.
+	var stopToken *Token
 
-	// Tokens that consist a func-like macro invocation may have different
-	// hidesets, and if that's the case, it's not clear what the hideset
-	// for the new tokens should be. We take the interesection of the
-	// macro token and the closing parenthesis and use it as a new hideset
-	// as explained in the Dave Prossor's algorithm.
-	hs := macroToken.Hideset.intersection(rparen.Hideset)
-	hs = hs.union(newHideset(m.Name))
+	var body *Token
 
-	body := subst(m.Body, args)
-	body = addHideset(body, hs)
-	for t := body; t.Kind != TK_EOF; t = t.Next {
-		t.Origin = macroToken
+	if m.IsObjlike {
+		stopToken = tok.Next
+		body = m.Body
+	} else {
+		args := readMacroArgs(&stopToken, tok, m.Params, m.VaArgsName)
+		body = subst(m.Body, args)
 	}
-	*rest = body.append(tok.Next)
-	(*rest).AtBeginningOfLine = macroToken.AtBeginningOfLine
-	(*rest).HasSpace = macroToken.HasSpace
+
+	for t := body; t.Kind != TK_EOF; t = t.Next {
+		t.Origin = tok
+	}
+
+	*rest = body.append(stopToken)
+
+	if *rest != stopToken {
+		pushMacroLock(m, stopToken)
+	}
+
+	(*rest).AtBeginningOfLine = tok.AtBeginningOfLine
+	(*rest).HasSpace = tok.HasSpace
 	return true
 }
 
-func newHideset(name string) *Hideset {
-	hs := &Hideset{
-		Name: name,
-	}
-	return hs
+func pushMacroLock(m *Macro, tok *Token) {
+	m.IsLocked = true
+	m.StopToken = tok
+	m.LockedNext = LockedMacros
+	LockedMacros = m
 }
 
-func (hs1 *Hideset) union(hs2 *Hideset) *Hideset {
-	head := Hideset{}
-	cur := &head
-
-	for ; hs1 != nil; hs1 = hs1.Next {
-		cur.Next = newHideset(hs1.Name)
-		cur = cur.Next
+func popMacroLock(tok *Token) {
+	for LockedMacros != nil && LockedMacros.StopToken == tok {
+		LockedMacros.IsLocked = false
+		LockedMacros = LockedMacros.LockedNext
 	}
-	cur.Next = hs2
-	return head.Next
-}
-
-func (hs *Hideset) contains(name string) bool {
-	for ; hs != nil; hs = hs.Next {
-		if hs.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-func addHideset(tok *Token, hs *Hideset) *Token {
-	head := Token{}
-	cur := &head
-
-	for ; tok != nil; tok = tok.Next {
-		t := tok.copy()
-		t.Hideset = t.Hideset.union(hs)
-		cur.Next = t
-		cur = cur.Next
-	}
-
-	return head.Next
-}
-
-func (hs1 *Hideset) intersection(hs2 *Hideset) *Hideset {
-	head := Hideset{}
-	cur := &head
-
-	for ; hs1 != nil; hs1 = hs1.Next {
-		if hs2.contains(hs1.Name) {
-			cur.Next = newHideset(hs1.Name)
-			cur = cur.Next
-		}
-	}
-	return head.Next
 }
 
 func (t *Token) isHash() bool {
@@ -907,15 +868,15 @@ func searchIncludePaths(filename string) string {
 func preprocess2(tok *Token) *Token {
 	head := Token{}
 	cur := &head
+	startM := LockedMacros
 
-	for tok != nil && tok.Kind != TK_EOF {
+	for ; tok != nil && tok.Kind != TK_EOF; popMacroLock(tok) {
 		// If it is a macro, expand it.
 		if expandMacro(&tok, tok) {
 			continue
 		}
 
-		// Pass through if it is not a "#".
-		if !tok.isHash() {
+		if !tok.isHash() || LockedMacros != nil {
 			tok.LineDelta = tok.File.LineDelta
 			tok.Filename = tok.File.DisplayName
 			cur.Next = tok
@@ -1103,6 +1064,10 @@ func preprocess2(tok *Token) *Token {
 		}
 
 		errorTok(tok, "invalid preprocessor directive")
+	}
+
+	if startM != LockedMacros {
+		panic("startM != LockedMacros")
 	}
 
 	cur.Next = tok
