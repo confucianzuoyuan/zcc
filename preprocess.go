@@ -310,15 +310,38 @@ func newStringToken(s string, tmpl *Token) *Token {
 
 // Concatenates all tokens in `tok` and returns a new string.
 func (tok *Token) joinTokens(end *Token) []int8 {
-	buf := []int8{}
-
+	// Compute the length of the resulting token.
+	length := 1
 	for t := tok; t != end && t.Kind != TK_EOF; t = t.Next {
-		if t != tok && t.HasSpace {
-			buf = append(buf, ' ')
+		if (t.HasSpace || t.AtBeginningOfLine) && length != 1 {
+			length++
 		}
-		buf = append(buf, (*t.File.Contents)[t.Location:t.Location+t.Length]...)
+		length += t.Length
 	}
+
+	buf := make([]int8, length)
+
+	pos := 0
+	for t := tok; t != end && t.Kind != TK_EOF; t = t.Next {
+		if (t.HasSpace || t.AtBeginningOfLine) && pos != 0 {
+			buf[pos] = ' '
+			pos++
+		}
+
+		for i := 0; i < t.Length; i++ {
+			buf[pos+i] = (*t.File.Contents)[t.Location+i]
+		}
+		pos += t.Length
+	}
+
+	// 去掉末尾的'\0'
+	buf = buf[:pos]
 	return buf
+}
+
+func alignToken(tok1 *Token, tok2 *Token) {
+	tok1.AtBeginningOfLine = tok2.AtBeginningOfLine
+	tok1.HasSpace = tok2.HasSpace
 }
 
 // Concatenates all tokens in `arg` and returns a new string token.
@@ -600,6 +623,7 @@ func paste(lhs *Token, rhs *Token) *Token {
 
 	// Tokenize the resulting string
 	tok := tokenize(newFile(lhs.File.Name, lhs.File.FileNo, &newBuf), nil)
+	alignToken(tok, lhs)
 	if tok.Next.Kind != TK_EOF {
 		errorTok(lhs, fmt.Sprintf("pasting forms '%s', an invalid token", string(buf)))
 	}
@@ -630,6 +654,7 @@ func subst(tok *Token, args *MacroArg) *Token {
 			}
 			cur.Next = stringize(tok, arg.Tok)
 			cur = cur.Next
+			alignToken(cur, tok)
 			tok = tok.Next.Next
 			continue
 		}
@@ -768,6 +793,7 @@ func expandMacro(rest **Token, tok *Token) bool {
 	if m.Handler != nil {
 		*rest = m.Handler(tok)
 		(*rest).Next = tok.Next
+		alignToken(*rest, tok)
 		return true
 	}
 
@@ -798,10 +824,11 @@ func expandMacro(rest **Token, tok *Token) bool {
 
 	if *rest != stopToken {
 		pushMacroLock(m, stopToken)
+		alignToken(*rest, tok)
+	} else if !m.IsObjlike {
+		(*rest).AtBeginningOfLine = (*rest).AtBeginningOfLine || tok.AtBeginningOfLine
+		(*rest).HasSpace = (*rest).HasSpace || tok.HasSpace
 	}
-
-	(*rest).AtBeginningOfLine = tok.AtBeginningOfLine
-	(*rest).HasSpace = tok.HasSpace
 	return true
 }
 
