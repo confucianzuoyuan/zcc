@@ -23,13 +23,13 @@ type Obj struct {
 	Rel         *Relocation
 
 	// Function
-	IsInline     bool
-	Params       *Obj
-	Body         *AstNode
-	Locals       *Obj
-	VaArea       *Obj // Variable argument area
-	AllocaBottom *Obj
-	StackSize    int64
+	IsInline          bool
+	Params            *Obj
+	Body              *AstNode
+	Locals            *Obj
+	VaArea            *Obj // Variable argument area
+	AllocaBottom      *Obj
+	LocalVarStackSize int64
 
 	// Static inline function
 	IsLive bool

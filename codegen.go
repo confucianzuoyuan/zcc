@@ -32,6 +32,57 @@ func printlnToFile(fmtStr string, args ...any) {
 	*cgOutputFile = append(*cgOutputFile, code)
 }
 
+type TmpStack struct {
+	Data     []int
+	Capacity int
+	Depth    int
+	Bottom   int
+}
+
+var tmpStack = TmpStack{}
+
+func pushTmpStack() int {
+	if tmpStack.Depth == tmpStack.Capacity {
+		tmpStack.Capacity += 4
+		for range 4 {
+			tmpStack.Data = append(tmpStack.Data, 0)
+		}
+	}
+
+	tmpStack.Bottom += 8
+	offset := -tmpStack.Bottom
+
+	tmpStack.Data[tmpStack.Depth] = offset
+	tmpStack.Depth++
+	return offset
+}
+
+func popTmpStack() int {
+	tmpStack.Depth--
+	return tmpStack.Data[tmpStack.Depth]
+}
+
+func pushTmp() int {
+	offset := pushTmpStack()
+	printlnToFile("  mov %%rax, %d(%%rbp)", offset)
+	return offset
+}
+
+func popTmp(arg string) {
+	offset := popTmpStack()
+	printlnToFile("  mov %d(%%rbp), %s", offset, arg)
+}
+
+func pushTmpF() {
+	offset := pushTmpStack()
+	printlnToFile("  movsd %%xmm0, %d(%%rbp)", offset)
+}
+
+func popTmpF(reg int) {
+	offset := popTmpStack()
+	printlnToFile("  movsd %d(%%rbp), %%xmm%d", offset, reg)
+}
+
 func push() {
 	printlnToFile("  push %%rax")
 	depth += 1
@@ -532,7 +583,7 @@ func load(ty *CType) {
 
 // Store %rax to an address that the stack top is pointing to.
 func store(ty *CType) {
-	pop("%rdi")
+	popTmp("%rdi")
 
 	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
 		for i := int64(0); i < ty.Size; i += 1 {
@@ -788,23 +839,23 @@ func genExpr(node *AstNode) {
 		return
 	case ND_EXCH:
 		genExpr(node.Lhs)
-		push()
+		pushTmp()
 		genExpr(node.Rhs)
-		pop("%rdi")
+		popTmp("%rdi")
 
 		sz := int(node.Lhs.Ty.Base.Size)
 		printlnToFile("  xchg %s, (%%rdi)", regAX(sz))
 		return
 	case ND_CAS:
 		genExpr(node.CasAddr)
-		push()
+		pushTmp()
 		genExpr(node.CasNew)
-		push()
+		pushTmp()
 		genExpr(node.CasOld)
 		printlnToFile("  mov %%rax, %%r8")
 		load(node.CasOld.Ty.Base)
-		pop("%rdx") // new
-		pop("%rdi") // addr
+		popTmp("%rdx") // new
+		popTmp("%rdi") // addr
 
 		sz := int(node.CasAddr.Ty.Base.Size)
 		printlnToFile("  lock cmpxchg %s, (%%rdi)", regDX(sz))
@@ -890,7 +941,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_ASSIGN:
 		genAddr(node.Lhs)
-		push()
+		tmpOffset := pushTmp()
 		genExpr(node.Rhs)
 		if node.Lhs.Kind == ND_MEMBER && node.Lhs.Member.IsBitfield {
 			printlnToFile("  mov %%rax, %%r8")
@@ -902,7 +953,7 @@ func genExpr(node *AstNode) {
 			printlnToFile("  and $%d, %%rdi", (1<<mem.BitWidth)-1)
 			printlnToFile("  shl $%d, %%rdi", mem.BitOffset)
 
-			printlnToFile("  mov (%%rsp), %%rax")
+			printlnToFile("  mov %d(%%rbp), %%rax", tmpOffset)
 			load(mem.Ty)
 
 			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
@@ -1092,9 +1143,9 @@ func genExpr(node *AstNode) {
 
 	if node.Lhs.Ty.Kind == TY_FLOAT || node.Lhs.Ty.Kind == TY_DOUBLE {
 		genExpr(node.Rhs)
-		pushf()
+		pushTmpF()
 		genExpr(node.Lhs)
-		popf(1)
+		popTmpF(1)
 
 		sz := "sd"
 		if node.Lhs.Ty.Kind == TY_FLOAT {
@@ -1176,9 +1227,9 @@ func genExpr(node *AstNode) {
 	}
 
 	genExpr(node.Rhs)
-	push()
+	pushTmp()
 	genExpr(node.Lhs)
-	pop("%rdi")
+	popTmp("%rdi")
 
 	ax := "%eax"
 	di := "%edi"
@@ -1459,7 +1510,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 			bottom = alignTo(bottom, align)
 			v.Offset = -bottom
 		}
-		fn.StackSize = alignTo(bottom, 16)
+		fn.LocalVarStackSize = bottom
 	}
 }
 
@@ -1578,11 +1629,13 @@ func emitText(prog *Obj) {
 		printlnToFile("  .type %s, @function", fn.Name)
 		printlnToFile("%s:", fn.Name)
 		currentFn = fn
+		tmpStack.Bottom = int(fn.LocalVarStackSize)
 
 		// Prologue
 		printlnToFile("  push %%rbp")
 		printlnToFile("  mov %%rsp, %%rbp")
-		printlnToFile("  sub $%d, %%rsp", fn.StackSize)
+		reservedPos := len(*cgOutputFile)
+		printlnToFile("PLACEHOLDER")
 		printlnToFile("  mov %%rsp, %d(%%rbp)", fn.AllocaBottom.Offset)
 
 		// Save arg registers if function is variadic
@@ -1668,6 +1721,12 @@ func emitText(prog *Obj) {
 		if depth != 0 {
 			panic(fmt.Sprintf("depth is not zero: %d", depth))
 		}
+		if tmpStack.Depth != 0 {
+			panic("tmp stack depth is not zero")
+		}
+
+		inst := fmt.Sprintf("  sub $%d, %%rsp", alignTo(int64(tmpStack.Bottom), 16))
+		(*cgOutputFile)[reservedPos] = inst
 
 		// [https://www.sigbus.info/n1570#5.1.2.2.3p1] The C spec defines
 		// a special rule for the main function. Reaching the end of the
