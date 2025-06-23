@@ -93,6 +93,36 @@ type MacroArg struct {
 	Name     string
 	IsVaArgs bool
 	Tok      *Token
+	Expanded *Token
+}
+
+func expandArg(arg *MacroArg) *Token {
+	if arg.Expanded != nil {
+		return arg.Expanded
+	}
+
+	tok := arg.Tok
+	head := Token{}
+	cur := &head
+
+	startM := LockedMacros
+
+	for ; tok.Kind != TK_EOF; popMacroLock(tok) {
+		if expandMacro(&tok, tok) {
+			continue
+		}
+
+		cur.Next = tok.copy()
+		cur = cur.Next
+		tok = tok.Next
+	}
+
+	if startM != LockedMacros {
+		panic("startM != LockedMacros")
+	}
+	cur.Next = tok.newEOF()
+	arg.Expanded = head.Next
+	return head.Next
 }
 
 // A linked list of locked macros. Since macro nesting happens in
@@ -750,9 +780,8 @@ func subst(tok *Token, args *MacroArg) *Token {
 		// Handle a macro token. Macro arguments are completely macro-expanded
 		// before they are substituted into a macro body.
 		if arg != nil {
-			t := preprocess2(arg.Tok)
-			t.AtBeginningOfLine = tok.AtBeginningOfLine
-			t.HasSpace = tok.HasSpace
+			t := expandArg(arg)
+			alignToken(t, tok)
 			for ; t.Kind != TK_EOF; t = t.Next {
 				cur.Next = t.copy()
 				cur = cur.Next
