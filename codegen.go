@@ -305,10 +305,14 @@ func copyStructReg() {
 	if ty.Size > 8 {
 		if ty.hasFloatNumber(8, 16, 0) {
 			if !(ty.Size == 12 || ty.Size == 16) {
-				panic("")
+				panic("type size must be 12 or 16")
 			}
 
-			printlnToFile("  movsd 8(%%rdi), %%xmm%d", fp)
+			if ty.Size == 12 {
+				printlnToFile("  movss 8(%%rdi), %%xmm%d", fp)
+			} else {
+				printlnToFile("  movsd 8(%%rdi), %%xmm%d", fp)
+			}
 		} else {
 			reg1 := "%al"
 			reg2 := "%rax"

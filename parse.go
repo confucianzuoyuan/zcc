@@ -583,11 +583,6 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 
 	first := true
 
-	if init.IsFlexible {
-		length := countArrayInitElements(tok, init.Ty)
-		*init = *newInitializer(arrayOf(init.Ty.Base, int64(length)), false)
-	}
-
 	for i := int64(0); !consumeEnd(rest, tok); i++ {
 		if !first {
 			tok = skip(tok, ",")
