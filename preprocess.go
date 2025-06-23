@@ -1309,6 +1309,10 @@ func initMacros() {
 	defineMacro("unix", "1")
 	defineMacro("__STDC_UTF_16__", "1")
 	defineMacro("__STDC_UTF_32__", "1")
+	defineMacro("__BYTE_ORDER__", "1234")
+	defineMacro("__ORDER_BIG_ENDIAN__", "4321")
+	defineMacro("__ORDER_LITTLE_ENDIAN__", "1234")
+	defineMacro("__typeof", "typeof")
 
 	addBuiltin("__FILE__", fileMacro)
 	addBuiltin("__LINE__", lineMacro)
