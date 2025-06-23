@@ -692,20 +692,14 @@ func findLibPath() string {
 }
 
 func findGccLibPath() string {
-	paths := []string{
-		"/usr/lib/gcc/x86_64-linux-gnu/*/crtbegin.o",
-		"/usr/lib/gcc/x86_64-pc-linux-gnu/*/crtbegin.o", // For Gentoo
-		"/usr/lib/gcc/x86_64-redhat-linux/*/crtbegin.o", // For Fedora
+	path, _ := findFile("/usr/lib*/gcc/x86_64*-linux*/*/crtbegin.o")
+	if path != "" {
+		return filepath.Dir(path)
 	}
 
-	for _, p := range paths {
-		path, _ := findFile(p)
-		if path != "" {
-			return filepath.Dir(path)
-		}
-	}
-
-	panic("gcc library path is not found")
+	fmt.Fprintf(os.Stderr, "gcc library path is not found")
+	os.Exit(1)
+	panic("unreachable")
 }
 
 func addDefaultIncludePaths(argv0 string) {

@@ -1694,4 +1694,5 @@ func codegen(prog *Obj, out io.Writer) {
 	assignLocalVariableOffsets(prog)
 	emitData(prog)
 	emitText(prog)
+	printlnToFile("  .section  .note.GNU-stack,\"\",@progbits")
 }
