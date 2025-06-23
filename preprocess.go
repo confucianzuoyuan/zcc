@@ -378,6 +378,7 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 	panic("unreachable")
 }
 
+var IncludeGuards = make(map[string]string)
 var PragmaOnce = make(map[string]int)
 var IncludeNextIdx int
 
@@ -398,6 +399,12 @@ func includeFile(tok *Token, path string, filenameToken *Token) *Token {
 		return tok
 	}
 
+	if guardName, ok := IncludeGuards[path]; ok {
+		if _, ok := macros[guardName]; ok {
+			return tok
+		}
+	}
+
 	var end *Token = nil
 	start := tokenizeFile(path, &end)
 	if start == nil {
@@ -405,6 +412,11 @@ func includeFile(tok *Token, path string, filenameToken *Token) *Token {
 	}
 	if end == nil {
 		return tok
+	}
+
+	if start.isHash() && start.Next.isEqual("ifndef") && start.Next.Next.Kind == TK_IDENT && end.isEqual("endif") {
+		end.GuardFile = path
+		start.Next.GuardFile = path
 	}
 
 	end.Next = tok
@@ -1017,6 +1029,13 @@ func preprocess2(tok *Token) *Token {
 			if condIncl == nil || condIncl.Ctx == IN_ELSE {
 				errorTok(start, "stray #elif")
 			}
+
+			if tok.GuardFile != "" && tok.GuardFile == condIncl.Tok.GuardFile {
+				nameToken := condIncl.Tok.Next
+				guardName := B2S((*nameToken.File.Contents)[nameToken.Location : nameToken.Location+nameToken.Length])
+				IncludeGuards[tok.GuardFile] = guardName
+			}
+
 			condIncl.Ctx = IN_ELIF
 
 			if !condIncl.Included && evalConstExpr(&tok, tok) != 0 {

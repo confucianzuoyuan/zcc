@@ -58,6 +58,7 @@ type Token struct {
 	HasSpace          bool     // True if this token follows a space character
 	Hideset           *Hideset // For macro expansion
 	Origin            *Token   // If this is expanded from a macro, the original token
+	GuardFile         string   // The path of a potentially include-guarded file
 }
 
 // Input file
