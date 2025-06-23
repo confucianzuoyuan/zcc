@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"math"
 )
 
 const FP_MAX = 8
 const GP_MAX = 6
 
-var cgOutputFile io.Writer
+var cgOutputFile *[]string
 var depth int
 var argreg8 = []string{
 	"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b",
@@ -28,10 +27,9 @@ var i int = 1
 
 var currentFn *Obj
 
-func printlnToFile(fmtStr string, args ...interface{}) {
-	fmt.Fprintf(cgOutputFile, fmtStr, args...)
-	// 输出换行符
-	fmt.Fprintln(cgOutputFile)
+func printlnToFile(fmtStr string, args ...any) {
+	code := fmt.Sprintf(fmtStr, args...)
+	*cgOutputFile = append(*cgOutputFile, code)
 }
 
 func push() {
@@ -1687,7 +1685,7 @@ func emitText(prog *Obj) {
 	}
 }
 
-func codegen(prog *Obj, out io.Writer) {
+func codegen(prog *Obj, out *[]string) {
 	cgOutputFile = out
 
 	files := getInputFiles()

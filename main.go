@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -618,12 +617,25 @@ func cc1() {
 		println("dump ir not impl")
 	} else {
 		// Open a temporary output buffer.
-		var b bytes.Buffer
-		buf := bufio.NewWriter(&b)
-		codegen(prog, buf)
-		buf.Flush()
+		assemblyOutput := []string{}
+		codegen(prog, &assemblyOutput)
 		out, _ := openFile(outputFile)
-		out.Write(b.Bytes())
+
+		// 使用 bufio.Writer 提高写入效率
+		writer := bufio.NewWriter(out)
+
+		for _, line := range assemblyOutput {
+			_, err := writer.WriteString(line + "\n")
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		// 刷新缓冲区，确保数据写入文件
+		err := writer.Flush()
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
