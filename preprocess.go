@@ -168,7 +168,8 @@ func readConstExpr(rest **Token, tok *Token) *Token {
 // Read #line arguments
 func readLineMarker(rest **Token, tok *Token) {
 	start := tok
-	tok = preprocess(copyLine(rest, tok))
+	tok = preprocess2(copyLine(rest, tok))
+	convertPpTokens(tok)
 
 	if tok.Kind != TK_NUM || tok.Ty.Kind != TY_INT {
 		errorTok(tok, "invalid line marker")
