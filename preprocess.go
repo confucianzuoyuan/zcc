@@ -772,6 +772,44 @@ func subst(tok *Token, args *MacroArg) *Token {
 	return head.Next
 }
 
+func insertObjlike(tok *Token, tok2 *Token, orig *Token) *Token {
+	head := Token{}
+	cur := &head
+
+	for ; tok.Kind != TK_EOF; tok = tok.Next {
+		if tok.isEqual("##") {
+			if cur == &head || tok.Next.Kind == TK_EOF {
+				errorTok(tok, "'##' cannot appear at either end of macro expansion")
+			}
+
+			tok = tok.Next
+			*cur = *paste(cur, tok)
+		} else {
+			cur.Next = tok.copy()
+			cur = cur.Next
+		}
+
+		cur.Origin = orig
+	}
+
+	cur.Next = tok2
+	return head.Next
+}
+
+func insertFunclike(tok *Token, tok2 *Token, orig *Token) *Token {
+	head := Token{}
+	cur := &head
+
+	for ; tok.Kind != TK_EOF; tok = tok.Next {
+		cur.Next = tok
+		cur = cur.Next
+		cur.Origin = orig
+	}
+
+	cur.Next = tok2
+	return head.Next
+}
+
 // If tok is a macro, expand it and return true.
 // Otherwise, do nothing and return false.
 func expandMacro(rest **Token, tok *Token) bool {
@@ -810,17 +848,12 @@ func expandMacro(rest **Token, tok *Token) bool {
 
 	if m.IsObjlike {
 		stopToken = tok.Next
-		body = m.Body
+		*rest = insertObjlike(m.Body, stopToken, tok)
 	} else {
 		args := readMacroArgs(&stopToken, tok, m.Params, m.VaArgsName)
 		body = subst(m.Body, args)
+		*rest = insertFunclike(body, stopToken, tok)
 	}
-
-	for t := body; t.Kind != TK_EOF; t = t.Next {
-		t.Origin = tok
-	}
-
-	*rest = body.append(stopToken)
 
 	if *rest != stopToken {
 		pushMacroLock(m, stopToken)

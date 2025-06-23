@@ -98,23 +98,6 @@ func (t *Token) copy() *Token {
 	return newToken
 }
 
-// Append tok2 to the end of tok1.
-func (t *Token) append(other *Token) *Token {
-	if t.Kind == TK_EOF {
-		return other
-	}
-
-	head := Token{}
-	cur := &head
-
-	for ; t.Kind != TK_EOF; t = t.Next {
-		cur.Next = t.copy()
-		cur = cur.Next
-	}
-	cur.Next = other
-	return head.Next
-}
-
 func B2S(bs []int8) string {
 	b := make([]byte, len(bs))
 	for i, v := range bs {
