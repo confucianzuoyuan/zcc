@@ -89,11 +89,12 @@ type MacroParam struct {
 }
 
 type MacroArg struct {
-	Next     *MacroArg
-	Name     string
-	IsVaArgs bool
-	Tok      *Token
-	Expanded *Token
+	Next      *MacroArg
+	Name      string
+	IsVaArgs  bool
+	OmitComma bool
+	Tok       *Token
+	Expanded  *Token
 }
 
 func expandArg(arg *MacroArg) *Token {
@@ -625,17 +626,13 @@ func readMacroArgs(rest **Token, tok *Token, params *MacroParam, vaArgsName stri
 	}
 
 	if vaArgsName != "" {
-		var arg *MacroArg
-		if tok.isEqual(")") {
-			arg = &MacroArg{
-				Tok: tok.newEOF(),
-			}
-		} else {
-			if params != nil {
-				tok = skip(tok, ",")
-			}
-			arg = readMacroArgOne(&tok, tok, true)
+		start := tok
+		if !tok.isEqual(")") && params != nil {
+			tok = skip(tok, ",")
 		}
+
+		arg := readMacroArgOne(&tok, tok, true)
+		arg.OmitComma = start.isEqual(")")
 		arg.Name = vaArgsName
 		arg.IsVaArgs = true
 		cur.Next = arg
@@ -720,20 +717,20 @@ func subst(tok *Token, args *MacroArg) *Token {
 			continue
 		}
 
-		// [GNU] If __VA_ARG__ is empty, `,##__VA_ARGS__` is expanded
-		// to the empty token list. Otherwise, its expaned to `,` and
+		// [GNU] If __VA_ARGS__ is empty, `,##__VA_ARGS__` is expanded
+		// to an empty token list. Otherwise, it's expanded to `,` and
 		// __VA_ARGS__.
 		if tok.isEqual(",") && tok.Next.isEqual("##") {
 			arg := findArg(nil, tok.Next.Next, args)
 			if arg != nil && arg.IsVaArgs {
-				if arg.Tok.Kind == TK_EOF {
+				if arg.OmitComma {
 					tok = tok.Next.Next.Next
-				} else {
-					cur.Next = tok.copy()
-					cur = cur.Next
-					tok = tok.Next.Next
+					continue
 				}
 
+				cur.Next = tok.copy()
+				cur = cur.Next
+				tok = tok.Next.Next
 				continue
 			}
 		}
