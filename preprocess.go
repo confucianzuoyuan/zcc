@@ -399,24 +399,11 @@ func includeFile(tok *Token, path string, filenameToken *Token) *Token {
 		return tok
 	}
 
-	// If we read the same file before, and if the file was guarded
-	// by the usual #ifndef ... #endif pattern, we may be able to
-	// skip the file without opening it.
-	if guardName, ok := IncludeGuards[path]; ok {
-		if _, ok := macros[guardName]; ok {
-			return tok
-		}
-	}
-
 	tok2 := tokenizeFile(path)
 	if tok2 == nil {
 		errorTok(filenameToken, "cannot open file")
 	}
 
-	guardName := detectIncludeGuard(tok2)
-	if guardName != "" {
-		IncludeGuards[path] = guardName
-	}
 	return tok2.append(tok)
 }
 
@@ -871,53 +858,6 @@ func skipLine(tok *Token) *Token {
 		tok = tok.Next
 	}
 	return tok
-}
-
-/*
-// Detect the following "include guard" pattern.
-//
-//   #ifndef FOO_H
-//   #define FOO_H
-//   ...
-//   #endif
-*/
-func detectIncludeGuard(tok *Token) string {
-	// Detect the first two lines.
-	if !tok.isHash() || !tok.Next.isEqual("ifndef") {
-		return ""
-	}
-	tok = tok.Next.Next
-
-	if tok.Kind != TK_IDENT {
-		return ""
-	}
-
-	macro := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
-	tok = tok.Next
-
-	if !tok.isHash() || !tok.Next.isEqual("define") || !tok.Next.Next.isEqual(macro) {
-		return ""
-	}
-
-	// Read until the end of the file
-	for tok.Kind != TK_EOF {
-		if !tok.isHash() {
-			tok = tok.Next
-			continue
-		}
-
-		if tok.Next.isEqual("endif") && tok.Next.Next.Kind == TK_EOF {
-			return macro
-		}
-
-		if tok.isEqual("if") || tok.isEqual("ifdef") || tok.isEqual("ifndef") {
-			tok = skipCondIncl(tok.Next)
-		} else {
-			tok = tok.Next
-		}
-	}
-
-	return ""
 }
 
 var Cache = make(map[string]string)
