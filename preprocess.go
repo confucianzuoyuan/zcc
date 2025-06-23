@@ -150,7 +150,7 @@ func newNumberToken(val int, tmpl *Token) *Token {
 }
 
 func readConstExpr(rest **Token, tok *Token) *Token {
-	tok = copyLine(rest, tok)
+	tok = splitLine(rest, tok)
 
 	head := Token{}
 	cur := &head
@@ -275,6 +275,22 @@ func copyLine(rest **Token, tok *Token) *Token {
 
 	cur.Next = tok.newEOF()
 	*rest = tok
+	return head.Next
+}
+
+// Split tokens before the next newline into an EOF-terminated list.
+func splitLine(rest **Token, tok *Token) *Token {
+	head := Token{
+		Next: tok,
+	}
+	cur := &head
+
+	for !cur.Next.AtBeginningOfLine {
+		cur = cur.Next
+	}
+
+	*rest = cur.Next
+	cur.Next = tok.newEOF()
 	return head.Next
 }
 
@@ -555,12 +571,12 @@ func readMacroDefinition(rest **Token, tok *Token) {
 		// Function-like macro
 		vaArgsName := ""
 		params := readMacroParams(&tok, tok.Next, &vaArgsName)
-		m := addMacro(name, false, copyLine(rest, tok))
+		m := addMacro(name, false, splitLine(rest, tok))
 		m.Params = params
 		m.VaArgsName = vaArgsName
 	} else {
 		// Object-like macro
-		addMacro(name, true, copyLine(rest, tok))
+		addMacro(name, true, splitLine(rest, tok))
 	}
 }
 
