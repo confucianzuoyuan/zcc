@@ -220,6 +220,13 @@ func (t *Token) newEOF() *Token {
 	return newToken
 }
 
+func (tok *Token) newPMark() *Token {
+	t := tok.copy()
+	t.Kind = TK_PMARK
+	t.Length = 0
+	return t
+}
+
 func skipCondIncl2(tok *Token) *Token {
 	for tok != nil && tok.Kind != TK_EOF {
 		if tok.isHash() && (tok.Next.isEqual("if") || tok.Next.isEqual("ifdef") || tok.Next.isEqual("ifndef")) {
@@ -343,6 +350,9 @@ func (tok *Token) joinTokens(end *Token) []int8 {
 	// Compute the length of the resulting token.
 	length := 1
 	for t := tok; t != end && t.Kind != TK_EOF; t = t.Next {
+		if t.Kind == TK_PMARK {
+			continue
+		}
 		if (t.HasSpace || t.AtBeginningOfLine) && length != 1 {
 			length++
 		}
@@ -353,6 +363,9 @@ func (tok *Token) joinTokens(end *Token) []int8 {
 
 	pos := 0
 	for t := tok; t != end && t.Kind != TK_EOF; t = t.Next {
+		if t.Kind == TK_PMARK {
+			continue
+		}
 		if (t.HasSpace || t.AtBeginningOfLine) && pos != 0 {
 			buf[pos] = ' '
 			pos++
@@ -734,13 +747,20 @@ func subst(tok *Token, args *MacroArg) *Token {
 				errorTok(tok, "'##' cannot appear at end of macro expansion")
 			}
 
+			if cur.Kind == TK_PMARK {
+				tok = tok.Next
+				continue
+			}
+
 			arg := findArg(&tok, tok.Next, args)
 			if arg != nil {
 				if arg.Tok.Kind == TK_EOF {
 					continue
 				}
 
-				*cur = *paste(cur, arg.Tok)
+				if arg.Tok.Kind != TK_PMARK {
+					*cur = *paste(cur, arg.Tok)
+				}
 				for t := arg.Tok.Next; t.Kind != TK_EOF; t = t.Next {
 					cur.Next = t.copy()
 					cur = cur.Next
@@ -755,33 +775,20 @@ func subst(tok *Token, args *MacroArg) *Token {
 
 		arg := findArg(&tok, tok, args)
 
-		if arg != nil && tok.isEqual("##") {
-			if arg.Tok.Kind == TK_EOF {
-				arg2 := findArg(&tok, tok.Next, args)
-				if arg2 != nil {
-					for t := arg2.Tok; t.Kind != TK_EOF; t = t.Next {
-						cur.Next = t.copy()
-						cur = cur.Next
-					}
-					continue
-				}
-				cur.Next = tok.Next.copy()
+		if arg != nil {
+			var t *Token
+			if tok.isEqual("##") {
+				t = arg.Tok
+			} else {
+				t = expandArg(arg)
+			}
+
+			if t.Kind == TK_EOF {
+				cur.Next = t.newPMark()
 				cur = cur.Next
 				continue
 			}
 
-			for t := arg.Tok; t.Kind != TK_EOF; t = t.Next {
-				cur.Next = t.copy()
-				cur = cur.Next
-			}
-
-			continue
-		}
-
-		// Handle a parameter token. Macro arguments are completely macro-expanded
-		// before they are substituted into a macro body.
-		if arg != nil {
-			t := expandArg(arg)
 			alignToken(t, start)
 			for ; t.Kind != TK_EOF; t = t.Next {
 				cur.Next = t.copy()
@@ -830,6 +837,10 @@ func insertFunclike(tok *Token, tok2 *Token, orig *Token) *Token {
 	cur := &head
 
 	for ; tok.Kind != TK_EOF; tok = tok.Next {
+		if tok.Kind == TK_PMARK {
+			continue
+		}
+
 		cur.Next = tok
 		cur = cur.Next
 		cur.Origin = orig
