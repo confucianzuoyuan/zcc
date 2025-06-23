@@ -1169,6 +1169,15 @@ func preprocess2(tok *Token) *Token {
 			errorTok(tok, "error")
 		}
 
+		if tok.isEqual("warning") {
+			warnTok(tok, "warning")
+			tok = tok.Next
+			for !tok.AtBeginningOfLine {
+				tok = tok.Next
+			}
+			continue
+		}
+
 		// `#`-only line is legal. It's called a null directive.
 		if tok.AtBeginningOfLine {
 			continue
