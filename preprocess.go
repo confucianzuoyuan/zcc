@@ -173,7 +173,7 @@ func readLineMarker(rest **Token, tok *Token) {
 	if tok.Kind != TK_NUM || tok.Ty.Kind != TY_INT {
 		errorTok(tok, "invalid line marker")
 	}
-	start.File.LineDelta = int(tok.Value) - start.LineNo
+	start.File.LineDelta = int(tok.Value) - start.LineNo - 1
 
 	tok = tok.Next
 	if tok.Kind == TK_EOF {
