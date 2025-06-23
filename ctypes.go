@@ -339,7 +339,9 @@ func (node *AstNode) addType() {
 		node.Ty = TyInt
 		return
 	case ND_FUNCALL:
-		node.Ty = node.FuncType.ReturnType
+		if node.Ty == nil {
+			panic("node.Ty == nil")
+		}
 		return
 	case ND_NOT, ND_LOGAND, ND_LOGOR:
 		node.Ty = TyInt

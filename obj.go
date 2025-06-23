@@ -5,7 +5,6 @@ type Obj struct {
 	Next    *Obj
 	Name    string // Variable name
 	Ty      *CType // Type
-	Tok     *Token // representative token
 	IsLocal bool   // local or global/function
 	Align   int64  // alignment
 

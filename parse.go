@@ -88,9 +88,7 @@ type VarAttr struct {
 // can be nested (e.g. `int x[2][2] = {{1, 2}, {3, 4}}`), this struct
 // is a tree data structure.
 type Initializer struct {
-	Next       *Initializer // Next initializer
-	Ty         *CType       // Type of the initializer
-	Tok        *Token       // Representative token
+	Ty         *CType // Type of the initializer
 	IsFlexible bool
 
 	// If it's not an aggregate type and has an initializer,
@@ -206,7 +204,6 @@ func computeVlaSize(ty *CType, tok *Token) *AstNode {
 
 func newAlloca(sz *AstNode) *AstNode {
 	node := newUnary(ND_FUNCALL, newVarNode(builtinAlloca, sz.Tok), sz.Tok)
-	node.FuncType = builtinAlloca.Ty
 	node.Ty = builtinAlloca.Ty.ReturnType
 	node.Args = sz
 	sz.addType()
@@ -3185,7 +3182,6 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	*rest = skip(tok, ")")
 
 	node := newUnary(ND_FUNCALL, fn, tok)
-	node.FuncType = ty
 	node.Ty = ty.ReturnType
 	node.Args = head.Next
 

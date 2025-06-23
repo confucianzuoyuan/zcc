@@ -52,7 +52,6 @@ type Token struct {
 	StringLiteral []int8    // String literal contents including terminating '\0'
 
 	File              *File  // Source location
-	Filename          string // Filename
 	LineNo            int    // Line number
 	LineDelta         int    // Line number
 	AtBeginningOfLine bool   // True if this token is at beginning of line
@@ -84,7 +83,6 @@ func newToken(kind TokenKind, start int, end int) *Token {
 		File:              currentFile,
 		AtBeginningOfLine: atBeginningOfLine,
 		HasSpace:          hasSpace,
-		Filename:          currentFile.DisplayName,
 	}
 
 	atBeginningOfLine = false

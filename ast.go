@@ -80,7 +80,6 @@ type AstNode struct {
 	Member *Member
 
 	// Function call
-	FuncType     *CType
 	Args         *AstNode
 	PassByStack  bool
 	ReturnBuffer *Obj
@@ -106,10 +105,6 @@ type AstNode struct {
 	CasOld  *AstNode
 	CasNew  *AstNode
 
-	// Atomic op= operators
-	AtomicAddr *Obj
-	AtomicExpr *AstNode
-
 	// Variable
 	Variable *Obj
 
@@ -130,7 +125,6 @@ func (node *AstNode) String() string {
 type Member struct {
 	Next   *Member
 	Ty     *CType
-	Tok    *Token // for error messages
 	Name   *Token
 	Index  int
 	Align  int64

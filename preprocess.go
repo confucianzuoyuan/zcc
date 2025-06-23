@@ -72,7 +72,6 @@ type CondIncl struct {
 type MacroHandlerFn func(*Token) *Token
 
 type Macro struct {
-	Name       string
 	IsObjlike  bool
 	IsLocked   bool
 	StopToken  *Token
@@ -514,7 +513,6 @@ func findMacro(tok *Token) *Macro {
 
 func addMacro(name string, isObjlike bool, body *Token) *Macro {
 	m := &Macro{
-		Name:      name,
 		Body:      body,
 		IsObjlike: isObjlike,
 	}
@@ -989,7 +987,6 @@ func preprocess2(tok *Token) *Token {
 
 		if !tok.isHash() || LockedMacros != nil {
 			tok.LineDelta = tok.File.LineDelta
-			tok.Filename = tok.File.DisplayName
 			cur.Next = tok
 			cur = cur.Next
 			tok = tok.Next
