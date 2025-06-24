@@ -1484,6 +1484,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	cur := &head
 	isVariadic := false
 	fnTy := funcType(ty)
+	valCalc := newNode(ND_NULL_EXPR, tok)
 
 	enterScope()
 	fnTy.Scopes = scope
@@ -1505,7 +1506,9 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 		name := ty2.Name
 
-		if ty2.Kind == TY_ARRAY {
+		valCalc = newBinary(ND_COMMA, valCalc, computeVlaSize(ty2, tok), tok)
+
+		if ty2.Kind == TY_ARRAY || ty2.Kind == TY_VLA {
 			// "array of T" is converted to "pointer to T" only in the parameter
 			// context. For example, *argv[] is converted to **argv by this.
 			ty2 = pointerTo(ty2.Base)
@@ -1530,6 +1533,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	leaveScope()
 
 	fnTy.ParamList = head.ParamNext
+	fnTy.VlaCalc = valCalc
 	fnTy.IsVariadic = isVariadic
 	*rest = tok.Next
 	return fnTy
@@ -3521,6 +3525,13 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	pushScope("__FUNCTION__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
 
 	fn.Body = compoundStmt(rest, tok.Next)
+	if ty.VlaCalc != nil {
+		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
+		calc.addType()
+		calc.Next = fn.Body.Body
+		fn.Body.Body = calc
+	}
+
 	leaveScope()
 	resolveGotoLabels()
 	currentFunction = nil

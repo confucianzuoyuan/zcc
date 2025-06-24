@@ -50,6 +50,7 @@ type CType struct {
 	Scopes     *Scope
 	ReturnType *CType
 	ParamList  *Obj
+	VlaCalc    *AstNode
 	IsVariadic bool
 }
 
