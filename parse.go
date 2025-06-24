@@ -886,8 +886,6 @@ func newLocalVar(name string, ty *CType) *Obj {
 func newGlobalVar(name string, ty *CType) *Obj {
 	variable := newVar(name, ty)
 	variable.Next = globals
-	variable.IsStatic = true
-	variable.IsDefinition = true
 	globals = variable
 	return variable
 }
@@ -899,7 +897,10 @@ func newUniqueName() string {
 }
 
 func newAnonGlobalVar(ty *CType) *Obj {
-	return newGlobalVar(newUniqueName(), ty)
+	v := newGlobalVar(newUniqueName(), ty)
+	v.IsDefinition = true
+	v.IsStatic = true
+	return v
 }
 
 func newStringLiteral(lit []int8, ty *CType) *Obj {
@@ -1671,6 +1672,10 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		i += 1
 
 		ty := declarator(&tok, tok, basety)
+		if ty.Kind == TY_FUNC {
+			funcPrototype(ty, attr)
+			continue
+		}
 		if ty.Kind == TY_VOID {
 			errorTok(tok, "variable declared as void")
 		}
@@ -2196,13 +2201,8 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 				continue
 			}
 
-			if tok.isFunction() {
-				tok = function(tok, basety, &attr)
-				continue
-			}
-
 			if attr.IsExtern {
-				tok = globalVariable(tok, basety, &attr)
+				tok = globalDeclaration(tok, basety, &attr)
 				continue
 			}
 
@@ -3467,39 +3467,33 @@ func createParamLocalVars(param *CType) {
 	}
 }
 
-func function(tok *Token, basety *CType, attr *VarAttr) *Token {
-	ty := declarator(&tok, tok, basety)
+func funcPrototype(ty *CType, attr *VarAttr) *Obj {
 	if ty.Name == nil {
 		errorTok(ty.NamePos, "function name omitted")
 	}
 	nameString := ty.Name.getIdent()
 
 	fn := findFunction(nameString)
-	if fn != nil {
-		// Redeclaration
-		if !fn.IsFunction {
-			errorTok(tok, "redeclared as a different kind of symbol")
-		}
-		if fn.IsDefinition && tok.isEqual("{") {
-			errorTok(tok, "redefinition of "+nameString)
-		}
-		if !fn.IsStatic && attr.IsStatic {
-			errorTok(tok, "static declaration follows a non-static declaration")
-		}
-		fn.IsDefinition = fn.IsDefinition || tok.isEqual("{")
-	} else {
+	if fn == nil {
 		fn = newGlobalVar(nameString, ty)
 		fn.IsFunction = true
-		fn.IsDefinition = tok.isEqual("{")
 		fn.IsStatic = attr.IsStatic || (attr.IsInline && !attr.IsExtern)
 		fn.IsInline = attr.IsInline
+	} else if !fn.IsStatic && attr.IsStatic {
+		errorTok(ty.Name, "static declaration follows a non-static declaration")
 	}
 
 	fn.IsRoot = !(fn.IsStatic && fn.IsInline)
+	return fn
+}
 
-	if consume(&tok, tok, ";") {
-		return tok
+func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
+	fn := funcPrototype(ty, attr)
+
+	if fn.IsDefinition {
+		errorTok(tok, "redefinition of "+fn.Name)
 	}
+	fn.IsDefinition = true
 
 	currentFunction = fn
 	locals = nil
@@ -3520,8 +3514,6 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	}
 	fn.AllocaBottom = newLocalVar("__alloca_size__", pointerTo(TyChar))
 
-	tok = skip(tok, "{")
-
 	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
 	// automatically defined as a local variable containing the
 	// current function name.
@@ -3533,30 +3525,41 @@ func function(tok *Token, basety *CType, attr *VarAttr) *Token {
 	// [GNU] __FUNCTION__ is yet another name of __func__.
 	pushScope("__FUNCTION__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
 
-	fn.Body = compoundStmt(&tok, tok)
+	fn.Body = compoundStmt(rest, tok.Next)
 	fn.Locals = locals
 	leaveScope()
 	resolveGotoLabels()
-	return tok
+	currentFunction = nil
 }
 
 func declareBuiltinFunctions() {
 	ty := funcType(pointerTo(TyVoid))
 	ty.Params = TyInt.copy()
 	builtinAlloca = newGlobalVar("alloca", ty)
-	builtinAlloca.IsDefinition = false
+	builtinAlloca.IsStatic = true
 }
 
-func globalVariable(tok *Token, basety *CType, attr *VarAttr) *Token {
+func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 	first := true
 
-	for !consume(&tok, tok, ";") {
+	for ; !consume(&tok, tok, ";"); first = false {
 		if !first {
 			tok = skip(tok, ",")
 		}
-		first = false
 
 		ty := declarator(&tok, tok, basety)
+		if ty.Kind == TY_FUNC {
+			if tok.isEqual("{") {
+				if !first || scope.Next != nil {
+					errorTok(tok, "function definition is not allowed here")
+				}
+				funcDefinition(&tok, tok, ty, attr)
+				return tok
+			}
+			funcPrototype(ty, attr)
+			continue
+		}
+
 		if ty.Name == nil {
 			errorTok(ty.NamePos, "variable name omitted")
 		}
@@ -3610,18 +3613,6 @@ func scanGlobals() {
 	globals = head.Next
 }
 
-// Lookahead tokens and returns true if a given token is a start
-// of a function definition or declaration.
-func (tok *Token) isFunction() bool {
-	if tok.isEqual(";") {
-		return false
-	}
-
-	dummy := CType{}
-	ty := declarator(&tok, tok, &dummy)
-	return ty.Kind == TY_FUNC
-}
-
 // program = (function-definition | global-variable)*
 func parse(tok *Token) *Obj {
 	declareBuiltinFunctions()
@@ -3637,14 +3628,7 @@ func parse(tok *Token) *Obj {
 			continue
 		}
 
-		// Function
-		if tok.isFunction() {
-			tok = function(tok, basety, &attr)
-			continue
-		}
-
-		// Global variable
-		tok = globalVariable(tok, basety, &attr)
+		tok = globalDeclaration(tok, basety, &attr)
 	}
 
 	for v := globals; v != nil; v = v.Next {
