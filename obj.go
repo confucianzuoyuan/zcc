@@ -26,7 +26,6 @@ type Obj struct {
 	IsInline          bool
 	Params            *Obj
 	Body              *AstNode
-	Locals            *Obj
 	VaArea            *Obj // Variable argument area
 	AllocaBottom      *Obj
 	LocalVarStackSize int64
@@ -45,4 +44,17 @@ type Relocation struct {
 	Offset int64
 	Label  *string
 	Addend int64
+}
+
+// Represents a block scope.
+type Scope struct {
+	Parent      *Scope
+	Children    *Scope
+	SiblingNext *Scope
+
+	Locals *Obj
+	// C has two block scopes; one is for variables/typedefs and
+	// the other is for struct/union/enum tags.
+	Vars map[string]*VarScope
+	Tags map[string]*CType
 }

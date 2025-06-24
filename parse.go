@@ -65,15 +65,6 @@ type VarScope struct {
 	EnumValue int
 }
 
-// Represents a block scope.
-type Scope struct {
-	Next *Scope
-	// C has two block scopes; one is for variables/typedefs and the other is
-	// for struct/union/enum tags.
-	Vars map[string]*VarScope
-	Tags map[string]*CType
-}
-
 // Variable attributes such as typedef or extern.
 type VarAttr struct {
 	IsTypeDef bool // Is a typedef
@@ -116,10 +107,6 @@ var builtinAlloca *Obj = nil
 
 var uniqueNameId int = 0
 
-// All local variable instances created during parsing are
-// accumulated to this list.
-var locals *Obj
-
 // Likewise, global variables are accumulated to this list.
 var globals *Obj
 
@@ -146,17 +133,19 @@ func alignDown(n int64, align int64) int64 {
 
 func enterScope() {
 	sc := &Scope{}
-	sc.Next = scope
-	scope = sc
+	sc.Parent = scope
+	sc.SiblingNext = scope.Children
+	scope.Children = sc
+	scope = scope.Children
 }
 
 func leaveScope() {
-	scope = scope.Next
+	scope = scope.Parent
 }
 
 // Find a variable by name.
 func findVariable(tok *Token) *VarScope {
-	for sc := scope; sc != nil; sc = sc.Next {
+	for sc := scope; sc != nil; sc = sc.Parent {
 		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 		sc2 := sc.Vars[name]
 		if sc2 != nil {
@@ -168,7 +157,7 @@ func findVariable(tok *Token) *VarScope {
 }
 
 func findTag(tok *Token) *CType {
-	for sc := scope; sc != nil; sc = sc.Next {
+	for sc := scope; sc != nil; sc = sc.Parent {
 		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 		ty := sc.Tags[name]
 		if ty != nil {
@@ -878,8 +867,8 @@ func newVar(name string, ty *CType) *Obj {
 func newLocalVar(name string, ty *CType) *Obj {
 	variable := newVar(name, ty)
 	variable.IsLocal = true
-	variable.Next = locals
-	locals = variable
+	variable.Next = scope.Locals
+	scope.Locals = variable
 	return variable
 }
 
@@ -3065,7 +3054,7 @@ func postfix(rest **Token, tok *Token) *AstNode {
 		ty := typeName(&tok, tok.Next)
 		tok = skip(tok, ")")
 
-		if scope.Next == nil {
+		if scope.Parent == nil {
 			variable := newAnonGlobalVar(ty)
 			globalVarInitializer(rest, tok, variable)
 			return newVarNode(variable, start)
@@ -3240,8 +3229,8 @@ func genericSelection(rest **Token, tok *Token) *AstNode {
 
 func findFunction(name string) *Obj {
 	sc := scope
-	for sc.Next != nil {
-		sc = sc.Next
+	for sc.Parent != nil {
+		sc = sc.Parent
 	}
 
 	sc2 := sc.Vars[name]
@@ -3494,11 +3483,11 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 		errorTok(tok, "redefinition of "+fn.Name)
 	}
 	fn.IsDefinition = true
+	fn.Ty = ty
 
 	currentFunction = fn
-	locals = nil
-
 	enterScope()
+	ty.Scopes = scope
 	createParamLocalVars(ty.Params)
 
 	// A buffer for a struct/union return value is passed
@@ -3508,7 +3497,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 		newLocalVar("", pointerTo(rty))
 	}
 
-	fn.Params = locals
+	fn.Params = scope.Locals
 	if ty.IsVariadic {
 		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))
 	}
@@ -3526,7 +3515,6 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	pushScope("__FUNCTION__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
 
 	fn.Body = compoundStmt(rest, tok.Next)
-	fn.Locals = locals
 	leaveScope()
 	resolveGotoLabels()
 	currentFunction = nil
@@ -3550,7 +3538,7 @@ func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 		ty := declarator(&tok, tok, basety)
 		if ty.Kind == TY_FUNC {
 			if tok.isEqual("{") {
-				if !first || scope.Next != nil {
+				if !first || scope.Parent != nil {
 					errorTok(tok, "function definition is not allowed here")
 				}
 				funcDefinition(&tok, tok, ty, attr)

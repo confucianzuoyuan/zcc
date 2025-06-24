@@ -46,6 +46,8 @@ type CType struct {
 	IsFlexible bool
 	IsPacked   bool
 
+	// Function type
+	Scopes     *Scope
 	ReturnType *CType
 	Params     *CType
 	IsVariadic bool

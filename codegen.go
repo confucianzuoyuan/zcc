@@ -1444,7 +1444,7 @@ func genStmt(node *AstNode) {
 // Assign offsets to local variables.
 func assignLocalVariableOffsets(prog *Obj) {
 	for fn := prog; fn != nil; fn = fn.Next {
-		if !fn.IsFunction {
+		if !fn.IsFunction || !fn.IsDefinition {
 			continue
 		}
 
@@ -1452,7 +1452,6 @@ func assignLocalVariableOffsets(prog *Obj) {
 		// inevitably passed by stack rather than by register.
 		// The first passed-by-stack parameter resides at RBP+16.
 		var top int64 = 16
-		var bottom int64 = 0
 
 		gp := 0
 		fp := 0
@@ -1491,27 +1490,35 @@ func assignLocalVariableOffsets(prog *Obj) {
 			top += v.Ty.Size
 		}
 
-		// Assign offsets to pass-by-register parameters and local variables.
-		for v := fn.Locals; v != nil; v = v.Next {
-			if v.Offset != 0 {
-				continue
-			}
-
-			// AMD64 System V ABI has a special alignment rule for an array of
-			// length at least 16 bytes. We need to align such array to at least
-			// 16-byte boundaries. See p.14 of
-			// https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-draft.pdf.
-			align := v.Align
-			if v.Ty.Kind == TY_ARRAY && v.Ty.Size >= 16 {
-				align = int64(math.Max(16, float64(v.Align)))
-			}
-
-			bottom += v.Ty.Size
-			bottom = alignTo(bottom, align)
-			v.Offset = -bottom
-		}
-		fn.LocalVarStackSize = bottom
+		fn.LocalVarStackSize = int64(assignLocalVariableOffsets2(fn.Ty.Scopes, 0))
 	}
+}
+
+func assignLocalVariableOffsets2(sc *Scope, bottom int) int {
+	for v := sc.Locals; v != nil; v = v.Next {
+		if v.Offset != 0 {
+			continue
+		}
+
+		// AMD64 System V ABI has a special alignment rule for an array of
+		// length at least 16 bytes. We need to align such array to at least
+		// 16-byte boundaries. See p.14 of
+		// https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-draft.pdf.
+		align := v.Align
+		if v.Ty.Kind == TY_ARRAY && v.Ty.Size >= 16 {
+			align = int64(math.Max(16, float64(v.Align)))
+		}
+
+		bottom += int(v.Ty.Size)
+		bottom = int(alignTo(int64(bottom), align))
+		v.Offset = -int64(bottom)
+	}
+
+	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
+		bottom = assignLocalVariableOffsets2(sub, bottom)
+	}
+
+	return bottom
 }
 
 func builtin_alloca() {
