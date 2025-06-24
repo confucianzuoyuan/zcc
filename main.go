@@ -678,7 +678,7 @@ func printTokens(tok *Token) {
 }
 
 func assemble(input string, output string) {
-	cmd := []string{"as", "-c", input, "-o", output}
+	cmd := []string{"as", input, "-o", output}
 	runSubprocess(cmd)
 }
 
