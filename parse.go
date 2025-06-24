@@ -21,6 +21,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 var TypeNames = map[string]struct{}{
@@ -3387,6 +3388,11 @@ func primary(rest **Token, tok *Token) *AstNode {
 				currentFunction.Refs = append(currentFunction.Refs, sc.Variable.Name)
 			} else {
 				sc.Variable.IsRoot = true
+			}
+
+			name := sc.Variable.Name
+			if opt_optimize && (strings.Contains(name, "setjmp") || strings.Contains(name, "savectx") || strings.Contains(name, "vfork") || strings.Contains(name, "getcontext")) {
+				DontReuseStack = true
 			}
 		}
 

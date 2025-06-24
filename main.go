@@ -26,6 +26,7 @@ var includePaths []string
 var ldExtraArgs []string
 var stdIncludePaths []string
 
+var opt_optimize bool
 var opt_fpic bool
 var opt_x FileType
 var opt_include []string
@@ -336,7 +337,21 @@ func parseArgs(args []string) {
 			continue
 		}
 
-		if strings.HasPrefix(args[idx], "-O") || strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-g") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" {
+		if strings.HasPrefix(args[idx], "-O") {
+			if len(args[idx]) > 2 && args[idx][2] != '0' {
+				opt_optimize = true
+			}
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-fstack-reuse=") {
+			if args[idx] == "-fstack-reuse=all" {
+				DontReuseStack = true
+			}
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-g") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" {
 			continue
 		}
 

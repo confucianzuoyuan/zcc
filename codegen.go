@@ -27,6 +27,8 @@ var i int = 1
 
 var currentFn *Obj
 
+var DontReuseStack bool
+
 func printlnToFile(fmtStr string, args ...any) {
 	code := fmt.Sprintf(fmtStr, args...)
 	*cgOutputFile = append(*cgOutputFile, code)
@@ -49,8 +51,15 @@ func pushTmpStack() int {
 		}
 	}
 
-	tmpStack.Bottom += 8
-	offset := -tmpStack.Bottom
+	var offset int
+	if opt_optimize && !DontReuseStack {
+		bottom := currentFn.LocalVarStackSize + (int64(tmpStack.Depth)+1)*8
+		tmpStack.Bottom = int(math.Max(float64(tmpStack.Bottom), float64(bottom)))
+		offset = -int(bottom)
+	} else {
+		tmpStack.Bottom += 8
+		offset = -tmpStack.Bottom
+	}
 
 	tmpStack.Data[tmpStack.Depth] = offset
 	tmpStack.Depth++
@@ -1514,11 +1523,18 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int) int {
 		v.Offset = -int64(bottom)
 	}
 
+	maxDepth := bottom
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
-		bottom = assignLocalVariableOffsets2(sub, bottom)
+		subDepth := assignLocalVariableOffsets2(sub, bottom)
+		if opt_optimize && !DontReuseStack {
+			maxDepth = int(math.Max(float64(maxDepth), float64(subDepth)))
+		} else {
+			maxDepth = subDepth
+			bottom = maxDepth
+		}
 	}
 
-	return bottom
+	return maxDepth
 }
 
 func builtin_alloca() {
