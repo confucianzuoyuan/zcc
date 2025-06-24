@@ -457,6 +457,18 @@ func getFileType(filename string) FileType {
 		return FILE_ASM
 	}
 
+	if strings.Contains(filename, ".so.") {
+		p := strings.Index(filename, ".so.")
+		p += 4
+		for p < len(filename) && (isDecimalDigit(int8(filename[p])) || (filename[p] == '.' && isDecimalDigit(int8(filename[p+1])))) {
+			p++
+		}
+
+		if p == len(filename) {
+			return FILE_DSO
+		}
+	}
+
 	panic("<command line>: unknown file extension: " + filename)
 }
 
