@@ -1546,7 +1546,7 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 		return arrayOf(ty, -1)
 	}
 
-	expr := conditional(&tok, tok)
+	expr := assign(&tok, tok)
 	tok = skip(tok, "]")
 	ty = typeSuffix(rest, tok, ty)
 
