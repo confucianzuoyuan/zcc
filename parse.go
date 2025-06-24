@@ -172,6 +172,10 @@ func findTag(tok *Token) *CType {
 // Generate code for computing a VLA size.
 func computeVlaSize(ty *CType, tok *Token) *AstNode {
 	node := newNode(ND_NULL_EXPR, tok)
+	if ty.VlaSize != nil {
+		return node
+	}
+
 	if ty.Base != nil {
 		node = newBinary(ND_COMMA, node, computeVlaSize(ty.Base, tok), tok)
 	}
@@ -2192,13 +2196,15 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 
 	enterScope()
 
-	for !tok.isEqual("}") {
+	for ; !tok.isEqual("}"); cur.addType() {
 		if tok.isTypename() && !tok.Next.isEqual(":") {
 			attr := VarAttr{}
 			basety := declspec(&tok, tok, &attr)
 
 			if attr.IsTypeDef {
-				tok = parseTypeDef(tok, basety)
+				vlaCalc := parseTypeDef(&tok, tok, basety)
+				cur.Next = newUnary(ND_EXPR_STMT, vlaCalc, tok)
+				cur = cur.Next
 				continue
 			}
 
@@ -2209,12 +2215,11 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 
 			cur.Next = declaration(&tok, tok, basety, &attr)
 			cur = cur.Next
-		} else {
-			cur.Next = stmt(&tok, tok)
-			cur = cur.Next
+			continue
 		}
 
-		cur.addType()
+		cur.Next = stmt(&tok, tok)
+		cur = cur.Next
 	}
 
 	leaveScope()
@@ -3444,10 +3449,11 @@ func primary(rest **Token, tok *Token) *AstNode {
 	return nil
 }
 
-func parseTypeDef(tok *Token, basety *CType) *Token {
+func parseTypeDef(rest **Token, tok *Token, basety *CType) *AstNode {
 	first := true
+	node := newNode(ND_NULL_EXPR, tok)
 
-	for !consume(&tok, tok, ";") {
+	for !consume(rest, tok, ";") {
 		if !first {
 			tok = skip(tok, ",")
 		}
@@ -3458,9 +3464,10 @@ func parseTypeDef(tok *Token, basety *CType) *Token {
 			errorTok(ty.NamePos, "typedef name omitted")
 		}
 		pushScope(ty.Name.getIdent()).TypeDef = ty
+		node = newBinary(ND_COMMA, node, computeVlaSize(ty, tok), tok)
 	}
 
-	return tok
+	return node
 }
 
 func funcPrototype(ty *CType, attr *VarAttr) *Obj {
@@ -3629,7 +3636,7 @@ func parse(tok *Token) *Obj {
 
 		// Typedef
 		if attr.IsTypeDef {
-			tok = parseTypeDef(tok, basety)
+			parseTypeDef(&tok, tok, basety)
 			continue
 		}
 
