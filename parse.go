@@ -794,6 +794,9 @@ func initDesgExpr(desg *InitDesg, tok *Token) *AstNode {
 
 func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token) *AstNode {
 	if ty.Kind == TY_ARRAY {
+		if init.Expr != nil {
+			panic("init.Expr != nil")
+		}
 		node := newNode(ND_NULL_EXPR, tok)
 		for i := int64(0); i < ty.ArrayLength; i++ {
 			desg2 := InitDesg{Next: desg, Index: int(i)}
@@ -803,7 +806,12 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 		return node
 	}
 
-	if ty.Kind == TY_STRUCT && init.Expr == nil {
+	if init.Expr != nil {
+		lhs := initDesgExpr(desg, tok)
+		return newBinary(ND_ASSIGN, lhs, init.Expr, tok)
+	}
+
+	if ty.Kind == TY_STRUCT {
 		node := newNode(ND_NULL_EXPR, tok)
 		for mem := ty.Members; mem != nil; mem = mem.Next {
 			desg2 := InitDesg{desg, 0, mem, nil}
@@ -825,12 +833,7 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 		return createLocalVarInit(init.Children[mem.Index], mem.Ty, &desg2, tok)
 	}
 
-	if init.Expr == nil {
-		return newNode(ND_NULL_EXPR, tok)
-	}
-
-	lhs := initDesgExpr(desg, tok)
-	return newBinary(ND_ASSIGN, lhs, init.Expr, tok)
+	return newNode(ND_NULL_EXPR, tok)
 }
 
 /*
@@ -849,6 +852,11 @@ func localVarInitializer(rest **Token, tok *Token, variable *Obj) *AstNode {
 	init := initializer(rest, tok, variable.Ty, &variable.Ty)
 	desg := InitDesg{nil, 0, nil, variable}
 
+	expr := createLocalVarInit(init, variable.Ty, &desg, tok)
+	if opt_optimize && init.Expr != nil {
+		return expr
+	}
+
 	// If a partial initializer list is given, the standard requires
 	// that unspecified elements are set to 0. Here, we simply
 	// zero-initialize the entire memory region of a variable before
@@ -856,8 +864,7 @@ func localVarInitializer(rest **Token, tok *Token, variable *Obj) *AstNode {
 	lhs := newNode(ND_MEMZERO, tok)
 	lhs.Variable = variable
 
-	rhs := createLocalVarInit(init, variable.Ty, &desg, tok)
-	return newBinary(ND_COMMA, lhs, rhs, tok)
+	return newBinary(ND_COMMA, lhs, expr, tok)
 }
 
 func newVar(name string, ty *CType) *Obj {
