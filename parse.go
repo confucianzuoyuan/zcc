@@ -171,13 +171,13 @@ func findTag(tok *Token) *CType {
 
 // Generate code for computing a VLA size.
 func computeVlaSize(ty *CType, tok *Token) *AstNode {
-	node := newNode(ND_NULL_EXPR, tok)
 	if ty.VlaSize != nil {
-		return node
+		return nil
 	}
 
+	var node *AstNode = nil
 	if ty.Base != nil {
-		node = newBinary(ND_COMMA, node, computeVlaSize(ty.Base, tok), tok)
+		node = computeVlaSize(ty.Base, tok)
 	}
 
 	if ty.Kind != TY_VLA {
@@ -193,7 +193,19 @@ func computeVlaSize(ty *CType, tok *Token) *AstNode {
 
 	ty.VlaSize = newLocalVar("", TyULong)
 	expr := newBinary(ND_ASSIGN, newVarNode(ty.VlaSize, tok), newBinary(ND_MUL, ty.VlaLen, baseSize, tok), tok)
-	return newBinary(ND_COMMA, node, expr, tok)
+	chainExpr(&node, expr)
+	node.addType()
+	return node
+}
+
+func chainExpr(lhs **AstNode, rhs *AstNode) {
+	if rhs != nil {
+		if *lhs == nil {
+			*lhs = rhs
+		} else {
+			*lhs = newBinary(ND_COMMA, *lhs, rhs, rhs.Tok)
+		}
+	}
 }
 
 func newAlloca(sz *AstNode) *AstNode {
@@ -797,11 +809,10 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 		if init.Expr != nil {
 			panic("init.Expr != nil")
 		}
-		node := newNode(ND_NULL_EXPR, tok)
+		var node *AstNode = nil
 		for i := int64(0); i < ty.ArrayLength; i++ {
 			desg2 := InitDesg{Next: desg, Index: int(i)}
-			rhs := createLocalVarInit(init.Children[i], ty.Base, &desg2, tok)
-			node = newBinary(ND_COMMA, node, rhs, tok)
+			chainExpr(&node, createLocalVarInit(init.Children[i], ty.Base, &desg2, tok))
 		}
 		return node
 	}
@@ -812,11 +823,10 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 	}
 
 	if ty.Kind == TY_STRUCT {
-		node := newNode(ND_NULL_EXPR, tok)
+		var node *AstNode = nil
 		for mem := ty.Members; mem != nil; mem = mem.Next {
 			desg2 := InitDesg{desg, 0, mem, nil}
-			rhs := createLocalVarInit(init.Children[mem.Index], mem.Ty, &desg2, tok)
-			node = newBinary(ND_COMMA, node, rhs, tok)
+			chainExpr(&node, createLocalVarInit(init.Children[mem.Index], mem.Ty, &desg2, tok))
 		}
 		return node
 	}
@@ -833,7 +843,7 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 		return createLocalVarInit(init.Children[mem.Index], mem.Ty, &desg2, tok)
 	}
 
-	return newNode(ND_NULL_EXPR, tok)
+	return nil
 }
 
 /*
@@ -861,10 +871,10 @@ func localVarInitializer(rest **Token, tok *Token, variable *Obj) *AstNode {
 	// that unspecified elements are set to 0. Here, we simply
 	// zero-initialize the entire memory region of a variable before
 	// initializing it with user-supplied values.
-	lhs := newNode(ND_MEMZERO, tok)
-	lhs.Variable = variable
-
-	return newBinary(ND_COMMA, lhs, expr, tok)
+	node := newNode(ND_MEMZERO, tok)
+	node.Variable = variable
+	chainExpr(&node, expr)
+	return node
 }
 
 func newVar(name string, ty *CType) *Obj {
@@ -1495,7 +1505,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	cur := &head
 	isVariadic := false
 	fnTy := funcType(ty)
-	valCalc := newNode(ND_NULL_EXPR, tok)
+	var vlaCalc *AstNode = nil
 
 	enterScope()
 	fnTy.Scopes = scope
@@ -1517,7 +1527,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 		name := ty2.Name
 
-		valCalc = newBinary(ND_COMMA, valCalc, computeVlaSize(ty2, tok), tok)
+		chainExpr(&vlaCalc, computeVlaSize(ty2, tok))
 
 		if ty2.Kind == TY_ARRAY || ty2.Kind == TY_VLA {
 			// "array of T" is converted to "pointer to T" only in the parameter
@@ -1544,7 +1554,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	leaveScope()
 
 	fnTy.ParamList = head.ParamNext
-	fnTy.VlaCalc = valCalc
+	fnTy.VlaCalc = vlaCalc
 	fnTy.IsVariadic = isVariadic
 	*rest = tok.Next
 	return fnTy
@@ -1672,8 +1682,7 @@ func typeName(rest **Token, tok *Token) *CType {
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNode {
-	head := AstNode{}
-	cur := &head
+	var expr *AstNode = nil
 	i := 0
 
 	for !tok.isEqual(";") {
@@ -1708,8 +1717,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		// Generate code for computing a VLA size. We need to do this
 		// even if ty is not VLA because ty may be a pointer to VLA
 		// (e.g. int (*foo)[n][m] where n and m are variables.)
-		cur.Next = newUnary(ND_EXPR_STMT, computeVlaSize(ty, tok), tok)
-		cur = cur.Next
+		chainExpr(&expr, computeVlaSize(ty, tok))
 
 		if ty.Kind == TY_VLA {
 			if tok.isEqual("=") {
@@ -1720,9 +1728,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// x = alloca(tmp)`.
 			v := newLocalVar(ty.Name.getIdent(), ty)
 			tok := ty.Name
-			expr := newBinary(ND_ASSIGN, newVlaPtr(v, tok), newAlloca(newVarNode(ty.VlaSize, tok)), tok)
-			cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
-			cur = cur.Next
+			chainExpr(&expr, newBinary(ND_ASSIGN, newVlaPtr(v, tok), newAlloca(newVarNode(ty.VlaSize, tok)), tok))
 			continue
 		}
 
@@ -1732,9 +1738,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		}
 
 		if tok.isEqual("=") {
-			expr := localVarInitializer(&tok, tok.Next, variable)
-			cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
-			cur = cur.Next
+			chainExpr(&expr, localVarInitializer(&tok, tok.Next, variable))
 		}
 
 		if variable.Ty.Size < 0 {
@@ -1745,10 +1749,8 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		}
 	}
 
-	node := newNode(ND_BLOCK, tok)
-	node.Body = head.Next
 	*rest = tok.Next
-	return node
+	return expr
 }
 
 func readBuf(buf *[]int8, offset int64, sz int64) uint64 {
@@ -2047,7 +2049,10 @@ func stmt(rest **Token, tok *Token) *AstNode {
 
 		if tok.isTypename() {
 			basety := declspec(&tok, tok, nil)
-			node.Init = declaration(&tok, tok, basety, nil)
+			expr := declaration(&tok, tok, basety, nil)
+			if expr != nil {
+				node.Init = newUnary(ND_EXPR_STMT, expr, tok)
+			}
 		} else {
 			node.Init = exprStmt(&tok, tok)
 		}
@@ -2209,9 +2214,11 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 			basety := declspec(&tok, tok, &attr)
 
 			if attr.IsTypeDef {
-				vlaCalc := parseTypeDef(&tok, tok, basety)
-				cur.Next = newUnary(ND_EXPR_STMT, vlaCalc, tok)
-				cur = cur.Next
+				expr := parseTypeDef(&tok, tok, basety)
+				if expr != nil {
+					cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
+					cur = cur.Next
+				}
 				continue
 			}
 
@@ -2220,8 +2227,11 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 				continue
 			}
 
-			cur.Next = declaration(&tok, tok, basety, &attr)
-			cur = cur.Next
+			expr := declaration(&tok, tok, basety, &attr)
+			if expr != nil {
+				cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
+				cur = cur.Next
+			}
 			continue
 		}
 
@@ -3313,9 +3323,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 				return newVarNode(ty.VlaSize, tok)
 			}
 
-			lhs := computeVlaSize(ty, tok)
-			rhs := newVarNode(ty.VlaSize, tok)
-			return newBinary(ND_COMMA, lhs, rhs, tok)
+			return computeVlaSize(ty, tok)
 		}
 		return newULong(ty.Size, start)
 	}
@@ -3458,7 +3466,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 func parseTypeDef(rest **Token, tok *Token, basety *CType) *AstNode {
 	first := true
-	node := newNode(ND_NULL_EXPR, tok)
+	var node *AstNode = nil
 
 	for !consume(rest, tok, ";") {
 		if !first {
@@ -3471,7 +3479,7 @@ func parseTypeDef(rest **Token, tok *Token, basety *CType) *AstNode {
 			errorTok(ty.NamePos, "typedef name omitted")
 		}
 		pushScope(ty.Name.getIdent()).TypeDef = ty
-		node = newBinary(ND_COMMA, node, computeVlaSize(ty, tok), tok)
+		chainExpr(&node, computeVlaSize(ty, tok))
 	}
 
 	return node
@@ -3541,7 +3549,6 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	fn.Body = compoundStmt(rest, tok.Next)
 	if ty.VlaCalc != nil {
 		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
-		calc.addType()
 		calc.Next = fn.Body.Body
 		fn.Body.Body = calc
 	}
