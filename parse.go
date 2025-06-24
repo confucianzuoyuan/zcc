@@ -1480,9 +1480,13 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 		return funcType(ty)
 	}
 
-	head := CType{}
+	head := Obj{}
 	cur := &head
 	isVariadic := false
+	fnTy := funcType(ty)
+
+	enterScope()
+	fnTy.Scopes = scope
 
 	for !tok.isEqual(")") {
 		if cur != &head {
@@ -1505,27 +1509,30 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 			// "array of T" is converted to "pointer to T" only in the parameter
 			// context. For example, *argv[] is converted to **argv by this.
 			ty2 = pointerTo(ty2.Base)
-			ty2.Name = name
 		} else if ty2.Kind == TY_FUNC {
 			// Likewise, a function is converted to a pointer to a function
 			// only in the parameter context.
 			ty2 = pointerTo(ty2)
-			ty2.Name = name
 		}
 
-		cur.Next = ty2.copy()
-		cur = cur.Next
+		varName := ""
+		if name != nil {
+			varName = name.getIdent()
+		}
+		cur.ParamNext = newLocalVar(varName, ty2)
+		cur = cur.ParamNext
 	}
 
 	if cur == &head {
 		isVariadic = true
 	}
 
-	ty = funcType(ty)
-	ty.Params = head.Next
-	ty.IsVariadic = isVariadic
+	leaveScope()
+
+	fnTy.ParamList = head.ParamNext
+	fnTy.IsVariadic = isVariadic
 	*rest = tok.Next
-	return ty
+	return fnTy
 }
 
 // array-dimensions = ("static" | "restrict")* const-expr? "]" type-suffix
@@ -3128,7 +3135,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	} else {
 		ty = fn.Ty.Base
 	}
-	paramTy := ty.Params
+	param := ty.ParamList
 
 	head := AstNode{}
 	cur := &head
@@ -3141,15 +3148,15 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 		arg := assign(&tok, tok)
 		arg.addType()
 
-		if paramTy == nil && !ty.IsVariadic {
+		if param == nil && !ty.IsVariadic {
 			errorTok(arg.Tok, "too many arguments to function")
 		}
 
-		if paramTy != nil {
-			if paramTy.Kind != TY_STRUCT && paramTy.Kind != TY_UNION {
-				arg = newCast(arg, paramTy)
+		if param != nil {
+			if param.Ty.Kind != TY_STRUCT && param.Ty.Kind != TY_UNION {
+				arg = newCast(arg, param.Ty)
 			}
-			paramTy = paramTy.Next
+			param = param.ParamNext
 		} else if arg.Ty.Kind == TY_FLOAT {
 			// If parameter type is omitted (e.g. in "..."), float
 			// arguments are promoted to double.
@@ -3160,7 +3167,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 		cur = cur.Next
 	}
 
-	if paramTy != nil {
+	if param != nil {
 		errorTok(tok, "not enough arguments to function")
 	}
 
@@ -3452,16 +3459,6 @@ func parseTypeDef(tok *Token, basety *CType) *Token {
 	return tok
 }
 
-func createParamLocalVars(param *CType) {
-	if param != nil {
-		createParamLocalVars(param.Next)
-		if param.Name == nil {
-			errorTok(param.NamePos, "parameter name omitted")
-		}
-		newLocalVar(param.Name.getIdent(), param)
-	}
-}
-
 func funcPrototype(ty *CType, attr *VarAttr) *Obj {
 	if ty.Name == nil {
 		errorTok(ty.NamePos, "function name omitted")
@@ -3492,18 +3489,21 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	fn.Ty = ty
 
 	currentFunction = fn
-	enterScope()
-	ty.Scopes = scope
-	createParamLocalVars(ty.Params)
+
+	if ty.Scopes != nil {
+		scope = ty.Scopes
+	} else {
+		enterScope()
+		ty.Scopes = scope
+	}
 
 	// A buffer for a struct/union return value is passed
 	// as the hidden first parameter.
 	rty := ty.ReturnType
 	if (rty.Kind == TY_STRUCT || rty.Kind == TY_UNION) && rty.Size > 16 {
-		newLocalVar("", pointerTo(rty))
+		fn.LargeRtn = newLocalVar("", pointerTo(rty))
 	}
 
-	fn.Params = scope.Locals
 	if ty.IsVariadic {
 		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))
 	}
@@ -3528,7 +3528,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 
 func declareBuiltinFunctions() {
 	ty := funcType(pointerTo(TyVoid))
-	ty.Params = TyInt.copy()
+	ty.ParamList = newVar("", TyInt)
 	builtinAlloca = newGlobalVar("alloca", ty)
 	builtinAlloca.IsStatic = true
 }

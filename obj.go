@@ -9,7 +9,8 @@ type Obj struct {
 	Align   int64  // alignment
 
 	// Local variable
-	Offset int64
+	Offset    int64
+	ParamNext *Obj
 
 	// Global variable or function
 	IsFunction   bool
@@ -24,7 +25,7 @@ type Obj struct {
 
 	// Function
 	IsInline          bool
-	Params            *Obj
+	LargeRtn          *Obj
 	Body              *AstNode
 	VaArea            *Obj // Variable argument area
 	AllocaBottom      *Obj

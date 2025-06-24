@@ -49,9 +49,8 @@ type CType struct {
 	// Function type
 	Scopes     *Scope
 	ReturnType *CType
-	Params     *CType
+	ParamList  *Obj
 	IsVariadic bool
-	Next       *CType
 }
 
 func (t *CType) print() {
@@ -456,15 +455,15 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 			return false
 		}
 
-		p1 := t1.Params
-		p2 := t2.Params
+		p1 := t1.ParamList
+		p2 := t2.ParamList
 		for p1 != nil && p2 != nil {
-			if !p1.isCompatibleWith(p2) {
+			if !p1.Ty.isCompatibleWith(p2.Ty) {
 				return false
 			}
 
-			p1 = p1.Next
-			p2 = p2.Next
+			p1 = p1.ParamNext
+			p2 = p2.ParamNext
 		}
 
 		return p1 == nil && p2 == nil

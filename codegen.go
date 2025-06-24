@@ -389,7 +389,7 @@ func copyStructReg() {
 
 func copyStructMem() {
 	ty := currentFn.Ty.ReturnType
-	v := currentFn.Params
+	v := currentFn.Ty.ParamList
 
 	printlnToFile("  mov %d(%%rbp), %%rdi", v.Offset)
 
@@ -1457,6 +1457,11 @@ func assignLocalVariableOffsets(prog *Obj) {
 			continue
 		}
 
+		if fn.LargeRtn != nil {
+			fn.LargeRtn.ParamNext = fn.Ty.ParamList
+			fn.Ty.ParamList = fn.LargeRtn
+		}
+
 		// If a function has many parameters, some parameters are
 		// inevitably passed by stack rather than by register.
 		// The first passed-by-stack parameter resides at RBP+16.
@@ -1466,7 +1471,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 		fp := 0
 
 		// Assign offsets to pass-by-stack parameters.
-		for v := fn.Params; v != nil; v = v.Next {
+		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
 			ty := v.Ty
 
 			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
@@ -1665,7 +1670,7 @@ func emitText(prog *Obj) {
 		if fn.VaArea != nil {
 			gp := 0
 			fp := 0
-			for v := fn.Params; v != nil; v = v.Next {
+			for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
 				if v.Ty.isFloat() {
 					fp += 1
 				} else {
@@ -1702,7 +1707,7 @@ func emitText(prog *Obj) {
 		// Save passed-by-register arguments to the stack
 		gp := 0
 		fp := 0
-		for v := fn.Params; v != nil; v = v.Next {
+		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
 			if v.Offset > 0 {
 				continue
 			}
