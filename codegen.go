@@ -933,6 +933,11 @@ func genExpr(node *AstNode) {
 
 		mem := node.Member
 		if mem.IsBitfield {
+			if mem.Ty.Kind == TY_BOOL {
+				printlnToFile("  shr $%d, %%rax", mem.BitOffset)
+				printlnToFile("  and $1, %%eax")
+				return
+			}
 			printlnToFile("  shl $%d, %%rax", 64-mem.BitWidth-mem.BitOffset)
 			if mem.Ty.IsUnsigned {
 				printlnToFile("  shr $%d, %%rax", 64-mem.BitWidth)
