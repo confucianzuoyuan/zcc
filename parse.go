@@ -3294,9 +3294,7 @@ func genericSelection(rest **Token, tok *Token) *AstNode {
 
 	var ret *AstNode = nil
 
-	for !consume(rest, tok, ")") {
-		tok = skip(tok, ",")
-
+	for commaList(rest, &tok, ")", true) {
 		if tok.isEqual("default") {
 			tok = skip(tok.Next, ":")
 			node := assign(&tok, tok)
