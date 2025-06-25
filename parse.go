@@ -1310,12 +1310,7 @@ func attributeList(tok *Token, ty *CType) *Token {
 
 		first := true
 
-		for !consume(&tok, tok, ")") {
-			if !first {
-				tok = skip(tok, ",")
-			}
-			first = false
-
+		for ; commaList(&tok, &tok, ")", !first); first = false {
 			if consume(&tok, tok, "packed") {
 				ty.IsPacked = true
 				continue
