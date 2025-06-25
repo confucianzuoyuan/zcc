@@ -159,7 +159,8 @@ func readConstExpr(rest **Token, tok *Token) *Token {
 		// is defined. Otherwise "0".
 		if tok.isEqual("defined") {
 			start := tok
-			hasParen := consume(&tok, tok.Next, "(")
+			tok = tok.Next
+			hasParen := consume(&tok, tok, "(")
 
 			if tok.Kind != TK_IDENT {
 				errorTok(start, "macro name must be an identifier")

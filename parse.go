@@ -963,7 +963,6 @@ func consume(rest **Token, tok *Token, str string) bool {
 		*rest = tok.Next
 		return true
 	}
-	*rest = tok
 	return false
 }
 
@@ -1543,8 +1542,7 @@ func structRef(node *AstNode, tok *Token) *AstNode {
 // func-params = ("void" | param ("," param)* ("," "...")?)? ")"
 // param       = declspec declarator
 func funcParams(rest **Token, tok *Token, ty *CType) *CType {
-	if tok.isEqual("void") && tok.Next.isEqual(")") {
-		*rest = tok.Next.Next
+	if tok.isEqual("void") && consume(rest, tok.Next, ")") {
 		return funcType(ty)
 	}
 
@@ -2323,8 +2321,7 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 
 // expr-stmt = expr? ";"
 func exprStmt(rest **Token, tok *Token) *AstNode {
-	if tok.isEqual(";") {
-		*rest = tok.Next
+	if consume(rest, tok, ";") {
 		return newNode(ND_BLOCK, tok)
 	}
 

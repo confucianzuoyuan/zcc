@@ -68,8 +68,6 @@ var currentFile *File
 // A list of all input files.
 var inputFiles []*File
 
-var fileNo int = 0
-
 // True if the current position is at the beginning of a line
 var atBeginningOfLine bool
 
