@@ -976,24 +976,37 @@ func genExpr(node *AstNode) {
 		tmpOffset := pushTmp()
 		genExpr(node.Rhs)
 		if node.Lhs.Kind == ND_MEMBER && node.Lhs.Member.IsBitfield {
-			printlnToFile("  mov %%rax, %%r8")
-
 			// If the lhs is a bitfield, we need to read the current value
 			// from memory and merge it with a new value.
 			mem := node.Lhs.Member
-			printlnToFile("  mov %%rax, %%rdi")
-			printlnToFile("  and $%d, %%rdi", (1<<mem.BitWidth)-1)
-			printlnToFile("  shl $%d, %%rdi", mem.BitOffset)
+			printlnToFile("  mov $%d, %%rdi", (1<<mem.BitWidth)-1)
+			printlnToFile("  and %%rdi, %%rax")
+			printlnToFile("  mov %%rax, %%r8")
 
 			printlnToFile("  mov %d(%%rbp), %%rax", tmpOffset)
 			load(mem.Ty)
 
 			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
-			printlnToFile("  mov $%d, %%r9", ^mask)
-			printlnToFile("  and %%r9, %%rax")
+			printlnToFile("  mov $%d, %%rdi", ^mask)
+			printlnToFile("  and %%rdi, %%rax")
+
+			printlnToFile("  mov %%r8, %%rdi")
+			printlnToFile("  shl $%d, %%rdi", mem.BitOffset)
 			printlnToFile("  or %%rdi, %%rax")
 			store(node.Ty)
 			printlnToFile("  mov %%r8, %%rax")
+
+			if mem.Ty.Kind == TY_BOOL {
+				return
+			}
+
+			shift := 64 - mem.BitWidth - mem.BitOffset
+			printlnToFile("  shl $%d, %%rax", shift)
+			if mem.Ty.IsUnsigned {
+				printlnToFile("  shr $%d, %%rax", shift)
+			} else {
+				printlnToFile("  sar $%d, %%rax", shift)
+			}
 			return
 		}
 
