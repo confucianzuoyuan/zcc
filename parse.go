@@ -2056,14 +2056,27 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		begin := constExpr(&tok, tok.Next)
 		end := int64(0)
 
+		currentSwitch.Cond.addType()
+
+		// [GNU] Case ranges, e.g. "case 1 ... 5:"
 		if tok.isEqual("...") {
-			// [GNU] Case ranges, e.g. "case 1 ... 5:"
 			end = constExpr(&tok, tok.Next)
-			if end < begin {
-				errorTok(tok, "empty case range specified")
-			}
 		} else {
 			end = begin
+		}
+
+		if currentSwitch.Cond.Ty.Size == 4 {
+			if !currentSwitch.Cond.Ty.IsUnsigned {
+				begin = int64(int32(begin))
+				end = int64(int32(end))
+			} else {
+				begin = int64(uint32(begin))
+				end = int64(uint32(end))
+			}
+		}
+
+		if (!currentSwitch.Cond.Ty.IsUnsigned && (end < begin)) || (currentSwitch.Cond.Ty.IsUnsigned && uint64(end) < uint64(begin)) {
+			errorTok(tok, "empty case range specified")
 		}
 
 		tok = skip(tok, ":")

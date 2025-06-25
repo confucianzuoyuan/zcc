@@ -1410,21 +1410,26 @@ func genStmt(node *AstNode) {
 		for n := node.CaseNext; n != nil; n = n.CaseNext {
 			ax := "%eax"
 			di := "%edi"
+			dx := "%edx"
 			if node.Cond.Ty.Size == 8 {
 				ax = "%rax"
 				di = "%rdi"
+				dx = "%rdx"
 			}
 
 			if n.Begin == n.End {
-				printlnToFile("  cmp $%d, %s", n.Begin, ax)
+				printlnToFile("  mov $%d, %s", n.Begin, dx)
+				printlnToFile("  cmp %s, %s", dx, ax)
 				printlnToFile("  je %s", n.Label)
 				continue
 			}
 
 			// [GNU] Case ranges
 			printlnToFile("  mov %s, %s", ax, di)
-			printlnToFile("  sub $%d, %s", n.Begin, di)
-			printlnToFile("  cmp $%d, %s", n.End-n.Begin, di)
+			printlnToFile("  mov $%d, %s", n.Begin, dx)
+			printlnToFile("  sub %s, %s", dx, di)
+			printlnToFile("  mov $%d, %s", n.End-n.Begin, dx)
+			printlnToFile("  cmp %s, %s", dx, di)
 			printlnToFile("  jbe %s", n.Label)
 		}
 
