@@ -1690,20 +1690,6 @@ func (tok *Token) isEnd() bool {
 	return tok.isEqual("}") || (tok.isEqual(",") && tok.Next.isEqual("}"))
 }
 
-func consumeEnd(rest **Token, tok *Token) bool {
-	if tok.isEqual("}") {
-		*rest = tok.Next
-		return true
-	}
-
-	if tok.isEqual(",") && tok.Next.isEqual("}") {
-		*rest = tok.Next.Next
-		return true
-	}
-
-	return false
-}
-
 // type-name = declspec abstract-declarator
 func typeName(rest **Token, tok *Token) *CType {
 	ty := declspec(&tok, tok, nil)
