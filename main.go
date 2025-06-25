@@ -26,6 +26,7 @@ var includePaths []string
 var ldExtraArgs []string
 var stdIncludePaths []string
 
+var opt_g bool
 var opt_optimize bool
 var opt_fpic bool
 var opt_x FileType
@@ -338,7 +339,9 @@ func parseArgs(args []string) {
 		}
 
 		if strings.HasPrefix(args[idx], "-O") {
-			if len(args[idx]) > 2 && args[idx][2] != '0' {
+			if len(args[idx]) > 2 && args[idx][2] == '0' {
+				opt_optimize = false
+			} else {
 				opt_optimize = true
 			}
 			continue
@@ -351,7 +354,17 @@ func parseArgs(args []string) {
 			continue
 		}
 
-		if strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-g") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" || args[idx] == "-fno-lto" || args[idx] == "-pedantic" {
+		if strings.HasPrefix(args[idx], "-g") {
+			if len(args[idx]) > 2 && args[idx][2] == '0' {
+				opt_g = false
+			} else {
+				opt_g = true
+			}
+
+			continue
+		}
+
+		if strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" || args[idx] == "-fno-lto" || args[idx] == "-pedantic" {
 			continue
 		}
 
