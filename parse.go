@@ -1884,7 +1884,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 			if mem.IsBitfield {
 				expr := init.Children[mem.Index].Expr
 				if expr == nil {
-					break
+					continue
 				}
 
 				loc := offset + mem.Offset
