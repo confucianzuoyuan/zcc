@@ -493,25 +493,15 @@ func structDesignator(rest **Token, tok *Token, ty *CType) *Member {
 		errorTok(tok, "expected a field designator")
 	}
 
-	for mem := ty.Members; mem != nil; mem = mem.Next {
-		// Anonymous struct member
-		if mem.Ty.Kind == TY_STRUCT && mem.Name == nil {
-			if getStructMember(mem.Ty, tok) != nil {
-				*rest = start
-				return mem
-			}
-			continue
-		}
-
-		// Regular struct member
-		tokName := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
-		if mem.Name.isEqual(tokName) {
-			*rest = tok.Next
-			return mem
-		}
+	mem := getStructMember(ty, tok)
+	if mem == nil {
+		errorTok(tok, "struct has no such member")
 	}
-	errorTok(tok, "struct has no such member")
-	panic("unreachable")
+	*rest = start
+	if mem.Name != nil {
+		*rest = tok.Next
+	}
+	return mem
 }
 
 // designation = ("[" const-expr "]" | "." ident)* "="? initializer
@@ -1447,15 +1437,12 @@ func unionDecl(rest **Token, tok *Token) *CType {
 func getStructMember(ty *CType, tok *Token) *Member {
 	for mem := ty.Members; mem != nil; mem = mem.Next {
 		// Anonymous struct member
-		if (mem.Ty.Kind == TY_STRUCT || mem.Ty.Kind == TY_UNION) && mem.Name == nil {
-			if getStructMember(mem.Ty, tok) != nil {
-				return mem
-			}
-			continue
+		if (mem.Ty.Kind == TY_STRUCT || mem.Ty.Kind == TY_UNION) && mem.Name == nil && getStructMember(mem.Ty, tok) != nil {
+			return mem
 		}
 
 		// Regular struct member
-		if mem.Name.isEqual(B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])) {
+		if mem.Name != nil && mem.Name.isEqual(B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length])) {
 			return mem
 		}
 	}
