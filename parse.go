@@ -898,7 +898,9 @@ func newVar(name string, ty *CType) *Obj {
 	variable.Name = name
 	variable.Ty = ty
 	variable.Align = ty.Align
-	pushScope(name).Variable = variable
+	if name != "" {
+		pushScope(name).Variable = variable
+	}
 	return variable
 }
 
