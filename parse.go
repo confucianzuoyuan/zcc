@@ -3579,10 +3579,11 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	buf := []uint8(fn.Name)
 	buf = append(buf, 0)
 	newBuf := U82I8(buf)
-	pushScope("__func__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+	v := newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+	pushScope("__func__").Variable = v
 
 	// [GNU] __FUNCTION__ is yet another name of __func__.
-	pushScope("__FUNCTION__").Variable = newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+	pushScope("__FUNCTION__").Variable = v
 
 	fn.Body = compoundStmt(rest, tok.Next)
 	if ty.VlaCalc != nil {
