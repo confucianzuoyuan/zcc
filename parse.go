@@ -3232,11 +3232,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	head := AstNode{}
 	cur := &head
 
-	for !tok.isEqual(")") {
-		if cur != &head {
-			tok = skip(tok, ",")
-		}
-
+	for commaList(rest, &tok, ")", cur != &head) {
 		arg := assign(&tok, tok)
 		arg.addType()
 
@@ -3262,8 +3258,6 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	if param != nil {
 		errorTok(tok, "not enough arguments to function")
 	}
-
-	*rest = skip(tok, ")")
 
 	node := newUnary(ND_FUNCALL, fn, tok)
 	node.Ty = ty.ReturnType
