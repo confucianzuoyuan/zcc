@@ -369,12 +369,7 @@ func (node *AstNode) addType() {
 		node.Ty = node.Member.Ty
 		return
 	case ND_ADDR:
-		ty := node.Lhs.Ty
-		if node.Lhs.Ty.Kind == TY_ARRAY {
-			node.Ty = pointerTo(node.Lhs.Ty.Base)
-		} else {
-			node.Ty = pointerTo(ty)
-		}
+		node.Ty = pointerTo(node.Lhs.Ty)
 		return
 	case ND_DEREF:
 		if node.Lhs.Ty.Base == nil {
