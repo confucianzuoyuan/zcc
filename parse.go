@@ -1456,6 +1456,13 @@ func unionDecl(rest **Token, tok *Token) *CType {
 	head := Member{}
 	cur := &head
 	for mem := ty.Members; mem != nil; mem = mem.Next {
+		sz := mem.Ty.Size
+		if mem.IsBitfield {
+			sz = alignTo(mem.BitWidth, 8) / 8
+		}
+
+		ty.Size = int64(math.Max(float64(ty.Size), float64(sz)))
+
 		if mem.Name == nil && mem.IsBitfield {
 			cur.Next = nil
 			continue
@@ -1463,10 +1470,6 @@ func unionDecl(rest **Token, tok *Token) *CType {
 
 		if ty.Align < mem.Ty.Align {
 			ty.Align = mem.Align
-		}
-
-		if ty.Size < mem.Ty.Size {
-			ty.Size = mem.Ty.Size
 		}
 
 		cur.Next = mem
