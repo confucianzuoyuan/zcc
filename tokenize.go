@@ -810,10 +810,14 @@ func tokenize(file *File, end **Token) *Token {
 			for {
 				if (*src)[p] != 0 && (*src)[p+1] != 0 && ((*src)[p] == 'e' || (*src)[p] == 'E' || (*src)[p] == 'p' || (*src)[p] == 'P') && ((*src)[p+1] == '+' || (*src)[p+1] == '-') {
 					p += 2
-				} else if isAlphaNumber((*src)[p]) || (*src)[p] == '.' {
+				} else if (*src)[p] == '.' {
 					p += 1
 				} else {
-					break
+					c, newPos := decodeUTF8(src, p)
+					if !isIdentInnerChar(c) {
+						break
+					}
+					p = newPos
 				}
 			}
 			cur.Next = newToken(TK_PP_NUM, q, p)
