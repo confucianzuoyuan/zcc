@@ -3525,12 +3525,7 @@ func parseTypeDef(rest **Token, tok *Token, basety *CType) *AstNode {
 	first := true
 	var node *AstNode = nil
 
-	for !consume(rest, tok, ";") {
-		if !first {
-			tok = skip(tok, ",")
-		}
-		first = false
-
+	for ; commaList(rest, &tok, ";", !first); first = false {
 		ty := declarator(&tok, tok, basety)
 		if ty.Name == nil {
 			errorTok(ty.NamePos, "typedef name omitted")
