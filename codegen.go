@@ -996,15 +996,9 @@ func genExpr(node *AstNode) {
 			store(node.Ty)
 			printlnToFile("  mov %%r8, %%rax")
 
-			if mem.Ty.Kind == TY_BOOL {
-				return
-			}
-
-			shift := 64 - mem.BitWidth - mem.BitOffset
-			printlnToFile("  shl $%d, %%rax", shift)
-			if mem.Ty.IsUnsigned {
-				printlnToFile("  shr $%d, %%rax", shift)
-			} else {
+			if !mem.Ty.IsUnsigned && mem.Ty.Kind != TY_BOOL {
+				shift := 64 - mem.BitWidth - mem.BitOffset
+				printlnToFile("  shl $%d, %%rax", shift)
 				printlnToFile("  sar $%d, %%rax", shift)
 			}
 			return
