@@ -537,7 +537,7 @@ func designation(rest **Token, tok *Token, init *Initializer) {
 		mem := structDesignator(&tok, tok, init.Ty)
 		designation(&tok, tok, init.Children[mem.Index])
 		init.Expr = nil
-		structInitializer2(rest, tok, init, mem.Next)
+		structInitializer2(rest, tok, init, mem.Next, true)
 		return
 	}
 
@@ -669,12 +669,12 @@ func structInitializer1(rest **Token, tok *Token, init *Initializer) {
 }
 
 // struct-initializer2 = initializer ("," initializer)*
-func structInitializer2(rest **Token, tok *Token, init *Initializer, mem *Member) {
+func structInitializer2(rest **Token, tok *Token, init *Initializer, mem *Member, postDesig bool) {
 	first := true
 
 	for ; mem != nil && !tok.isEnd(); mem = mem.Next {
 		start := tok
-		if !first {
+		if !first || postDesig {
 			tok = skip(tok, ",")
 		}
 		first = false
@@ -747,7 +747,7 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 			return
 		}
 
-		structInitializer2(rest, tok, init, init.Ty.Members)
+		structInitializer2(rest, tok, init, init.Ty.Members, false)
 		return
 	}
 
