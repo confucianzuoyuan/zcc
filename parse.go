@@ -3396,9 +3396,17 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
-	if tok.isEqual("sizeof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
-		ty := typeName(&tok, tok.Next.Next)
-		*rest = skip(tok, ")")
+	if tok.isEqual("sizeof") {
+		var ty *CType = nil
+		if tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
+			ty = typeName(&tok, tok.Next.Next)
+			*rest = skip(tok, ")")
+		} else {
+			node := unary(rest, tok.Next)
+			node.addType()
+			ty = node.Ty
+		}
+
 		if ty.Kind == TY_VLA {
 			if ty.VlaSize != nil {
 				return newVarNode(ty.VlaSize, tok)
@@ -3413,15 +3421,6 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node := expr(&tok, tok.Next)
 		*rest = skip(tok, ")")
 		return node
-	}
-
-	if tok.isEqual("sizeof") {
-		node := unary(rest, tok.Next)
-		node.addType()
-		if node.Ty.Kind == TY_VLA {
-			return newVarNode(node.Ty.VlaSize, tok)
-		}
-		return newULong(node.Ty.Size, tok)
 	}
 
 	if tok.isEqual("_Alignof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
