@@ -691,11 +691,7 @@ func unionInitializer(rest **Token, tok *Token, init *Initializer) {
 	tok = skip(tok, "{")
 	first := true
 
-	for ; !consumeEnd(rest, tok); first = false {
-		if !first {
-			tok = skip(tok, ",")
-		}
-
+	for ; commaList(rest, &tok, "}", !first); first = false {
 		if tok.isEqual(".") {
 			init.Member = structDesignator(&tok, tok, init.Ty)
 			designation(&tok, tok, init.Children[init.Member.Index])
