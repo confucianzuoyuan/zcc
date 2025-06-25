@@ -595,12 +595,7 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 
 	first := true
 
-	for i := int64(0); !consumeEnd(rest, tok); i++ {
-		if !first {
-			tok = skip(tok, ",")
-		}
-		first = false
-
+	for i := int64(0); commaList(rest, &tok, "}", !first); i++ {
 		if tok.isEqual("[") {
 			begin := int64(0)
 			end := int64(0)
@@ -612,6 +607,7 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 			}
 			tok = tok2
 			i = end
+			first = false
 			continue
 		}
 
@@ -620,6 +616,8 @@ func arrayInitializer1(rest **Token, tok *Token, init *Initializer) {
 		} else {
 			tok = skipExcessElement(tok)
 		}
+
+		first = false
 	}
 }
 
