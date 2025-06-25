@@ -23,7 +23,7 @@ var argreg64 = []string{
 	"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
 }
 
-var i int = 1
+var LabelCount int = 1
 
 var currentFn *Obj
 
@@ -414,8 +414,8 @@ func copyStructMem() {
 }
 
 func count() int {
-	i += 1
-	return i - 1
+	LabelCount += 1
+	return LabelCount - 1
 }
 
 func regDX(sz int) string {
