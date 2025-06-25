@@ -1243,6 +1243,11 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	cur := &head
 
 	for !tok.isEqual("}") {
+		if tok.isEqual("_Static_assert") {
+			staticAssertion(&tok, tok.Next)
+			continue
+		}
+
 		attr := VarAttr{}
 		basety := declspec(&tok, tok, &attr)
 		first := true
@@ -2102,6 +2107,8 @@ func stmt(rest **Token, tok *Token) *AstNode {
 			if expr != nil {
 				node.Init = newUnary(ND_EXPR_STMT, expr, tok)
 			}
+		} else if tok.isEqual("_Static_assert") {
+			staticAssertion(&tok, tok.Next)
 		} else {
 			node.Init = exprStmt(&tok, tok)
 		}
@@ -2258,6 +2265,11 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 	enterScope()
 
 	for ; !tok.isEqual("}"); cur.addType() {
+		if tok.isEqual("_Static_assert") {
+			staticAssertion(&tok, tok.Next)
+			continue
+		}
+
 		if tok.isTypename() && !tok.Next.isEqual(":") {
 			attr := VarAttr{}
 			basety := declspec(&tok, tok, &attr)
@@ -2348,6 +2360,24 @@ func evalDouble(node *AstNode) float64 {
 	}
 
 	return float64(evalError(node.Tok, "not a compile-time constant"))
+}
+
+func staticAssertion(rest **Token, tok *Token) {
+	tok = skip(tok, "(")
+	result := constExpr(&tok, tok)
+	if result == 0 {
+		errorTok(tok, "static assertion failed")
+	}
+
+	if tok.isEqual(",") {
+		if tok.Next.Kind != TK_STR {
+			errorTok(tok, "expected string literal")
+		}
+		tok = tok.Next.Next
+	}
+
+	tok = skip(tok, ")")
+	*rest = skip(tok, ";")
 }
 
 // Evaluate a given node as a constant expression.
@@ -3696,6 +3726,11 @@ func parse(tok *Token) *Obj {
 	globals = nil
 
 	for tok.Kind != TK_EOF {
+		if tok.isEqual("_Static_assert") {
+			staticAssertion(&tok, tok.Next)
+			continue
+		}
+
 		attr := VarAttr{}
 		basety := declspec(&tok, tok, &attr)
 
