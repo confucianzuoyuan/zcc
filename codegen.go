@@ -196,6 +196,24 @@ func (ty *CType) hasFloatNumber2() bool {
 	return ty.hasFloatNumber(8, 16, 0)
 }
 
+func passByReg(ty *CType, gp int, fp int) bool {
+	if ty.Size > 16 {
+		return false
+	}
+
+	fpInc := boolToInt(ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && ty.hasFloatNumber2())
+	gpInc := boolToInt(!ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && !ty.hasFloatNumber2())
+
+	if fpInc != 0 && (fp+fpInc > FP_MAX) {
+		return false
+	}
+	if gpInc != 0 && (gp+gpInc > GP_MAX) {
+		return false
+	}
+
+	return true
+}
+
 func pushStruct(ty *CType) {
 	sz := alignTo(ty.Size, 8)
 	printlnToFile("  sub $%d, %%rsp", sz)
@@ -247,20 +265,12 @@ func pushArgs(node *AstNode) int {
 	// Load as many arguments to the registers as possible.
 	for arg := node.Args; arg != nil; arg = arg.Next {
 		if arg.Ty.Kind == TY_STRUCT || arg.Ty.Kind == TY_UNION {
-			if arg.Ty.Size > 16 {
+			if passByReg(arg.Ty, gp, fp) {
+				fp += boolToInt(arg.Ty.hasFloatNumber1()) + boolToInt(arg.Ty.Size > 8 && arg.Ty.hasFloatNumber2())
+				gp += boolToInt(!arg.Ty.hasFloatNumber1()) + boolToInt(arg.Ty.Size > 8 && !arg.Ty.hasFloatNumber2())
+			} else {
 				arg.PassByStack = true
 				stack += int(alignTo(arg.Ty.Size, 8) / 8)
-			} else {
-				fp1 := arg.Ty.hasFloatNumber1()
-				fp2 := arg.Ty.hasFloatNumber2()
-
-				if fp+boolToInt(fp1)+boolToInt(fp2) < FP_MAX && gp+boolToInt(!fp1)+boolToInt(!fp2) < GP_MAX {
-					fp = fp + boolToInt(fp1) + boolToInt(fp2)
-					gp = gp + boolToInt(!fp1) + boolToInt(!fp2)
-				} else {
-					arg.PassByStack = true
-					stack += int(alignTo(arg.Ty.Size, 8) / 8)
-				}
 			}
 		} else if arg.Ty.Kind == TY_FLOAT || arg.Ty.Kind == TY_DOUBLE {
 			if fp >= FP_MAX {
@@ -1098,30 +1108,25 @@ func genExpr(node *AstNode) {
 		for arg := node.Args; arg != nil; arg = arg.Next {
 			ty := arg.Ty
 			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
-				if ty.Size > 16 {
+				if !passByReg(ty, gp, fp) {
 					continue
 				}
 
-				fp1 := ty.hasFloatNumber1()
-				fp2 := ty.hasFloatNumber2()
+				if ty.hasFloatNumber1() {
+					popf(fp)
+					fp++
+				} else {
+					pop(argreg64[gp])
+					gp++
+				}
 
-				if fp+boolToInt(fp1)+boolToInt(fp2) < FP_MAX && gp+boolToInt(!fp1)+boolToInt(!fp2) < GP_MAX {
-					if fp1 {
+				if ty.Size > 8 {
+					if ty.hasFloatNumber2() {
 						popf(fp)
 						fp += 1
 					} else {
 						pop(argreg64[gp])
 						gp += 1
-					}
-
-					if ty.Size > 8 {
-						if fp2 {
-							popf(fp)
-							fp += 1
-						} else {
-							pop(argreg64[gp])
-							gp += 1
-						}
 					}
 				}
 
@@ -1512,15 +1517,10 @@ func assignLocalVariableOffsets(prog *Obj) {
 			ty := v.Ty
 
 			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
-				if ty.Size <= 16 {
-					fp1 := ty.hasFloatNumber(0, 8, 0)
-					fp2 := ty.hasFloatNumber(8, 16, 8)
-
-					if fp+boolToInt(fp1)+boolToInt(fp2) < FP_MAX && gp+boolToInt(!fp1)+boolToInt(!fp2) < GP_MAX {
-						fp = fp + boolToInt(fp1) + boolToInt(fp2)
-						gp = gp + boolToInt(!fp1) + boolToInt(!fp2)
-						continue
-					}
+				if passByReg(ty, gp, fp) {
+					fp += boolToInt(ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && ty.hasFloatNumber2())
+					gp += boolToInt(!ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && !ty.hasFloatNumber2())
+					continue
 				}
 			} else if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
 				fp += 1
