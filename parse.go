@@ -1269,6 +1269,12 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 				mem.Align = mem.Ty.Align
 			}
 
+			for t := mem.Ty; t != nil; t = t.Base {
+				if t.Kind == TY_VLA {
+					errorTok(tok, "members cannot be of variable-modified type")
+				}
+			}
+
 			if consume(&tok, tok, ":") {
 				mem.IsBitfield = true
 				mem.BitWidth = constExpr(&tok, tok)
@@ -1576,6 +1582,9 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 	ty = typeSuffix(rest, tok, ty)
 
 	if ty.Kind == TY_VLA || !expr.isConstExpr() {
+		if scope.Parent == nil {
+			errorTok(tok, "variably-modified type at file scope")
+		}
 		return vlaOf(ty, expr)
 	}
 	return arrayOf(ty, eval(expr))
@@ -1705,6 +1714,10 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		}
 
 		if attr != nil && attr.IsStatic {
+			if ty.Kind == TY_VLA {
+				errorTok(tok, "variable length arrays cannot be 'static'")
+			}
+
 			// static local variable
 			variable := newAnonGlobalVar(ty)
 			pushScope(ty.Name.getIdent()).Variable = variable
