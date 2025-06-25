@@ -1247,7 +1247,6 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 
 		attr := VarAttr{}
 		basety := declspec(&tok, tok, &attr)
-		first := true
 
 		// Anonymous struct member
 		if (basety.Kind == TY_STRUCT || basety.Kind == TY_UNION) && consume(&tok, tok, ";") {
@@ -1264,12 +1263,8 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		}
 
 		// Regular struct members
-		for !consume(&tok, tok, ";") {
-			if !first {
-				tok = skip(tok, ",")
-			}
-			first = false
-
+		first := true
+		for ; commaList(&tok, &tok, ";", !first); first = false {
 			mem := &Member{}
 			mem.Ty = declarator(&tok, tok, basety)
 			mem.Name = mem.Ty.Name
