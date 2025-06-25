@@ -431,17 +431,11 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 // (e.g. `int x[] = {1,2,3}`). If it's omitted, count the number
 // of initializer elements.
 func countArrayInitElements(tok *Token, ty *CType) int {
-	first := true
 	dummy := newInitializer(ty.Base, true)
 	i := 0
 	max := 0
 
-	for !consumeEnd(&tok, tok) {
-		if !first {
-			tok = skip(tok, ",")
-		}
-		first = false
-
+	for commaList(&tok, &tok, "}", i != 0) {
 		if tok.isEqual("[") {
 			i = int(constExpr(&tok, tok.Next))
 			if tok.isEqual("...") {
