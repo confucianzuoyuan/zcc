@@ -650,12 +650,7 @@ func structInitializer1(rest **Token, tok *Token, init *Initializer) {
 	mem := init.Ty.Members
 	first := true
 
-	for !consumeEnd(rest, tok) {
-		if !first {
-			tok = skip(tok, ",")
-		}
-		first = false
-
+	for ; commaList(rest, &tok, "}", !first); first = false {
 		if tok.isEqual(".") {
 			mem = structDesignator(&tok, tok, init.Ty)
 			designation(&tok, tok, init.Children[mem.Index])
