@@ -37,7 +37,7 @@ type File struct {
 	Contents *[]int8
 
 	// For #line directive
-	DisplayName string
+	DisplayFile *File
 	LineDelta   int
 }
 
@@ -51,9 +51,10 @@ type Token struct {
 	Ty            *CType    // Used if TK_NUM or TK_STR
 	StringLiteral []int8    // String literal contents including terminating '\0'
 
-	File              *File  // Source location
+	File              *File // Source location
+	DisplayLineNo     int
+	DisplayFileNo     int
 	LineNo            int    // Line number
-	LineDelta         int    // Line number
 	AtBeginningOfLine bool   // True if this token is at beginning of line
 	HasSpace          bool   // True if this token follows a space character
 	DontExpand        bool   // True if a macro token is encountered during the macro's expansion
@@ -103,6 +104,23 @@ func B2S(bs []int8) string {
 		b[i] = byte(v)
 	}
 	return string(b)
+}
+
+var InputFilesMap = make(map[string]*File)
+var FileNoInTokenizer int
+
+func addInputFile(path string, contents *[]int8) *File {
+	if file, ok := InputFilesMap[path]; ok {
+		return file
+	}
+
+	file := newFile(path, FileNoInTokenizer+1, contents)
+
+	inputFiles = append(inputFiles, file)
+	FileNoInTokenizer++
+
+	InputFilesMap[path] = file
+	return file
 }
 
 /*
@@ -927,11 +945,11 @@ func readFile(path string) *[]int8 {
 
 func newFile(name string, fileNo int, contents *[]int8) *File {
 	file := &File{
-		Name:        name,
-		FileNo:      fileNo,
-		Contents:    contents,
-		DisplayName: name,
+		Name:     name,
+		FileNo:   fileNo,
+		Contents: contents,
 	}
+	file.DisplayFile = file
 	return file
 }
 
@@ -1073,11 +1091,5 @@ func tokenizeFile(path string, end **Token) *Token {
 	removeBackslashNewline(src)
 	convertUniversalChars(src)
 
-	// Save the filename for assembler .file directive.
-	file := newFile(path, fileNo+1, src)
-
-	// Save the filename for assembler .file directive.
-	inputFiles = append(inputFiles, file)
-	fileNo += 1
-	return tokenize(file, end)
+	return tokenize(addInputFile(path, src), end)
 }

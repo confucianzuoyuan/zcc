@@ -210,7 +210,18 @@ func readLineMarker(rest **Token, tok *Token) {
 	if tok.Kind != TK_STR {
 		errorTok(tok, "filename expected")
 	}
-	start.File.DisplayName = B2S(tok.StringLiteral[:len(tok.StringLiteral)-1])
+	displayName := B2S(tok.StringLiteral[:len(tok.StringLiteral)-1])
+	start.File.DisplayFile = addInputFile(displayName, nil)
+}
+
+func (tok *Token) addLocInfo() {
+	tmpl := tok
+	for tmpl.Origin != nil {
+		tmpl = tmpl.Origin
+	}
+
+	tok.DisplayFileNo = tmpl.File.DisplayFile.FileNo
+	tok.DisplayLineNo = tmpl.LineNo + tmpl.File.LineDelta
 }
 
 func (t *Token) newEOF() *Token {
@@ -986,7 +997,9 @@ func preprocess2(tok *Token) *Token {
 		}
 
 		if !tok.isHash() || LockedMacros != nil {
-			tok.LineDelta = tok.File.LineDelta
+			if opt_g {
+				tok.addLocInfo()
+			}
 			cur.Next = tok
 			cur = cur.Next
 			tok = tok.Next
@@ -1213,7 +1226,7 @@ func fileMacro(tmpl *Token) *Token {
 	for tmpl.Origin != nil {
 		tmpl = tmpl.Next
 	}
-	return newStringToken(tmpl.File.DisplayName, tmpl)
+	return newStringToken(tmpl.File.DisplayFile.Name, tmpl)
 }
 
 // __TIMESTAMP__ is expanded to a string describing the last
@@ -1424,10 +1437,6 @@ func preprocess(tok *Token) *Token {
 	}
 	convertPpTokens(tok)
 	joinAdjacentStringLiterals(tok)
-
-	for t := tok; t != nil; t = t.Next {
-		t.LineNo += t.LineDelta
-	}
 
 	return tok
 }

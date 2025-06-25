@@ -29,6 +29,20 @@ var currentFn *Obj
 
 var DontReuseStack bool
 
+var FileNoInCg int
+var LineNoInCg int
+
+func printLoc(tok *Token) {
+	if FileNoInCg == tok.DisplayFileNo && LineNoInCg == tok.DisplayLineNo {
+		return
+	}
+
+	printlnToFile("  .loc %d %d", tok.DisplayFileNo, tok.DisplayLineNo)
+
+	FileNoInCg = tok.DisplayFileNo
+	LineNoInCg = tok.DisplayLineNo
+}
+
 func printlnToFile(fmtStr string, args ...any) {
 	code := fmt.Sprintf(fmtStr, args...)
 	*cgOutputFile = append(*cgOutputFile, code)
@@ -840,7 +854,9 @@ func storeGp(r int, offset int64, sz int64) {
 
 // Generate code for a given node.
 func genExpr(node *AstNode) {
-	printlnToFile("  .loc %d %d", node.Tok.File.FileNo, node.Tok.LineNo)
+	if opt_g {
+		printLoc(node.Tok)
+	}
 
 	switch node.Kind {
 	case ND_NULL_EXPR:
@@ -1334,7 +1350,9 @@ func genExpr(node *AstNode) {
 }
 
 func genStmt(node *AstNode) {
-	printlnToFile("  .loc %d %d", node.Tok.File.FileNo, node.Tok.LineNo)
+	if opt_g {
+		printLoc(node.Tok)
+	}
 
 	switch node.Kind {
 	case ND_IF:
@@ -1782,9 +1800,11 @@ func emitText(prog *Obj) {
 func codegen(prog *Obj, out *[]string) {
 	cgOutputFile = out
 
-	files := getInputFiles()
-	for _, f := range files {
-		printlnToFile("  .file %d \"%s\"", f.FileNo, f.Name)
+	if opt_g {
+		files := getInputFiles()
+		for _, f := range files {
+			printlnToFile("  .file %d \"%s\"", f.FileNo, f.Name)
+		}
 	}
 
 	assignLocalVariableOffsets(prog)
