@@ -183,6 +183,26 @@ func findTag(tok *Token) *CType {
 	return nil
 }
 
+func commaList(rest **Token, tokRest **Token, end string, skipComma bool) bool {
+	tok := *tokRest
+	if consume(rest, tok, end) {
+		return false
+	}
+
+	if skipComma {
+		tok = skip(tok, ",")
+
+		// curly brackets allow trailing comma
+		if end == "}" && consume(rest, tok, "}") {
+			return false
+		}
+
+		*tokRest = tok
+	}
+
+	return true
+}
+
 // Generate code for computing a VLA size.
 func computeVlaSize(ty *CType, tok *Token) *AstNode {
 	if ty.VlaSize != nil {
@@ -1208,14 +1228,9 @@ func enumSpecifier(rest **Token, tok *Token) *CType {
 	tok = skip(tok, "{")
 
 	// Read an enum-list.
-	var i int = 0
 	var val int64 = 0
-	for !consumeEnd(rest, tok) {
-		if i > 0 {
-			tok = skip(tok, ",")
-		}
-		i += 1
-
+	first := true
+	for ; commaList(rest, &tok, "}", !first); first = false {
 		name := tok.getIdent()
 		tok = tok.Next
 
@@ -1555,15 +1570,10 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	enterScope()
 	fnTy.Scopes = scope
 
-	for !tok.isEqual(")") {
-		if cur != &head {
-			tok = skip(tok, ",")
-		}
-
+	for commaList(rest, &tok, ")", cur != &head) {
 		if tok.isEqual("...") {
 			isVariadic = true
-			tok = tok.Next
-			skip(tok, ")")
+			*rest = skip(tok.Next, ")")
 			break
 		}
 
@@ -1601,7 +1611,6 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 	fnTy.ParamList = head.ParamNext
 	fnTy.VlaCalc = vlaCalc
 	fnTy.IsVariadic = isVariadic
-	*rest = tok.Next
 	return fnTy
 }
 
@@ -1731,15 +1740,9 @@ func typeName(rest **Token, tok *Token) *CType {
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
 func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNode {
 	var expr *AstNode = nil
-	i := 0
 
-	for !tok.isEqual(";") {
-		if i > 0 {
-			tok = skip(tok, ",")
-		}
-
-		i += 1
-
+	first := true
+	for ; commaList(rest, &tok, ";", !first); first = false {
 		ty := declarator(&tok, tok, basety)
 		if ty.Kind == TY_FUNC {
 			funcPrototype(ty, attr)
@@ -1801,7 +1804,6 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		}
 	}
 
-	*rest = tok.Next
 	return expr
 }
 
