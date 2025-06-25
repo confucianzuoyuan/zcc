@@ -1713,6 +1713,11 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			errorTok(ty.NamePos, "variable name omitted")
 		}
 
+		// Generate code for computing a VLA size. We need to do this
+		// even if ty is not VLA because ty may be a pointer to VLA
+		// (e.g. int (*foo)[n][m] where n and m are variables.)
+		chainExpr(&expr, computeVlaSize(ty, tok))
+
 		if attr != nil && attr.IsStatic {
 			if ty.Kind == TY_VLA {
 				errorTok(tok, "variable length arrays cannot be 'static'")
@@ -1726,11 +1731,6 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			}
 			continue
 		}
-
-		// Generate code for computing a VLA size. We need to do this
-		// even if ty is not VLA because ty may be a pointer to VLA
-		// (e.g. int (*foo)[n][m] where n and m are variables.)
-		chainExpr(&expr, computeVlaSize(ty, tok))
 
 		if ty.Kind == TY_VLA {
 			if tok.isEqual("=") {
