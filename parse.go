@@ -337,6 +337,7 @@ func newInitializer(ty *CType, isFlexible bool) *Initializer {
 		// Count the number of struct members.
 		length := 0
 		for mem := ty.Members; mem != nil; mem = mem.Next {
+			mem.Index = length
 			length += 1
 		}
 
@@ -735,6 +736,10 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 		if expr.Ty.Kind == TY_STRUCT {
 			init.Expr = expr
 			return
+		}
+
+		if init.Ty.Members == nil {
+			errorTok(tok, "initializer for empty aggregate requires explicit braces")
 		}
 
 		structInitializer2(rest, tok, init, init.Ty.Members, false)
@@ -1218,7 +1223,6 @@ func enumSpecifier(rest **Token, tok *Token) *CType {
 func structMembers(rest **Token, tok *Token, ty *CType) {
 	head := Member{}
 	cur := &head
-	idx := 0
 
 	for !tok.isEqual("}") {
 		attr := VarAttr{}
@@ -1229,8 +1233,6 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		if (basety.Kind == TY_STRUCT || basety.Kind == TY_UNION) && consume(&tok, tok, ";") {
 			mem := &Member{}
 			mem.Ty = basety
-			mem.Index = idx
-			idx += 1
 			if attr.Align != 0 {
 				mem.Align = attr.Align
 			} else {
@@ -1251,8 +1253,6 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 			mem := &Member{}
 			mem.Ty = declarator(&tok, tok, basety)
 			mem.Name = mem.Ty.Name
-			mem.Index = idx
-			idx += 1
 			if attr.Align > 0 {
 				mem.Align = attr.Align
 			} else {
@@ -1323,7 +1323,7 @@ func attributeList(tok *Token, ty *CType) *Token {
 }
 
 // struct-union-decl = attribute? ident? ("{" struct-members)?
-func structUnionDecl(rest **Token, tok *Token) *CType {
+func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 	ty := structType()
 	tok = attributeList(tok, ty)
 
@@ -1336,6 +1336,7 @@ func structUnionDecl(rest **Token, tok *Token) *CType {
 
 	if tag != nil && !tok.isEqual("{") {
 		*rest = tok
+		*noList = true
 
 		ty2 := findTag(tag)
 		if ty2 != nil {
@@ -1369,15 +1370,19 @@ func structUnionDecl(rest **Token, tok *Token) *CType {
 
 // struct-decl = struct-union-decl
 func structDecl(rest **Token, tok *Token) *CType {
-	ty := structUnionDecl(rest, tok)
+	noList := false
+	ty := structUnionDecl(rest, tok, &noList)
 	ty.Kind = TY_STRUCT
 
-	if ty.Size < 0 {
+	if noList {
 		return ty
 	}
 
 	// Assign offsets within the struct to members.
 	bits := int64(0)
+	head := Member{}
+	cur := &head
+
 	for mem := ty.Members; mem != nil; mem = mem.Next {
 		sz := mem.Ty.Size
 		if mem.IsBitfield && mem.BitWidth == 0 {
@@ -1400,20 +1405,31 @@ func structDecl(rest **Token, tok *Token) *CType {
 			bits += mem.Ty.Size * 8
 		}
 
+		if mem.Name == nil && mem.IsBitfield {
+			cur.Next = nil
+			continue
+		}
+
 		if !ty.IsPacked && ty.Align < mem.Align {
 			ty.Align = mem.Align
 		}
+
+		cur.Next = mem
+		cur = cur.Next
 	}
+
+	ty.Members = head.Next
 	ty.Size = alignTo(bits, ty.Align*8) / 8
 	return ty
 }
 
 // union-decl = struct-union-decl
 func unionDecl(rest **Token, tok *Token) *CType {
-	ty := structUnionDecl(rest, tok)
+	noList := false
+	ty := structUnionDecl(rest, tok, &noList)
 	ty.Kind = TY_UNION
 
-	if ty.Size < 0 {
+	if noList {
 		return ty
 	}
 
