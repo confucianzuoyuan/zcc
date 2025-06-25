@@ -1416,7 +1416,6 @@ func structDecl(rest **Token, tok *Token) *CType {
 		}
 
 		if mem.Name == nil && mem.IsBitfield {
-			cur.Next = nil
 			continue
 		}
 
@@ -1428,6 +1427,7 @@ func structDecl(rest **Token, tok *Token) *CType {
 		cur = cur.Next
 	}
 
+	cur.Next = nil
 	ty.Members = head.Next
 	ty.Size = alignTo(bits, ty.Align*8) / 8
 	return ty
@@ -1457,7 +1457,6 @@ func unionDecl(rest **Token, tok *Token) *CType {
 		ty.Size = int64(math.Max(float64(ty.Size), float64(sz)))
 
 		if mem.Name == nil && mem.IsBitfield {
-			cur.Next = nil
 			continue
 		}
 
@@ -1469,6 +1468,7 @@ func unionDecl(rest **Token, tok *Token) *CType {
 		cur = cur.Next
 	}
 
+	cur.Next = nil
 	ty.Members = head.Next
 	ty.Size = alignTo(ty.Size, ty.Align)
 	return ty
