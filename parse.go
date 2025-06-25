@@ -3620,11 +3620,7 @@ func declareBuiltinFunctions() {
 func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 	first := true
 
-	for ; !consume(&tok, tok, ";"); first = false {
-		if !first {
-			tok = skip(tok, ",")
-		}
-
+	for ; commaList(&tok, &tok, ";", !first); first = false {
 		ty := declarator(&tok, tok, basety)
 		if ty.Kind == TY_FUNC {
 			if tok.isEqual("{") {
