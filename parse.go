@@ -2454,6 +2454,11 @@ func eval2(node *AstNode, label **string) int64 {
 	case ND_LABEL_VAL:
 		*label = &node.UniqueLabel
 		return 0
+	case ND_DEREF:
+		if node.Ty.Kind != TY_ARRAY {
+			errorTok(node.Tok, "not a compile-time constant")
+		}
+		return eval2(node.Lhs, label)
 	case ND_MEMBER:
 		if label == nil {
 			errorTok(node.Tok, "not a compile-time constant")
