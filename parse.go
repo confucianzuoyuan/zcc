@@ -21,6 +21,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"os"
 	"strings"
 )
 
@@ -106,6 +107,8 @@ type InitDesg struct {
 
 var builtinAlloca *Obj = nil
 
+var evalRecover *bool = nil
+
 var uniqueNameId int = 0
 
 // Likewise, global variables are accumulated to this list.
@@ -127,6 +130,17 @@ var continueLabel string
 // Points to a node representing a switch if we are parsing
 // a switch statement. Otherwise, NULL.
 var currentSwitch *AstNode
+
+func evalError(tok *Token, msg string) int64 {
+	if evalRecover != nil {
+		*evalRecover = true
+		return 0
+	}
+
+	verrorAt(tok.File.Name, tok.File.Contents, tok.LineNo, tok.Location, msg)
+	os.Exit(1)
+	panic("unreachable")
+}
 
 func alignDown(n int64, align int64) int64 {
 	return alignTo(n-align+1, align)
@@ -217,28 +231,15 @@ func newAlloca(sz *AstNode) *AstNode {
 }
 
 func (node *AstNode) isConstExpr() bool {
-	node.addType()
+	failed := false
 
-	switch node.Kind {
-	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR, ND_EQ, ND_NE, ND_LT, ND_LE, ND_LOGAND, ND_LOGOR:
-		return node.Lhs.isConstExpr() && node.Rhs.isConstExpr()
-	case ND_COND:
-		if !node.Cond.isConstExpr() {
-			return false
-		}
-		if eval(node.Cond) != 0 {
-			return node.Then.isConstExpr()
-		} else {
-			return node.Else.isConstExpr()
-		}
-	case ND_COMMA:
-		return node.Rhs.isConstExpr()
-	case ND_NEG, ND_NOT, ND_BITNOT, ND_CAST:
-		return node.Lhs.isConstExpr()
-	case ND_NUM:
-		return true
+	if evalRecover != nil {
+		panic("evalRecover != nil")
 	}
-	return false
+	evalRecover = &failed
+	eval(node)
+	evalRecover = nil
+	return !failed
 }
 
 func newCast(expr *AstNode, ty *CType) *AstNode {
@@ -2346,8 +2347,7 @@ func evalDouble(node *AstNode) float64 {
 		return node.FloatValue
 	}
 
-	errorTok(node.Tok, "not a compile-time constant")
-	panic("unreachable")
+	return float64(evalError(node.Tok, "not a compile-time constant"))
 }
 
 // Evaluate a given node as a constant expression.
@@ -2491,23 +2491,23 @@ func eval2(node *AstNode, label **string) int64 {
 		return 0
 	case ND_DEREF:
 		if node.Ty.Kind != TY_ARRAY {
-			errorTok(node.Tok, "not a compile-time constant")
+			return evalError(node.Tok, "not a compile-time constant")
 		}
 		return eval2(node.Lhs, label)
 	case ND_MEMBER:
 		if label == nil {
-			errorTok(node.Tok, "not a compile-time constant")
+			return evalError(node.Tok, "not a compile-time constant")
 		}
 		if node.Ty.Kind != TY_ARRAY {
-			errorTok(node.Tok, "invalid initializer")
+			return evalError(node.Tok, "invalid initializer")
 		}
 		return evalRval(node.Lhs, label) + node.Member.Offset
 	case ND_VAR:
 		if label == nil {
-			errorTok(node.Tok, "not a compile-time constant")
+			return evalError(node.Tok, "not a compile-time constant")
 		}
 		if node.Variable.Ty.Kind != TY_ARRAY && node.Variable.Ty.Kind != TY_FUNC {
-			errorTok(node.Tok, "invalid initializer")
+			return evalError(node.Tok, "invalid initializer")
 		}
 		*label = &node.Variable.Name
 		return 0
@@ -2515,8 +2515,7 @@ func eval2(node *AstNode, label **string) int64 {
 		return node.Value
 	}
 
-	errorTok(node.Tok, "not a compile-time constant")
-	panic("unreachable")
+	return evalError(node.Tok, "not a compile-time constant")
 }
 
 func eval(node *AstNode) int64 {
@@ -2527,7 +2526,7 @@ func evalRval(node *AstNode, label **string) int64 {
 	switch node.Kind {
 	case ND_VAR:
 		if node.Variable.IsLocal {
-			errorTok(node.Tok, "not a compile-time constant")
+			return evalError(node.Tok, "not a compile-time constant")
 		}
 		*label = &node.Variable.Name
 		return 0
@@ -2537,8 +2536,7 @@ func evalRval(node *AstNode, label **string) int64 {
 		return evalRval(node.Lhs, label) + node.Member.Offset
 	}
 
-	errorTok(node.Tok, "invalid initializer")
-	panic("unreachable")
+	return evalError(node.Tok, "invalid initializer")
 }
 
 func constExpr(rest **Token, tok *Token) int64 {
