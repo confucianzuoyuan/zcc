@@ -680,25 +680,26 @@ func structInitializer2(rest **Token, tok *Token, init *Initializer, mem *Member
 }
 
 func unionInitializer(rest **Token, tok *Token, init *Initializer) {
-	// Unlike structs, union initializers take only one initializer,
-	// and that initializes the first union member by default.
-	// You can initialize other member using a designated initializer.
-	if tok.isEqual("{") && tok.Next.isEqual(".") {
-		mem := structDesignator(&tok, tok.Next, init.Ty)
-		init.Member = mem
-		designation(&tok, tok, init.Children[mem.Index])
-		*rest = skip(tok, "}")
-		return
-	}
+	tok = skip(tok, "{")
+	first := true
 
-	init.Member = init.Ty.Members
+	for ; !consumeEnd(rest, tok); first = false {
+		if !first {
+			tok = skip(tok, ",")
+		}
 
-	if tok.isEqual("{") {
-		initializer2(&tok, tok.Next, init.Children[0])
-		consume(&tok, tok, ",")
-		*rest = skip(tok, "}")
-	} else {
-		initializer2(rest, tok, init.Children[0])
+		if tok.isEqual(".") {
+			init.Member = structDesignator(&tok, tok, init.Ty)
+			designation(&tok, tok, init.Children[init.Member.Index])
+			continue
+		}
+
+		if first && init.Ty.Members != nil {
+			init.Member = init.Ty.Members
+			initializer2(&tok, tok, init.Children[0])
+		} else {
+			tok = skipExcessElement(tok)
+		}
 	}
 }
 
@@ -747,7 +748,23 @@ func initializer2(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	if init.Ty.Kind == TY_UNION {
-		unionInitializer(rest, tok, init)
+		if tok.isEqual("{") {
+			unionInitializer(rest, tok, init)
+			return
+		}
+
+		expr := assign(rest, tok)
+		expr.addType()
+		if expr.Ty.Kind == TY_UNION {
+			init.Expr = expr
+			return
+		}
+		if init.Ty.Members == nil {
+			errorTok(tok, "initializer for empty aggregate requires explicit braces")
+		}
+
+		init.Member = init.Ty.Members
+		initializer2(rest, tok, init.Children[0])
 		return
 	}
 
@@ -827,15 +844,15 @@ func createLocalVarInit(init *Initializer, ty *CType, desg *InitDesg, tok *Token
 	}
 
 	if ty.Kind == TY_UNION {
-		mem := ty.Members
-		if init.Member != nil {
-			mem = init.Member
+		if init.Member == nil {
+			return nil
 		}
-		desg2 := InitDesg{}
-		desg2.Next = desg
-		desg2.Index = 0
-		desg2.Member = mem
-		return createLocalVarInit(init.Children[mem.Index], mem.Ty, &desg2, tok)
+		desg2 := InitDesg{
+			Next:   desg,
+			Index:  0,
+			Member: init.Member,
+		}
+		return createLocalVarInit(init.Children[init.Member.Index], init.Member.Ty, &desg2, tok)
 	}
 
 	return nil
@@ -1436,7 +1453,14 @@ func unionDecl(rest **Token, tok *Token) *CType {
 	// If union, we don't have to assign offsets because they
 	// are already initialized to zero. We need to compute the
 	// alignment and the size though.
+	head := Member{}
+	cur := &head
 	for mem := ty.Members; mem != nil; mem = mem.Next {
+		if mem.Name == nil && mem.IsBitfield {
+			cur.Next = nil
+			continue
+		}
+
 		if ty.Align < mem.Ty.Align {
 			ty.Align = mem.Align
 		}
@@ -1444,7 +1468,12 @@ func unionDecl(rest **Token, tok *Token) *CType {
 		if ty.Size < mem.Ty.Size {
 			ty.Size = mem.Ty.Size
 		}
+
+		cur.Next = mem
+		cur = cur.Next
 	}
+
+	ty.Members = head.Next
 	ty.Size = alignTo(ty.Size, ty.Align)
 	return ty
 }
