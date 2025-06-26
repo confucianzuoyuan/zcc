@@ -9,8 +9,9 @@ type Obj struct {
 	Align   int64  // alignment
 
 	// Local variable
-	Offset    int64
-	ParamNext *Obj
+	Offset      int64
+	ParamNext   *Obj
+	PassByStack bool
 
 	// Global variable or function
 	IsFunction   bool

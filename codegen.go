@@ -9,7 +9,6 @@ const FP_MAX = 8
 const GP_MAX = 6
 
 var cgOutputFile *[]string
-var depth int
 var argreg8 = []string{
 	"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b",
 }
@@ -106,52 +105,178 @@ func popTmpF(reg int) {
 	printlnToFile("  movsd %d(%%rbp), %%xmm%d", offset, reg)
 }
 
-func push() {
-	printlnToFile("  push %%rax")
-	depth += 1
-}
-
-func pop(arg string) {
-	printlnToFile("  pop %s", arg)
-	depth -= 1
-}
-
-func pushf() {
-	printlnToFile("  sub $8, %%rsp")
-	printlnToFile("  movsd %%xmm0, (%%rsp)")
-	depth += 1
-}
-
-func popf(reg int) {
-	printlnToFile("  movsd (%%rsp), %%xmm%d", reg)
-	printlnToFile("  add $8, %%rsp")
-	depth -= 1
-}
-
-func pushArgs2(args *AstNode, firstPass bool) {
-	if args == nil {
-		return
+func movExtend(v *Obj, reg string) {
+	insn := "movs"
+	if v.Ty.IsUnsigned {
+		insn = "movz"
 	}
 
-	pushArgs2(args.Next, firstPass)
-
-	if (firstPass && !args.PassByStack) || (!firstPass && args.PassByStack) {
-		return
-	}
-
-	genExpr(args)
-
-	if args.Ty.Kind == TY_STRUCT || args.Ty.Kind == TY_UNION {
-		pushStruct(args.Ty)
-	} else if args.Ty.Kind == TY_FLOAT || args.Ty.Kind == TY_DOUBLE {
-		pushf()
-	} else if args.Ty.Kind == TY_LDOUBLE {
-		printlnToFile("  sub $16, %%rsp")
-		printlnToFile("  fstpt (%%rsp)")
-		depth += 2
+	if v.Ty.Size == 1 {
+		printlnToFile("  %sb %d(%%rbp), %s", insn, v.Offset, reg)
+	} else if v.Ty.Size == 2 {
+		printlnToFile("  %sw %d(%%rbp), %s", insn, v.Offset, reg)
+	} else if v.Ty.Size == 4 {
+		printlnToFile("  movsxd %d(%%rbp), %s", v.Offset, reg)
 	} else {
-		push()
+		printlnToFile("  mov %d(%%rbp), %s", v.Offset, reg)
 	}
+}
+
+func callingConvention(v *Obj, gpStart int64) int64 {
+	stack := int64(0)
+	gp := gpStart
+	fp := int64(0)
+	for ; v != nil; v = v.ParamNext {
+		ty := v.Ty
+		if ty.Size == 0 {
+			panic("ty.Size == 0")
+		}
+
+		switch ty.Kind {
+		case TY_STRUCT, TY_UNION:
+			if ty.Size <= 16 {
+				fpInc := boolToInt(ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && ty.hasFloatNumber2())
+				gpInc := boolToInt(!ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && !ty.hasFloatNumber2())
+
+				if (fpInc == 0 || fp+int64(fpInc) <= FP_MAX) && (gpInc == 0 || gp+int64(gpInc) <= GP_MAX) {
+					fp += int64(fpInc)
+					gp += int64(gpInc)
+					continue
+				}
+			}
+		case TY_FLOAT, TY_DOUBLE:
+			if fp < FP_MAX {
+				fp++
+				continue
+			}
+		case TY_LDOUBLE: // DO NOTHING
+		default:
+			if gp < GP_MAX {
+				gp++
+				continue
+			}
+		}
+
+		v.PassByStack = true
+		stack += alignTo(ty.Size, 8)
+	}
+
+	return stack
+}
+
+// Load function call arguments. Arguments are already evaluated and
+// stored to the stack as local variables. What we need to do in this
+// function is to load them to registers or push them to the stack as
+// specified by the x86-64 psABI. Here is what the spec says:
+//
+//   - Up to 6 arguments of integral type are passed using RDI, RSI,
+//     RDX, RCX, R8 and R9.
+//
+//   - Up to 8 arguments of floating-point type are passed using XMM0 to
+//     XMM7.
+//
+//   - If all registers of an appropriate type are already used, push an
+//     argument to the stack in the right-to-left order.
+//
+//   - Each argument passed on the stack takes 8 bytes, and the end of
+//     the argument area must be aligned to a 16 byte boundary.
+//
+//   - If a function is variadic, set the number of floating-point type
+//     arguments to RAX.
+func placeStackArgs(node *AstNode, stackSize int64) {
+	stack := int64(0)
+	for v := node.Args; v != nil; v = v.ParamNext {
+		if !v.PassByStack {
+			continue
+		}
+
+		switch v.Ty.Kind {
+		case TY_STRUCT, TY_UNION:
+			for i := int64(0); i < v.Ty.Size; i++ {
+				printlnToFile("  mov %d(%%rbp), %%r10b", i+v.Offset)
+				printlnToFile("  mov %%r10b, %d(%%rsp)", i+stack)
+			}
+		case TY_FLOAT, TY_DOUBLE:
+			printlnToFile("  movsd %d(%%rbp), %%xmm0", v.Offset)
+			printlnToFile("  movsd %%xmm0, %d(%%rsp)", stack)
+		case TY_LDOUBLE:
+			printlnToFile("  fldt %d(%%rbp)", v.Offset)
+			printlnToFile("  fstpt %d(%%rsp)", stack)
+		default:
+			if v.Ty.Size > 8 {
+				panic("v.Ty.Size > 8")
+			}
+
+			ax := regAX(8)
+			if v.Ty.Size < 4 {
+				ax = regAX(4)
+			}
+			movExtend(v, ax)
+			printlnToFile("  mov %%rax, %d(%%rsp)", stack)
+		}
+		stack += alignTo(v.Ty.Size, 8)
+	}
+	if stack != stackSize {
+		panic("stack != stackSize")
+	}
+}
+
+func placeRegArgs(node *AstNode, gpStart bool, fpCount *int) {
+	gp := 0
+	fp := 0
+	// If the return type is a large struct/union, the caller passes
+	// a pointer to a buffer as if it were the first argument.
+	if gpStart {
+		printlnToFile("  lea %d(%%rbp), %s", node.ReturnBuffer.Offset, argreg64[gp])
+		gp++
+	}
+
+	for v := node.Args; v != nil; v = v.ParamNext {
+		if v.PassByStack {
+			continue
+		}
+
+		switch v.Ty.Kind {
+		case TY_STRUCT, TY_UNION:
+			if v.Ty.hasFloatNumber1() {
+				printlnToFile("  movsd %d(%%rbp), %%xmm%d", v.Offset, fp)
+				fp++
+			} else {
+				printlnToFile("  mov %d(%%rbp), %s", v.Offset, argreg64[gp])
+				gp++
+			}
+
+			if v.Ty.Size > 8 {
+				if v.Ty.hasFloatNumber2() {
+					printlnToFile("  movsd %d(%%rbp), %%xmm%d", 8+v.Offset, fp)
+					fp++
+				} else {
+					printlnToFile("  mov %d(%%rbp), %s", 8+v.Offset, argreg64[gp])
+					gp++
+				}
+			}
+			continue
+		case TY_FLOAT:
+			printlnToFile("  movss %d(%%rbp), %%xmm%d", v.Offset, fp)
+			fp++
+			continue
+		case TY_DOUBLE:
+			printlnToFile("  movsd %d(%%rbp), %%xmm%d", v.Offset, fp)
+			fp++
+			continue
+		case TY_LDOUBLE:
+			panic("unreachable")
+		default:
+			reg := argreg64
+			if v.Ty.Size < 4 {
+				reg = argreg32
+			}
+			movExtend(v, reg[gp])
+			gp++
+		}
+	}
+
+	*fpCount = fp
 }
 
 // Structs or unions equal or smaller than 16 bytes are passed
@@ -196,117 +321,11 @@ func (ty *CType) hasFloatNumber2() bool {
 	return ty.hasFloatNumber(8, 16, 0)
 }
 
-func passByReg(ty *CType, gp int, fp int) bool {
-	if ty.Size > 16 {
-		return false
-	}
-
-	fpInc := boolToInt(ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && ty.hasFloatNumber2())
-	gpInc := boolToInt(!ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && !ty.hasFloatNumber2())
-
-	if fpInc != 0 && (fp+fpInc > FP_MAX) {
-		return false
-	}
-	if gpInc != 0 && (gp+gpInc > GP_MAX) {
-		return false
-	}
-
-	return true
-}
-
-func pushStruct(ty *CType) {
-	sz := alignTo(ty.Size, 8)
-	printlnToFile("  sub $%d, %%rsp", sz)
-	depth += int(sz / 8)
-
-	for i := int64(0); i < ty.Size; i += 1 {
-		printlnToFile("  mov %d(%%rax), %%r10b", i)
-		printlnToFile("  mov %%r10b, %d(%%rsp)", i)
-	}
-}
-
 func boolToInt(b bool) int {
 	if b {
 		return 1
 	}
 	return 0
-}
-
-// Load function call arguments. Arguments are already evaluated and
-// stored to the stack as local variables. What we need to do in this
-// function is to load them to registers or push them to the stack as
-// specified by the x86-64 psABI. Here is what the spec says:
-//
-//   - Up to 6 arguments of integral type are passed using RDI, RSI,
-//     RDX, RCX, R8 and R9.
-//
-//   - Up to 8 arguments of floating-point type are passed using XMM0 to
-//     XMM7.
-//
-//   - If all registers of an appropriate type are already used, push an
-//     argument to the stack in the right-to-left order.
-//
-//   - Each argument passed on the stack takes 8 bytes, and the end of
-//     the argument area must be aligned to a 16 byte boundary.
-//
-//   - If a function is variadic, set the number of floating-point type
-//     arguments to RAX.
-func pushArgs(node *AstNode) int {
-	stack := 0
-	gp := 0
-	fp := 0
-
-	// If the return type is a large struct/union, the caller passes
-	// a pointer to a buffer as if it were the first argument.
-	if node.ReturnBuffer != nil && node.Ty.Size > 16 {
-		gp += 1
-	}
-
-	// Load as many arguments to the registers as possible.
-	for arg := node.Args; arg != nil; arg = arg.Next {
-		if arg.Ty.Kind == TY_STRUCT || arg.Ty.Kind == TY_UNION {
-			if passByReg(arg.Ty, gp, fp) {
-				fp += boolToInt(arg.Ty.hasFloatNumber1()) + boolToInt(arg.Ty.Size > 8 && arg.Ty.hasFloatNumber2())
-				gp += boolToInt(!arg.Ty.hasFloatNumber1()) + boolToInt(arg.Ty.Size > 8 && !arg.Ty.hasFloatNumber2())
-			} else {
-				arg.PassByStack = true
-				stack += int(alignTo(arg.Ty.Size, 8) / 8)
-			}
-		} else if arg.Ty.Kind == TY_FLOAT || arg.Ty.Kind == TY_DOUBLE {
-			if fp >= FP_MAX {
-				arg.PassByStack = true
-				stack += 1
-			}
-			fp += 1
-		} else if arg.Ty.Kind == TY_LDOUBLE {
-			arg.PassByStack = true
-			stack += 2
-		} else {
-			if gp >= GP_MAX {
-				arg.PassByStack = true
-				stack += 1
-			}
-			gp += 1
-		}
-	}
-
-	if (depth+stack)%2 == 1 {
-		printlnToFile("  sub $8, %%rsp")
-		depth += 1
-		stack += 1
-	}
-
-	pushArgs2(node.Args, true)
-	pushArgs2(node.Args, false)
-
-	// If the return type is a large struct/union, the caller passes
-	// a pointer to a buffer as if it were the first argument.
-	if node.ReturnBuffer != nil && node.Ty.Size > 16 {
-		printlnToFile("  lea %d(%%rbp), %%rax", node.ReturnBuffer.Offset)
-		push()
-	}
-
-	return stack
 }
 
 func (v *Obj) copyReturnBuffer() {
@@ -1087,70 +1106,36 @@ func genExpr(node *AstNode) {
 		return
 	case ND_FUNCALL:
 		if node.Lhs.Kind == ND_VAR && node.Lhs.Variable.Name == "alloca" {
-			genExpr(node.Args)
+			genExpr(node.ArgsExpr)
 			printlnToFile("  mov %%rax, %%rdi")
 			builtin_alloca()
 			return
 		}
 
-		stackArgs := pushArgs(node)
 		genExpr(node.Lhs)
+		pushTmp()
 
-		gp := 0
-		fp := 0
-
+		if node.ArgsExpr != nil {
+			genExpr(node.ArgsExpr)
+		}
 		// If the return type is a large struct/union, the caller passes
 		// a pointer to a buffer as if it were the first argument.
-		if node.ReturnBuffer != nil && node.Ty.Size > 16 {
-			pop(argreg64[gp])
-			gp += 1
-		}
-		for arg := node.Args; arg != nil; arg = arg.Next {
-			ty := arg.Ty
-			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
-				if !passByReg(ty, gp, fp) {
-					continue
-				}
+		gpStart := node.ReturnBuffer != nil && node.Ty.Size > 16
 
-				if ty.hasFloatNumber1() {
-					popf(fp)
-					fp++
-				} else {
-					pop(argreg64[gp])
-					gp++
-				}
+		argsSize := callingConvention(node.Args, int64(boolToInt(gpStart)))
+		stackSize := alignTo(argsSize, 16)
 
-				if ty.Size > 8 {
-					if ty.hasFloatNumber2() {
-						popf(fp)
-						fp += 1
-					} else {
-						pop(argreg64[gp])
-						gp += 1
-					}
-				}
+		printlnToFile("  sub $%d, %%rsp", stackSize)
 
-			} else if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
-				if fp < FP_MAX {
-					popf(fp)
-					fp += 1
-				}
-			} else if ty.Kind == TY_LDOUBLE {
-				// DO NOTHING
-			} else {
-				if gp < GP_MAX {
-					pop(argreg64[gp])
-					gp += 1
-				}
-			}
-		}
+		placeStackArgs(node, argsSize)
 
-		printlnToFile("  mov %%rax, %%r10")
-		printlnToFile("  mov $%d, %%rax", fp)
+		fpCount := 0
+		placeRegArgs(node, gpStart, &fpCount)
+
+		printlnToFile("  mov $%d, %%rax", fpCount)
+		popTmp("%r10")
 		printlnToFile("  call *%%r10")
-		printlnToFile("  add $%d, %%rsp", stackArgs*8)
-
-		depth -= stackArgs
+		printlnToFile("  add $%d, %%rsp", stackSize)
 
 		// It looks like the most significant 48 or 56 bits in RAX may
 		// contain garbage if a function return type is short or bool/char,
@@ -1509,31 +1494,12 @@ func assignLocalVariableOffsets(prog *Obj) {
 		// The first passed-by-stack parameter resides at RBP+16.
 		var top int64 = 16
 
-		gp := 0
-		fp := 0
+		callingConvention(fn.Ty.ParamList, 0)
 
 		// Assign offsets to pass-by-stack parameters.
 		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
-			ty := v.Ty
-
-			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
-				if passByReg(ty, gp, fp) {
-					fp += boolToInt(ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && ty.hasFloatNumber2())
-					gp += boolToInt(!ty.hasFloatNumber1()) + boolToInt(ty.Size > 8 && !ty.hasFloatNumber2())
-					continue
-				}
-			} else if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
-				fp += 1
-				if fp-1 < FP_MAX {
-					continue
-				}
-			} else if ty.Kind == TY_LDOUBLE {
-				// DO NOTHING
-			} else {
-				gp += 1
-				if gp-1 < GP_MAX {
-					continue
-				}
+			if !v.PassByStack {
+				continue
 			}
 
 			top = alignTo(top, 8)
@@ -1745,47 +1711,33 @@ func emitText(prog *Obj) {
 		gp := 0
 		fp := 0
 		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
-			if v.Offset > 0 {
+			if v.PassByStack {
 				continue
 			}
 
 			ty := v.Ty
-
-			if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
-				if ty.Size > 16 {
-					panic("type size greater than 16 bytes")
-				}
-				if ty.hasFloatNumber(0, 8, 0) {
-					storeFp(fp, v.Offset, int64(math.Min(8, float64(ty.Size))))
-					fp += 1
-				} else {
-					storeGp(gp, v.Offset, int64(math.Min(8, float64(ty.Size))))
-					gp += 1
-				}
-
-				if ty.Size > 8 {
-					if ty.hasFloatNumber(8, 16, 0) {
-						storeFp(fp, v.Offset+8, ty.Size-8)
-						fp += 1
-					} else {
-						storeGp(gp, v.Offset+8, ty.Size-8)
-						gp += 1
-					}
-				}
-			} else if ty.Kind == TY_DOUBLE || ty.Kind == TY_FLOAT {
-				storeFp(fp, v.Offset, ty.Size)
-				fp += 1
+			if ty.hasFloatNumber1() {
+				storeFp(fp, v.Offset, int64(math.Min(8, float64(ty.Size))))
+				fp++
 			} else {
-				storeGp(gp, v.Offset, ty.Size)
-				gp += 1
+				storeGp(gp, v.Offset, int64(math.Min(8, float64(ty.Size))))
+				gp++
+			}
+
+			if ty.Size > 8 {
+				if ty.hasFloatNumber2() {
+					storeFp(fp, v.Offset+8, ty.Size-8)
+					fp++
+				} else {
+					storeGp(gp, v.Offset+8, ty.Size-8)
+					gp++
+				}
 			}
 		}
 
 		// Emit code
 		genStmt(fn.Body)
-		if depth != 0 {
-			panic(fmt.Sprintf("depth is not zero: %d", depth))
-		}
+
 		if tmpStack.Depth != 0 {
 			panic("tmp stack depth is not zero")
 		}

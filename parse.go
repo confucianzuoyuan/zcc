@@ -245,7 +245,7 @@ func chainExpr(lhs **AstNode, rhs *AstNode) {
 func newAlloca(sz *AstNode) *AstNode {
 	node := newUnary(ND_FUNCALL, newVarNode(builtinAlloca, sz.Tok), sz.Tok)
 	node.Ty = builtinAlloca.Ty.ReturnType
-	node.Args = sz
+	node.ArgsExpr = sz
 	sz.addType()
 	return node
 }
@@ -3217,31 +3217,46 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	}
 	param := ty.ParamList
 
-	head := AstNode{}
+	head := Obj{}
 	cur := &head
+	var expr *AstNode = nil
+
+	enterScope()
 
 	for commaList(rest, &tok, ")", cur != &head) {
 		arg := assign(&tok, tok)
 		arg.addType()
-
-		if param == nil && !ty.IsVariadic {
-			errorTok(arg.Tok, "too many arguments to function")
-		}
 
 		if param != nil {
 			if param.Ty.Kind != TY_STRUCT && param.Ty.Kind != TY_UNION {
 				arg = newCast(arg, param.Ty)
 			}
 			param = param.ParamNext
-		} else if arg.Ty.Kind == TY_FLOAT {
-			// If parameter type is omitted (e.g. in "..."), float
-			// arguments are promoted to double.
-			arg = newCast(arg, TyDouble)
+		} else {
+			if !ty.IsVariadic {
+				errorTok(tok, "too many arguments")
+			}
+
+			if arg.Ty.Kind == TY_FLOAT {
+				arg = newCast(arg, TyDouble)
+			} else if arg.Ty.Kind == TY_ARRAY || arg.Ty.Kind == TY_VLA {
+				arg = newCast(arg, pointerTo(arg.Ty.Base))
+			} else if param == nil && arg.Ty.Kind == TY_FUNC {
+				arg = newCast(arg, pointerTo(arg.Ty))
+			}
 		}
 
-		cur.Next = arg
-		cur = cur.Next
+		arg.addType()
+
+		v := newLocalVar("", arg.Ty)
+		chainExpr(&expr, newBinary(ND_ASSIGN, newVarNode(v, tok), arg, tok))
+		expr.addType()
+
+		cur.ParamNext = v
+		cur = cur.ParamNext
 	}
+
+	leaveScope()
 
 	if param != nil {
 		errorTok(tok, "not enough arguments to function")
@@ -3249,7 +3264,8 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 
 	node := newUnary(ND_FUNCALL, fn, tok)
 	node.Ty = ty.ReturnType
-	node.Args = head.Next
+	node.Args = head.ParamNext
+	node.ArgsExpr = expr
 
 	// If a function returns a struct, it is caller's responsibility
 	// to allocate a space for the return value.
@@ -3489,7 +3505,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 	if tok.Kind == TK_STR {
 		v := newStringLiteral(tok.StringLiteral, tok.Ty)
 		*rest = tok.Next
-		return newVarNode(v, tok)
+		n := newVarNode(v, tok)
+		n.addType()
+		return n
 	}
 
 	if tok.Kind == TK_NUM {

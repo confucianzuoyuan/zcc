@@ -80,9 +80,9 @@ type AstNode struct {
 	Member *Member
 
 	// Function call
-	Args         *AstNode
-	PassByStack  bool
+	Args         *Obj
 	ReturnBuffer *Obj
+	ArgsExpr     *AstNode
 
 	// Goto or labeled statement, or labels-as-values
 	Label       string

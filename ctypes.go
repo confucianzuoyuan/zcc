@@ -310,9 +310,6 @@ func (node *AstNode) addType() {
 	for n := node.Body; n != nil; n = n.Next {
 		n.addType()
 	}
-	for n := node.Args; n != nil; n = n.Next {
-		n.addType()
-	}
 
 	switch node.Kind {
 	case ND_NUM:
