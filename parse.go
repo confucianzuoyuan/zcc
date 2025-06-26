@@ -2082,13 +2082,12 @@ func stmt(rest **Token, tok *Token) *AstNode {
 			errorTok(tok, "empty case range specified")
 		}
 
-		tok = skip(tok, ":")
 		node.Label = newUniqueName()
-		node.Lhs = stmt(rest, tok)
 		node.Begin = begin
 		node.End = end
 		node.CaseNext = currentSwitch.CaseNext
 		currentSwitch.CaseNext = node
+		*rest = skip(tok, ":")
 		return node
 	}
 
@@ -2100,10 +2099,9 @@ func stmt(rest **Token, tok *Token) *AstNode {
 			errorTok(tok, "jump crosses VLA initialization")
 		}
 		node := newNode(ND_CASE, tok)
-		tok = skip(tok.Next, ":")
 		node.Label = newUniqueName()
-		node.Lhs = stmt(rest, tok)
 		currentSwitch.DefaultCase = node
+		*rest = skip(tok.Next, ":")
 		return node
 	}
 
@@ -2217,10 +2215,10 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node := newNode(ND_LABEL, tok)
 		node.Label = tok.getIdent()
 		node.UniqueLabel = newUniqueName()
-		node.Lhs = stmt(rest, tok.Next.Next)
 		node.GotoNext = labels
 		node.TopVLA = CurrentVLA
 		labels = node
+		*rest = tok.Next.Next
 
 		return node
 	}

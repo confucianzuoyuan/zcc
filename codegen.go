@@ -1442,7 +1442,6 @@ func genStmt(node *AstNode) {
 		return
 	case ND_CASE:
 		printlnToFile("%s:", node.Label)
-		genStmt(node.Lhs)
 		return
 	case ND_BLOCK:
 		for n := node.Body; n != nil; n = n.Next {
@@ -1456,7 +1455,6 @@ func genStmt(node *AstNode) {
 		return
 	case ND_LABEL:
 		printlnToFile("%s:", node.UniqueLabel)
-		genStmt(node.Lhs)
 		return
 	case ND_GOTO_EXPR:
 		genExpr(node.Lhs)
