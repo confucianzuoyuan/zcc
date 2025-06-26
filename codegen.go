@@ -571,16 +571,16 @@ func genAddr(node *AstNode) {
 			} else {
 				genExpr(node.Lhs)
 				printlnToFile("  add $%d, %%rax", node.Member.Offset)
+				return
 			}
-			return
 		case ND_ASSIGN, ND_COND, ND_STMT_EXPR:
 			if node.Lhs.Ty.Kind != TY_STRUCT && node.Lhs.Ty.Kind != TY_UNION {
 				// DO NOTHING
 			} else {
 				genExpr(node.Lhs)
 				printlnToFile("  add $%d, %%rax", node.Member.Offset)
+				return
 			}
-			return
 		default:
 			genAddr(node.Lhs)
 			printlnToFile("  add $%d, %%rax", node.Member.Offset)
