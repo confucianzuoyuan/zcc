@@ -3418,7 +3418,10 @@ func primary(rest **Token, tok *Token) *AstNode {
 	start := tok
 
 	if tok.isEqual("(") && tok.Next.isEqual("{") {
-		// This is a GNU statement expresssion.
+		if scope.Parent == nil {
+			errorTok(tok, "statement expression at file scope")
+		}
+
 		var stmt *AstNode = nil
 		node := compoundStmt(&tok, tok.Next.Next, &stmt)
 		node.Kind = ND_STMT_EXPR
