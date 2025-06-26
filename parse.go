@@ -3468,16 +3468,17 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
-	if tok.isEqual("_Alignof") && tok.Next.isEqual("(") && tok.Next.Next.isTypename() {
-		ty := typeName(&tok, tok.Next.Next)
+	if tok.isEqual("_Alignof") {
+		tok = skip(tok.Next, "(")
+		if !tok.isTypename() {
+			errorTok(tok, "expected type name")
+		}
+		ty := typeName(&tok, tok)
+		for ty.Kind == TY_VLA || ty.Kind == TY_ARRAY {
+			ty = ty.Base
+		}
 		*rest = skip(tok, ")")
 		return newULong(ty.Align, tok)
-	}
-
-	if tok.isEqual("_Alignof") {
-		node := unary(rest, tok.Next)
-		node.addType()
-		return newULong(node.Ty.Align, tok)
 	}
 
 	if tok.isEqual("_Generic") {
