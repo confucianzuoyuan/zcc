@@ -562,17 +562,28 @@ func genAddr(node *AstNode) {
 		genAddr(node.Rhs)
 		return
 	case ND_MEMBER:
-		genAddr(node.Lhs)
-		printlnToFile("  add $%d, %%rax", node.Member.Offset)
-		return
-	case ND_FUNCALL:
-		if node.ReturnBuffer != nil {
-			genExpr(node)
+		switch node.Lhs.Kind {
+		case ND_FUNCALL:
+			if node.Lhs.ReturnBuffer == nil {
+				// DO NOTHING
+			} else if node.Lhs.Ty.Kind != TY_STRUCT && node.Lhs.Ty.Kind != TY_UNION {
+				// DO NOTHING
+			} else {
+				genExpr(node.Lhs)
+				printlnToFile("  add $%d, %%rax", node.Member.Offset)
+			}
 			return
-		}
-	case ND_ASSIGN, ND_COND:
-		if node.Ty.Kind == TY_STRUCT || node.Ty.Kind == TY_UNION {
-			genExpr(node)
+		case ND_ASSIGN, ND_COND, ND_STMT_EXPR:
+			if node.Lhs.Ty.Kind != TY_STRUCT && node.Lhs.Ty.Kind != TY_UNION {
+				// DO NOTHING
+			} else {
+				genExpr(node.Lhs)
+				printlnToFile("  add $%d, %%rax", node.Member.Offset)
+			}
+			return
+		default:
+			genAddr(node.Lhs)
+			printlnToFile("  add $%d, %%rax", node.Member.Offset)
 			return
 		}
 	}
