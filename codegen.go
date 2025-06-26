@@ -1700,14 +1700,6 @@ func emitText(prog *Obj) {
 
 			off := fn.VaArea.Offset
 
-			// va_elem
-			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)       // gp_offset
-			printlnToFile("  movl $%d, %d(%%rbp)", fp*16+48, off+4) // fp_offset
-			printlnToFile("  movq %%rbp, %d(%%rbp)", off+8)         // overflow_arg_area
-			printlnToFile("  addq $%d, %d(%%rbp)", stack+16, off+8)
-			printlnToFile("  movq %%rbp, %d(%%rbp)", off+16) // reg_save_area
-			printlnToFile("  addq $%d, %d(%%rbp)", off+24, off+16)
-
 			//__reg_save_area__
 			printlnToFile("  movq %%rdi, %d(%%rbp)", off+24)
 			printlnToFile("  movq %%rsi, %d(%%rbp)", off+32)
@@ -1715,6 +1707,8 @@ func emitText(prog *Obj) {
 			printlnToFile("  movq %%rcx, %d(%%rbp)", off+48)
 			printlnToFile("  movq %%r8, %d(%%rbp)", off+56)
 			printlnToFile("  movq %%r9, %d(%%rbp)", off+64)
+			printlnToFile("  test %%al, %%al")
+			printlnToFile("  je 1f")
 			printlnToFile("  movsd %%xmm0, %d(%%rbp)", off+72)
 			printlnToFile("  movsd %%xmm1, %d(%%rbp)", off+88)
 			printlnToFile("  movsd %%xmm2, %d(%%rbp)", off+104)
@@ -1723,6 +1717,15 @@ func emitText(prog *Obj) {
 			printlnToFile("  movsd %%xmm5, %d(%%rbp)", off+152)
 			printlnToFile("  movsd %%xmm6, %d(%%rbp)", off+168)
 			printlnToFile("  movsd %%xmm7, %d(%%rbp)", off+184)
+			printlnToFile("1:")
+
+			// va_elem
+			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)       // gp_offset
+			printlnToFile("  movl $%d, %d(%%rbp)", fp*16+48, off+4) // fp_offset
+			printlnToFile("  lea %d(%%rbp), %%rax", stack+16)       // overflow_arg_area
+			printlnToFile("  mov %%rax, %d(%%rbp)", off+8)
+			printlnToFile("  lea %d(%%rbp), %%rax", off+24) // reg_save_area
+			printlnToFile("  mov %%rax, %d(%%rbp)", off+16)
 		}
 
 		// Save passed-by-register arguments to the stack
