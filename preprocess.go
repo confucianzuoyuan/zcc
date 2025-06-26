@@ -1225,7 +1225,7 @@ func addBuiltin(name string, fn MacroHandlerFn) *Macro {
 
 func fileMacro(tmpl *Token) *Token {
 	for tmpl.Origin != nil {
-		tmpl = tmpl.Next
+		tmpl = tmpl.Origin
 	}
 	return newStringToken(tmpl.File.DisplayFile.Name, tmpl)
 }
