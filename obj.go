@@ -13,6 +13,7 @@ type Obj struct {
 	ParamNext   *Obj
 	VlaNext     *Obj
 	PassByStack bool
+	StackOffset int64
 
 	// Global variable or function
 	IsFunction   bool

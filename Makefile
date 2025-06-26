@@ -6,7 +6,7 @@ zcc:
 
 test/%.exe: clean zcc test/%.c
 	./zcc -Iinclude -Itest -c -o test/$*.o test/$*.c
-	$(CC) -pthread -o $@ test/$*.o -xc test/common
+	$(CC) -std=c11 -pthread -Wno-psabi -o $@ test/$*.o -xc test/common
 
 test: $(TESTS)
 	for i in $^; do echo $$i; ./$$i || exit 1; echo; done

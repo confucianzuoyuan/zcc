@@ -3502,7 +3502,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 		if ty.isInteger() || ty.Kind == TY_PTR {
 			return newNum(0, start)
 		}
-		if ty.isFloat() {
+		if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
 			return newNum(1, start)
 		}
 
@@ -3657,7 +3657,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	}
 
 	if ty.IsVariadic {
-		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))
+		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 200))
 	}
 
 	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is

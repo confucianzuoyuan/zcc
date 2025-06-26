@@ -122,8 +122,9 @@ func movExtend(v *Obj, reg string) {
 	}
 }
 
-func callingConvention(v *Obj, gpStart int64) int64 {
+func callingConvention(v *Obj, gpStart int64, gpCount *int, fpCount *int, stackAlign *int) int64 {
 	stack := int64(0)
+	maxAlign := 16
 	gp := gpStart
 	fp := int64(0)
 	for ; v != nil; v = v.ParamNext {
@@ -158,7 +159,23 @@ func callingConvention(v *Obj, gpStart int64) int64 {
 		}
 
 		v.PassByStack = true
+
+		if ty.Align > 8 {
+			stack = alignTo(stack, ty.Align)
+			maxAlign = int(math.Max(float64(maxAlign), float64(ty.Align)))
+		}
+		v.StackOffset = stack
 		stack += alignTo(ty.Size, 8)
+	}
+
+	if gpCount != nil {
+		*gpCount = int(math.Min(float64(gp), GP_MAX))
+	}
+	if fpCount != nil {
+		*fpCount = int(math.Min(float64(fp), FP_MAX))
+	}
+	if stackAlign != nil {
+		*stackAlign = maxAlign
 	}
 
 	return stack
@@ -183,8 +200,7 @@ func callingConvention(v *Obj, gpStart int64) int64 {
 //
 //   - If a function is variadic, set the number of floating-point type
 //     arguments to RAX.
-func placeStackArgs(node *AstNode, stackSize int64) {
-	stack := int64(0)
+func placeStackArgs(node *AstNode) {
 	for v := node.Args; v != nil; v = v.ParamNext {
 		if !v.PassByStack {
 			continue
@@ -193,15 +209,15 @@ func placeStackArgs(node *AstNode, stackSize int64) {
 		switch v.Ty.Kind {
 		case TY_STRUCT, TY_UNION:
 			for i := int64(0); i < v.Ty.Size; i++ {
-				printlnToFile("  mov %d(%%rbp), %%r10b", i+v.Offset)
-				printlnToFile("  mov %%r10b, %d(%%rsp)", i+stack)
+				printlnToFile("  mov %d(%%rbp), %%r8b", i+v.Offset)
+				printlnToFile("  mov %%r8b, %d(%%rsp)", i+v.StackOffset)
 			}
 		case TY_FLOAT, TY_DOUBLE:
 			printlnToFile("  movsd %d(%%rbp), %%xmm0", v.Offset)
-			printlnToFile("  movsd %%xmm0, %d(%%rsp)", stack)
+			printlnToFile("  movsd %%xmm0, %d(%%rsp)", v.StackOffset)
 		case TY_LDOUBLE:
 			printlnToFile("  fldt %d(%%rbp)", v.Offset)
-			printlnToFile("  fstpt %d(%%rsp)", stack)
+			printlnToFile("  fstpt %d(%%rsp)", v.StackOffset)
 		default:
 			if v.Ty.Size > 8 {
 				panic("v.Ty.Size > 8")
@@ -212,16 +228,12 @@ func placeStackArgs(node *AstNode, stackSize int64) {
 				ax = regAX(4)
 			}
 			movExtend(v, ax)
-			printlnToFile("  mov %%rax, %d(%%rsp)", stack)
+			printlnToFile("  mov %%rax, %d(%%rsp)", v.StackOffset)
 		}
-		stack += alignTo(v.Ty.Size, 8)
-	}
-	if stack != stackSize {
-		panic("stack != stackSize")
 	}
 }
 
-func placeRegArgs(node *AstNode, gpStart bool, fpCount *int) {
+func placeRegArgs(node *AstNode, gpStart bool) {
 	gp := 0
 	fp := 0
 	// If the return type is a large struct/union, the caller passes
@@ -275,8 +287,6 @@ func placeRegArgs(node *AstNode, gpStart bool, fpCount *int) {
 			gp++
 		}
 	}
-
-	*fpCount = fp
 }
 
 // Structs or unions equal or smaller than 16 bytes are passed
@@ -1120,6 +1130,9 @@ func genExpr(node *AstNode) {
 			return
 		}
 
+		printlnToFile("  mov %%rsp, %%rax")
+		pushTmp()
+
 		genExpr(node.Lhs)
 		pushTmp()
 
@@ -1130,20 +1143,21 @@ func genExpr(node *AstNode) {
 		// a pointer to a buffer as if it were the first argument.
 		gpStart := node.ReturnBuffer != nil && node.Ty.Size > 16
 
-		argsSize := callingConvention(node.Args, int64(boolToInt(gpStart)))
-		stackSize := alignTo(argsSize, 16)
-
-		printlnToFile("  sub $%d, %%rsp", stackSize)
-
-		placeStackArgs(node, argsSize)
-
 		fpCount := 0
-		placeRegArgs(node, gpStart, &fpCount)
+		stackAlign := 0
+		argsSize := callingConvention(node.Args, int64(boolToInt(gpStart)), nil, &fpCount, &stackAlign)
+
+		printlnToFile("  sub $%d, %%rsp", argsSize)
+		printlnToFile("  and $-%d, %%rsp", stackAlign)
+
+		placeStackArgs(node)
+		placeRegArgs(node, gpStart)
 
 		printlnToFile("  mov $%d, %%rax", fpCount)
 		popTmp("%r10")
 		printlnToFile("  call *%%r10")
-		printlnToFile("  add $%d, %%rsp", stackSize)
+
+		popTmp("%rsp")
 
 		// It looks like the most significant 48 or 56 bits in RAX may
 		// contain garbage if a function return type is short or bool/char,
@@ -1503,7 +1517,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 		// The first passed-by-stack parameter resides at RBP+16.
 		var top int64 = 16
 
-		callingConvention(fn.Ty.ParamList, 0)
+		callingConvention(fn.Ty.ParamList, 0, nil, nil, nil)
 
 		// Assign offsets to pass-by-stack parameters.
 		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
@@ -1511,9 +1525,7 @@ func assignLocalVariableOffsets(prog *Obj) {
 				continue
 			}
 
-			top = alignTo(top, 8)
-			v.Offset = top
-			top += v.Ty.Size
+			v.Offset = v.StackOffset + top
 		}
 
 		fn.LocalVarStackSize = int64(assignLocalVariableOffsets2(fn.Ty.Scopes, 0))
@@ -1684,20 +1696,15 @@ func emitText(prog *Obj) {
 		if fn.VaArea != nil {
 			gp := 0
 			fp := 0
-			for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
-				if v.Ty.isFloat() {
-					fp += 1
-				} else {
-					gp += 1
-				}
-			}
+			stack := callingConvention(fn.Ty.ParamList, 0, &gp, &fp, nil)
+
 			off := fn.VaArea.Offset
 
 			// va_elem
-			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)      // gp_offset
-			printlnToFile("  movl $%d, %d(%%rbp)", fp*8+48, off+4) // fp_offset
-			printlnToFile("  movq %%rbp, %d(%%rbp)", off+8)        // overflow_arg_area
-			printlnToFile("  addq $16, %d(%%rbp)", off+8)
+			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)       // gp_offset
+			printlnToFile("  movl $%d, %d(%%rbp)", fp*16+48, off+4) // fp_offset
+			printlnToFile("  movq %%rbp, %d(%%rbp)", off+8)         // overflow_arg_area
+			printlnToFile("  addq $%d, %d(%%rbp)", stack+16, off+8)
 			printlnToFile("  movq %%rbp, %d(%%rbp)", off+16) // reg_save_area
 			printlnToFile("  addq $%d, %d(%%rbp)", off+24, off+16)
 
@@ -1709,13 +1716,13 @@ func emitText(prog *Obj) {
 			printlnToFile("  movq %%r8, %d(%%rbp)", off+56)
 			printlnToFile("  movq %%r9, %d(%%rbp)", off+64)
 			printlnToFile("  movsd %%xmm0, %d(%%rbp)", off+72)
-			printlnToFile("  movsd %%xmm1, %d(%%rbp)", off+80)
-			printlnToFile("  movsd %%xmm2, %d(%%rbp)", off+88)
-			printlnToFile("  movsd %%xmm3, %d(%%rbp)", off+96)
-			printlnToFile("  movsd %%xmm4, %d(%%rbp)", off+104)
-			printlnToFile("  movsd %%xmm5, %d(%%rbp)", off+112)
-			printlnToFile("  movsd %%xmm6, %d(%%rbp)", off+120)
-			printlnToFile("  movsd %%xmm7, %d(%%rbp)", off+128)
+			printlnToFile("  movsd %%xmm1, %d(%%rbp)", off+88)
+			printlnToFile("  movsd %%xmm2, %d(%%rbp)", off+104)
+			printlnToFile("  movsd %%xmm3, %d(%%rbp)", off+120)
+			printlnToFile("  movsd %%xmm4, %d(%%rbp)", off+136)
+			printlnToFile("  movsd %%xmm5, %d(%%rbp)", off+152)
+			printlnToFile("  movsd %%xmm6, %d(%%rbp)", off+168)
+			printlnToFile("  movsd %%xmm7, %d(%%rbp)", off+184)
 		}
 
 		// Save passed-by-register arguments to the stack
