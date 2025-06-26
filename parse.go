@@ -3172,8 +3172,7 @@ func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
 }
 
 /*
- * postfix = "(" type-name ")" "{" initializer-list "}"
- *         = ident "(" func-args ")" postfix-tail*
+ * postfix = ident "(" func-args ")" postfix-tail*
  *         | primary postfix-tail*
  *
  * postfix-tail = "[" expr "]"
@@ -3184,24 +3183,6 @@ func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
  *              | "--"
  */
 func postfix(rest **Token, tok *Token) *AstNode {
-	if tok.isEqual("(") && tok.Next.isTypename() {
-		// Compound literal
-		start := tok
-		ty := typeName(&tok, tok.Next)
-		tok = skip(tok, ")")
-
-		if scope.Parent == nil {
-			variable := newAnonGlobalVar(ty)
-			globalVarInitializer(rest, tok, variable)
-			return newVarNode(variable, start)
-		}
-
-		variable := newLocalVar("", ty)
-		lhs := localVarInitializer(rest, tok, variable)
-		rhs := newVarNode(variable, tok)
-		return newBinary(ND_COMMA, lhs, rhs, start)
-	}
-
 	node := primary(&tok, tok)
 
 	for {
@@ -3416,6 +3397,24 @@ func markLive(v *Obj) {
  */
 func primary(rest **Token, tok *Token) *AstNode {
 	start := tok
+
+	if tok.isEqual("(") && tok.Next.isTypename() {
+		// Compound literal
+		start := tok
+		ty := typeName(&tok, tok.Next)
+		tok = skip(tok, ")")
+
+		if scope.Parent == nil {
+			v := newAnonGlobalVar(ty)
+			globalVarInitializer(rest, tok, v)
+			return newVarNode(v, start)
+		}
+
+		v := newLocalVar("", ty)
+		lhs := localVarInitializer(rest, tok, v)
+		rhs := newVarNode(v, tok)
+		return newBinary(ND_COMMA, lhs, rhs, start)
+	}
 
 	if tok.isEqual("(") && tok.Next.isEqual("{") {
 		if scope.Parent == nil {
