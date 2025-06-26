@@ -1274,7 +1274,7 @@ func formatTime(t time.Time) string {
 
 func lineMacro(tmpl *Token) *Token {
 	for tmpl.Origin != nil {
-		tmpl = tmpl.Next
+		tmpl = tmpl.Origin
 	}
 	i := tmpl.LineNo + tmpl.File.LineDelta
 	return newNumberToken(i, tmpl)
