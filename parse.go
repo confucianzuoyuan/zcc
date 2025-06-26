@@ -3241,7 +3241,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 				arg = newCast(arg, TyDouble)
 			} else if arg.Ty.Kind == TY_ARRAY || arg.Ty.Kind == TY_VLA {
 				arg = newCast(arg, pointerTo(arg.Ty.Base))
-			} else if param == nil && arg.Ty.Kind == TY_FUNC {
+			} else if arg.Ty.Kind == TY_FUNC {
 				arg = newCast(arg, pointerTo(arg.Ty))
 			}
 		}
