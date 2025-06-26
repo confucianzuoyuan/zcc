@@ -105,6 +105,11 @@ type InitDesg struct {
 	Variable *Obj // Variable to initialize
 }
 
+var CurrentVLA *Obj
+var BreakVLA *Obj
+var FnUseVLA bool
+var DontDeallocVLA bool
+
 var builtinAlloca *Obj = nil
 
 var evalRecover *bool = nil
@@ -242,10 +247,31 @@ func chainExpr(lhs **AstNode, rhs *AstNode) {
 	}
 }
 
-func newAlloca(sz *AstNode) *AstNode {
+func loopBody(rest **Token, tok *Token, node *AstNode) {
+	brk := breakLabel
+	cont := continueLabel
+	node.BreakLabel = newUniqueName()
+	node.ContinueLabel = newUniqueName()
+	breakLabel = node.BreakLabel
+	continueLabel = node.ContinueLabel
+
+	vla := BreakVLA
+	BreakVLA = CurrentVLA
+
+	node.Then = stmt(rest, tok)
+
+	breakLabel = brk
+	continueLabel = cont
+	BreakVLA = vla
+}
+
+func newAlloca(sz *AstNode, v *Obj, top *Obj, align int64) *AstNode {
 	node := newUnary(ND_FUNCALL, newVarNode(builtinAlloca, sz.Tok), sz.Tok)
 	node.Ty = builtinAlloca.Ty.ReturnType
 	node.ArgsExpr = sz
+	node.Variable = v
+	node.TopVLA = top
+	node.Value = align
 	sz.addType()
 	return node
 }
@@ -1743,8 +1769,17 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// For example, `int x[n+2]` is translated to `tmp = n + 2,
 			// x = alloca(tmp)`.
 			v := newLocalVar(ty.Name.getIdent(), ty)
+			top := newLocalVar("", ty)
+			align := int64(16)
+			if attr != nil && attr.Align != 0 {
+				align = attr.Align
+			}
 			tok := ty.Name
-			chainExpr(&expr, newBinary(ND_ASSIGN, newVlaPtr(v, tok), newAlloca(newVarNode(ty.VlaSize, tok)), tok))
+			chainExpr(&expr, newAlloca(newVarNode(ty.VlaSize, tok), v, top, align))
+
+			top.VlaNext = CurrentVLA
+			CurrentVLA = top
+			FnUseVLA = true
 			continue
 		}
 
@@ -2001,16 +2036,23 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node.BreakLabel = newUniqueName()
 		breakLabel = node.BreakLabel
 
+		vla := BreakVLA
+		BreakVLA = CurrentVLA
+
 		node.Then = stmt(rest, tok)
 
 		currentSwitch = sw
 		breakLabel = brk
+		BreakVLA = vla
 		return node
 	}
 
 	if tok.isEqual("case") {
 		if currentSwitch == nil {
 			errorTok(tok, "stray case")
+		}
+		if CurrentVLA != BreakVLA {
+			errorTok(tok, "jump crosses VLA initialization")
 		}
 
 		node := newNode(ND_CASE, tok)
@@ -2054,6 +2096,9 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		if currentSwitch == nil {
 			errorTok(tok, "stray default")
 		}
+		if CurrentVLA != BreakVLA {
+			errorTok(tok, "jump crosses VLA initialization")
+		}
 		node := newNode(ND_CASE, tok)
 		tok = skip(tok.Next, ":")
 		node.Label = newUniqueName()
@@ -2066,14 +2111,8 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node := newNode(ND_FOR, tok)
 		tok = skip(tok.Next, "(")
 
+		node.TargetVLA = CurrentVLA
 		enterScope()
-
-		brk := breakLabel
-		cont := continueLabel
-		node.BreakLabel = newUniqueName()
-		breakLabel = node.BreakLabel
-		node.ContinueLabel = newUniqueName()
-		continueLabel = node.ContinueLabel
 
 		if tok.isTypename() {
 			basety := declspec(&tok, tok, nil)
@@ -2097,10 +2136,11 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 		tok = skip(tok, ")")
 
-		node.Then = stmt(rest, tok)
+		loopBody(rest, tok, node)
+
+		node.TopVLA = CurrentVLA
+		CurrentVLA = node.TargetVLA
 		leaveScope()
-		breakLabel = brk
-		continueLabel = cont
 		return node
 	}
 
@@ -2110,16 +2150,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node.Cond = expr(&tok, tok)
 		tok = skip(tok, ")")
 
-		brk := breakLabel
-		cont := continueLabel
-		node.BreakLabel = newUniqueName()
-		breakLabel = node.BreakLabel
-		node.ContinueLabel = newUniqueName()
-		continueLabel = node.ContinueLabel
-
-		node.Then = stmt(rest, tok)
-		breakLabel = brk
-		continueLabel = cont
+		loopBody(rest, tok, node)
 		return node
 	}
 
@@ -2130,17 +2161,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("do") {
 		node := newNode(ND_DO, tok)
 
-		brk := breakLabel
-		cont := continueLabel
-		node.BreakLabel = newUniqueName()
-		breakLabel = node.BreakLabel
-		node.ContinueLabel = newUniqueName()
-		continueLabel = node.ContinueLabel
-
-		node.Then = stmt(&tok, tok.Next)
-
-		breakLabel = brk
-		continueLabel = cont
+		loopBody(&tok, tok.Next, node)
 
 		tok = skip(tok, "while")
 		tok = skip(tok, "(")
@@ -2166,6 +2187,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node := newNode(ND_GOTO, tok)
 		node.Label = tok.Next.getIdent()
 		node.GotoNext = gotos
+		node.TopVLA = CurrentVLA
 		gotos = node
 		*rest = skip(tok.Next.Next, ";")
 		return node
@@ -2177,6 +2199,8 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 		node := newNode(ND_GOTO, tok)
 		node.UniqueLabel = breakLabel
+		node.TargetVLA = BreakVLA
+		node.TopVLA = CurrentVLA
 		*rest = skip(tok.Next, ";")
 		return node
 	}
@@ -2187,6 +2211,8 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 		node := newNode(ND_GOTO, tok)
 		node.UniqueLabel = continueLabel
+		node.TargetVLA = BreakVLA
+		node.TopVLA = CurrentVLA
 		*rest = skip(tok.Next, ";")
 		return node
 	}
@@ -2197,6 +2223,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		node.UniqueLabel = newUniqueName()
 		node.Lhs = stmt(rest, tok.Next.Next)
 		node.GotoNext = labels
+		node.TopVLA = CurrentVLA
 		labels = node
 
 		return node
@@ -2214,16 +2241,34 @@ func stmt(rest **Token, tok *Token) *AstNode {
  */
 func resolveGotoLabels() {
 	for x := gotos; x != nil; x = x.GotoNext {
-		for y := labels; y != nil; y = y.GotoNext {
-			if x.Label == y.Label {
-				x.UniqueLabel = y.UniqueLabel
+		dest := labels
+		for ; dest != nil; dest = dest.GotoNext {
+			if x.Label == dest.Label {
 				break
 			}
 		}
 
-		if x.UniqueLabel == "" {
+		if dest == nil {
 			errorTok(x.Tok.Next, "use of undeclared label")
 		}
+
+		x.UniqueLabel = dest.UniqueLabel
+		if dest.TopVLA == nil {
+			continue
+		}
+
+		vla := x.TopVLA
+		for ; vla != nil; vla = vla.VlaNext {
+			if vla == dest.TopVLA {
+				break
+			}
+		}
+
+		if vla == nil {
+			errorTok(x.Tok.Next, "jump crosses VLA initialization")
+		}
+
+		x.TargetVLA = vla
 	}
 
 	labels = nil
@@ -2235,6 +2280,8 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 	node := newNode(ND_BLOCK, tok)
 	head := AstNode{}
 	cur := &head
+
+	node.TargetVLA = CurrentVLA
 
 	enterScope()
 
@@ -2274,6 +2321,8 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 		cur = cur.Next
 	}
 
+	node.TopVLA = CurrentVLA
+	CurrentVLA = node.TargetVLA
 	leaveScope()
 
 	node.Body = head.Next
@@ -2896,12 +2945,6 @@ func shift(rest **Token, tok *Token) *AstNode {
 	}
 }
 
-func newVlaPtr(v *Obj, tok *Token) *AstNode {
-	node := newNode(ND_VLA_PTR, tok)
-	node.Variable = v
-	return node
-}
-
 // In C, `+` operator is overloaded to perform the pointer arithmetic.
 // If p is a pointer, p+n adds not n but sizeof(*p)*n to the value of p,
 // so that p+n points to the location n elements (not bytes) ahead of p.
@@ -3110,6 +3153,7 @@ func unary(rest **Token, tok *Token) *AstNode {
 		node.Label = tok.Next.getIdent()
 		node.GotoNext = gotos
 		gotos = node
+		DontDeallocVLA = true
 		*rest = tok.Next.Next
 		return node
 	}
@@ -3371,8 +3415,8 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("(") && tok.Next.isEqual("{") {
 		// This is a GNU statement expresssion.
-		node := newNode(ND_STMT_EXPR, tok)
-		node.Body = compoundStmt(&tok, tok.Next.Next).Body
+		node := compoundStmt(&tok, tok.Next.Next)
+		node.Kind = ND_STMT_EXPR
 		*rest = skip(tok, ")")
 		return node
 	}
@@ -3483,6 +3527,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 			}
 
 			name := sc.Variable.Name
+			if name == "alloca" {
+				DontDeallocVLA = true
+			}
 			if opt_optimize && (strings.Contains(name, "setjmp") || strings.Contains(name, "savectx") || strings.Contains(name, "vfork") || strings.Contains(name, "getcontext")) {
 				DontReuseStack = true
 			}
@@ -3573,6 +3620,9 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	fn.Ty = ty
 
 	currentFunction = fn
+	CurrentVLA = nil
+	FnUseVLA = false
+	DontDeallocVLA = false
 
 	if ty.Scopes != nil {
 		scope = ty.Scopes
@@ -3591,7 +3641,6 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	if ty.IsVariadic {
 		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 136))
 	}
-	fn.AllocaBottom = newLocalVar("__alloca_size__", pointerTo(TyChar))
 
 	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
 	// automatically defined as a local variable containing the
@@ -3610,6 +3659,10 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
 		calc.Next = fn.Body.Body
 		fn.Body.Body = calc
+	}
+
+	if FnUseVLA && !DontDeallocVLA && !DontReuseStack {
+		fn.VlaBase = newLocalVar("", pointerTo(TyChar))
 	}
 
 	leaveScope()

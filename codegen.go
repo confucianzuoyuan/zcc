@@ -575,9 +575,6 @@ func genAddr(node *AstNode) {
 			genExpr(node)
 			return
 		}
-	case ND_VLA_PTR:
-		printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
-		return
 	}
 
 	errorTok(node.Tok, "not an lvalue")
@@ -1039,6 +1036,7 @@ func genExpr(node *AstNode) {
 		for n := node.Body; n != nil; n = n.Next {
 			genStmt(n)
 		}
+		dealloc_vla(node)
 		return
 	case ND_COMMA:
 		genExpr(node.Lhs)
@@ -1107,8 +1105,7 @@ func genExpr(node *AstNode) {
 	case ND_FUNCALL:
 		if node.Lhs.Kind == ND_VAR && node.Lhs.Variable.Name == "alloca" {
 			genExpr(node.ArgsExpr)
-			printlnToFile("  mov %%rax, %%rdi")
-			builtin_alloca()
+			builtin_alloca(node)
 			return
 		}
 
@@ -1383,6 +1380,7 @@ func genStmt(node *AstNode) {
 		}
 		printlnToFile("  jmp .L.begin.%d", c)
 		printlnToFile("%s:", node.BreakLabel)
+		dealloc_vla(node)
 		return
 	case ND_DO:
 		c := count()
@@ -1439,8 +1437,10 @@ func genStmt(node *AstNode) {
 		for n := node.Body; n != nil; n = n.Next {
 			genStmt(n)
 		}
+		dealloc_vla(node)
 		return
 	case ND_GOTO:
+		dealloc_vla(node)
 		printlnToFile("  jmp %s", node.UniqueLabel)
 		return
 	case ND_LABEL:
@@ -1545,32 +1545,32 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int) int {
 	return maxDepth
 }
 
-func builtin_alloca() {
-	// Align size to 16 bytes.
-	printlnToFile("  add $15, %%rdi")
-	printlnToFile("  and $0xfffffff0, %%edi")
-
+func builtin_alloca(node *AstNode) {
 	// Shift the temporary area by %rdi.
-	printlnToFile("  mov %d(%%rbp), %%rcx", currentFn.AllocaBottom.Offset)
-	printlnToFile("  sub %%rsp, %%rcx")
+	printlnToFile("  sub %%rax, %%rsp")
+	// Align frame pointer
+	align := int64(16)
+	if node.Value > 16 {
+		align = node.Value
+	}
+	printlnToFile("  and $-%d, %%rsp", align)
+	if node.Variable != nil {
+		printlnToFile("  mov %%rsp, %d(%%rbp)", node.Variable.Offset)
+		printlnToFile("  mov %%rsp, %d(%%rbp)", node.TopVLA.Offset)
+	}
 	printlnToFile("  mov %%rsp, %%rax")
-	printlnToFile("  sub %%rdi, %%rsp")
-	printlnToFile("  mov %%rsp, %%rdx")
-	printlnToFile("1:")
-	printlnToFile("  cmp $0, %%rcx")
-	printlnToFile("  je 2f")
-	printlnToFile("  mov (%%rax), %%r8b")
-	printlnToFile("  mov %%r8b, (%%rdx)")
-	printlnToFile("  inc %%rdx")
-	printlnToFile("  inc %%rax")
-	printlnToFile("  dec %%rcx")
-	printlnToFile("  jmp 1b")
-	printlnToFile("2:")
+}
 
-	// Move alloca_bottom pointer.
-	printlnToFile("  mov %d(%%rbp), %%rax", currentFn.AllocaBottom.Offset)
-	printlnToFile("  sub %%rdi, %%rax")
-	printlnToFile("  mov %%rax, %d(%%rbp)", currentFn.AllocaBottom.Offset)
+func dealloc_vla(node *AstNode) {
+	if currentFn.VlaBase == nil || node.TopVLA == node.TargetVLA {
+		return
+	}
+
+	vla := currentFn.VlaBase
+	if node.TargetVLA != nil {
+		vla = node.TargetVLA
+	}
+	printlnToFile("  mov %d(%%rbp), %%rsp", vla.Offset)
 }
 
 func emitData(prog *Obj) {
@@ -1667,7 +1667,9 @@ func emitText(prog *Obj) {
 		printlnToFile("  mov %%rsp, %%rbp")
 		reservedPos := len(*cgOutputFile)
 		printlnToFile("PLACEHOLDER")
-		printlnToFile("  mov %%rsp, %d(%%rbp)", fn.AllocaBottom.Offset)
+		if fn.VlaBase != nil {
+			printlnToFile("  mov %%rsp, %d(%%rbp)", fn.VlaBase.Offset)
+		}
 
 		// Save arg registers if function is variadic
 		if fn.VaArea != nil {

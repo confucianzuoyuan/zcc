@@ -11,6 +11,7 @@ type Obj struct {
 	// Local variable
 	Offset      int64
 	ParamNext   *Obj
+	VlaNext     *Obj
 	PassByStack bool
 
 	// Global variable or function
@@ -29,7 +30,7 @@ type Obj struct {
 	LargeRtn          *Obj
 	Body              *AstNode
 	VaArea            *Obj // Variable argument area
-	AllocaBottom      *Obj
+	VlaBase           *Obj
 	LocalVarStackSize int64
 
 	// Static inline function
