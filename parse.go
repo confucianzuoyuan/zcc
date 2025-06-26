@@ -2154,10 +2154,6 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
-	if tok.isEqual("{") {
-		return compoundStmt(rest, tok.Next)
-	}
-
 	if tok.isEqual("do") {
 		node := newNode(ND_DO, tok)
 
@@ -2229,6 +2225,10 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
+	if tok.isEqual("{") {
+		return compoundStmt(rest, tok.Next, nil)
+	}
+
 	return exprStmt(rest, tok)
 }
 
@@ -2276,7 +2276,7 @@ func resolveGotoLabels() {
 }
 
 // compound-stmt = (typedef | declaration | stmt)* "}"
-func compoundStmt(rest **Token, tok *Token) *AstNode {
+func compoundStmt(rest **Token, tok *Token, last **AstNode) *AstNode {
 	node := newNode(ND_BLOCK, tok)
 	head := AstNode{}
 	cur := &head
@@ -2319,6 +2319,10 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 
 		cur.Next = stmt(&tok, tok)
 		cur = cur.Next
+	}
+
+	if last != nil {
+		*last = cur
 	}
 
 	node.TopVLA = CurrentVLA
@@ -3415,8 +3419,21 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("(") && tok.Next.isEqual("{") {
 		// This is a GNU statement expresssion.
-		node := compoundStmt(&tok, tok.Next.Next)
+		var stmt *AstNode = nil
+		node := compoundStmt(&tok, tok.Next.Next, &stmt)
 		node.Kind = ND_STMT_EXPR
+
+		if stmt != nil && stmt.Kind == ND_EXPR_STMT {
+			expr := stmt.Lhs
+			if expr.Ty.Kind == TY_STRUCT || expr.Ty.Kind == TY_UNION {
+				v := newLocalVar("", expr.Ty)
+				expr = newBinary(ND_ASSIGN, newVarNode(v, tok), expr, tok)
+				expr.addType()
+				stmt.Lhs = expr
+			} else if expr.Ty.Kind == TY_ARRAY || expr.Ty.Kind == TY_VLA {
+				stmt.Lhs = newCast(expr, pointerTo(expr.Ty.Base))
+			}
+		}
 		*rest = skip(tok, ")")
 		return node
 	}
@@ -3654,7 +3671,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	// [GNU] __FUNCTION__ is yet another name of __func__.
 	pushScope("__FUNCTION__").Variable = v
 
-	fn.Body = compoundStmt(rest, tok.Next)
+	fn.Body = compoundStmt(rest, tok.Next, nil)
 	if ty.VlaCalc != nil {
 		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
 		calc.Next = fn.Body.Body
