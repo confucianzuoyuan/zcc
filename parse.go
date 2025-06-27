@@ -1181,10 +1181,14 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			ty = TyInt
 		case UNSIGNED, UNSIGNED + INT:
 			ty = TyUInt
-		case LONG, LONG + INT, LONG + LONG, LONG + LONG + INT, SIGNED + LONG, SIGNED + LONG + INT, SIGNED + LONG + LONG, SIGNED + LONG + LONG + INT:
+		case LONG, LONG + INT, SIGNED + LONG, SIGNED + LONG + INT:
 			ty = TyLong
-		case UNSIGNED + LONG, UNSIGNED + LONG + INT, UNSIGNED + LONG + LONG, UNSIGNED + LONG + LONG + INT:
+		case LONG + LONG, LONG + LONG + INT, SIGNED + LONG + LONG, SIGNED + LONG + LONG + INT:
+			ty = TyLLong
+		case UNSIGNED + LONG, UNSIGNED + LONG + INT:
 			ty = TyULong
+		case UNSIGNED + LONG + LONG, UNSIGNED + LONG + LONG + INT:
+			ty = TyULLong
 		case FLOAT:
 			ty = TyFloat
 		case DOUBLE:

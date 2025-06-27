@@ -753,7 +753,7 @@ func getTypeId(ty *CType) int {
 		} else {
 			return I32
 		}
-	case TY_LONG:
+	case TY_LONG, TY_LONGLONG:
 		if ty.IsUnsigned {
 			return U64
 		} else {
@@ -1292,7 +1292,7 @@ func genExpr(node *AstNode) {
 	di := "%edi"
 	dx := "%edx"
 
-	if node.Lhs.Ty.Kind == TY_LONG || node.Lhs.Ty.Base != nil {
+	if node.Lhs.Ty.Size == 8 || node.Lhs.Ty.Base != nil {
 		ax = "%rax"
 		di = "%rdi"
 		dx = "%rdx"

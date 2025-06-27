@@ -9,6 +9,7 @@ const (
 	TY_INT
 	TY_SHORT
 	TY_LONG
+	TY_LONGLONG
 	TY_FLOAT
 	TY_DOUBLE
 	TY_LDOUBLE
@@ -137,6 +138,12 @@ var TyLong = &CType{
 	Align: 8,
 }
 
+var TyLLong = &CType{
+	Kind:  TY_LONGLONG,
+	Size:  8,
+	Align: 8,
+}
+
 var TyUChar = &CType{
 	Kind:       TY_CHAR,
 	Size:       1,
@@ -160,6 +167,13 @@ var TyUInt = &CType{
 
 var TyULong = &CType{
 	Kind:       TY_LONG,
+	Size:       8,
+	Align:      8,
+	IsUnsigned: true,
+}
+
+var TyULLong = &CType{
+	Kind:       TY_LONGLONG,
 	Size:       8,
 	Align:      8,
 	IsUnsigned: true,
@@ -194,7 +208,7 @@ func newType(kind CTypeKind, size int64, align int64) *CType {
 }
 
 func (t *CType) isInteger() bool {
-	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL || t.Kind == TY_ENUM
+	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL || t.Kind == TY_ENUM || t.Kind == TY_LONGLONG
 }
 
 func (t *CType) isFloat() bool {
@@ -299,6 +313,8 @@ func getCommonType(lhs **AstNode, rhs **AstNode) *CType {
 		return TyUInt
 	case TY_LONG:
 		return TyULong
+	case TY_LONGLONG:
+		return TyULLong
 	}
 
 	panic("unreachable")
@@ -465,7 +481,7 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 	}
 
 	switch t1.Kind {
-	case TY_CHAR, TY_SHORT, TY_INT, TY_LONG:
+	case TY_CHAR, TY_SHORT, TY_INT, TY_LONG, TY_LONGLONG:
 		return t1.IsUnsigned == t2.IsUnsigned
 	case TY_FLOAT, TY_DOUBLE, TY_LDOUBLE:
 		return true
@@ -513,6 +529,8 @@ func (t *CType) IntRank() int {
 		return 1
 	case TY_LONG:
 		return 2
+	case TY_LONGLONG:
+		return 3
 	}
 	panic("unreachable")
 }

@@ -507,6 +507,7 @@ func convertPpInt(tok *Token) bool {
 	}
 
 	// Read U, L or LL suffixes.
+	ll := false
 	l := false
 	u := false
 
@@ -522,14 +523,14 @@ func convertPpInt(tok *Token) bool {
 	if suffix3 == "LLU" || suffix3 == "LLu" || suffix3 == "llU" || suffix3 == "llu" || suffix3 == "ULL" || suffix3 == "Ull" || suffix3 == "uLL" || suffix3 == "ull" {
 		p += 3
 		u = true
-		l = true
+		ll = true
 	} else if suffix2 == "lu" || suffix2 == "Lu" || suffix2 == "lU" || suffix2 == "LU" || suffix2 == "ul" || suffix2 == "Ul" || suffix2 == "uL" || suffix2 == "UL" {
 		p += 2
 		l = true
 		u = true
 	} else if suffix2 == "LL" || suffix2 == "ll" {
 		p += 2
-		l = true
+		ll = true
 	} else if suffix1 == "L" || suffix1 == "l" {
 		p += 1
 		l = true
@@ -545,8 +546,12 @@ func convertPpInt(tok *Token) bool {
 	// Infer a type
 	var ty *CType = nil
 	if base == 10 {
-		if l && u {
+		if ll && u {
+			ty = TyULLong
+		} else if l && u {
 			ty = TyULong
+		} else if ll {
+			ty = TyLLong
 		} else if l {
 			ty = TyLong
 		} else if u {
@@ -563,8 +568,16 @@ func convertPpInt(tok *Token) bool {
 			}
 		}
 	} else {
-		if l && u {
+		if ll && u {
+			ty = TyULLong
+		} else if l && u {
 			ty = TyULong
+		} else if ll {
+			if val>>63 != 0 {
+				ty = TyULLong
+			} else {
+				ty = TyLLong
+			}
 		} else if l {
 			if val>>63 != 0 {
 				ty = TyULong
