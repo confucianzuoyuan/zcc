@@ -2478,8 +2478,14 @@ func eval2(node *AstNode, label **string) int64 {
 	case ND_SHL:
 		return eval(node.Lhs) << eval(node.Rhs)
 	case ND_SHR:
-		if node.Ty.IsUnsigned && node.Ty.Size == 8 {
+		if node.Ty.IsUnsigned {
+			if node.Ty.Size == 4 {
+				return int64(uint32(eval(node.Lhs)) >> eval(node.Rhs))
+			}
 			return int64(uint64(eval(node.Lhs) >> eval(node.Rhs)))
+		}
+		if node.Ty.Size == 4 {
+			return int64(int32(eval(node.Lhs)) >> eval(node.Rhs))
 		}
 		return eval(node.Lhs) >> eval(node.Rhs)
 	case ND_EQ:
