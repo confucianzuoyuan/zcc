@@ -3111,7 +3111,7 @@ func unary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("&") {
 		lhs := castExpr(rest, tok.Next)
 		lhs.addType()
-		if lhs.Kind == ND_MEMBER && lhs.Member.IsBitfield {
+		if lhs.isBitField() {
 			errorTok(tok, "cannot take address of bitfield")
 		}
 		return newUnary(ND_ADDR, lhs, tok)

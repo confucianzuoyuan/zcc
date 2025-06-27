@@ -1025,7 +1025,7 @@ func genExpr(node *AstNode) {
 		genAddr(node.Lhs)
 		tmpOffset := pushTmp()
 		genExpr(node.Rhs)
-		if node.Lhs.Kind == ND_MEMBER && node.Lhs.Member.IsBitfield {
+		if node.Lhs.isBitField() {
 			// If the lhs is a bitfield, we need to read the current value
 			// from memory and merge it with a new value.
 			mem := node.Lhs.Member
