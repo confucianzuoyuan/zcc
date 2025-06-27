@@ -2537,6 +2537,7 @@ func eval2(node *AstNode, label **string) int64 {
 			return eval2(node.Else, label)
 		}
 	case ND_COMMA:
+		eval2(node.Lhs, label)
 		return eval2(node.Rhs, label)
 	case ND_NOT:
 		if eval(node.Lhs) == 0 {
