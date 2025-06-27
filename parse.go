@@ -1630,19 +1630,24 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 // array-dimensions = ("static" | "restrict")* const-expr? "]" type-suffix
 func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
+	if !consume(&tok, tok, "[") {
+		*rest = tok
+		return ty
+	}
+
 	for tok.isEqual("static") || tok.isEqual("restrict") {
 		tok = tok.Next
 	}
 
 	if tok.isEqual("]") {
-		ty = typeSuffix(rest, tok.Next, ty)
+		ty = arrayDimensions(rest, tok.Next, ty)
 		return arrayOf(ty, -1)
 	}
 
 	expr := assign(&tok, tok)
 	expr.addType()
 	tok = skip(tok, "]")
-	ty = typeSuffix(rest, tok, ty)
+	ty = arrayDimensions(rest, tok, ty)
 
 	arrayLength := int64(0)
 	if ty.Kind != TY_VLA && expr.isConstExpr(&arrayLength) {
@@ -1665,12 +1670,7 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 		return funcParams(rest, tok.Next, ty)
 	}
 
-	if tok.isEqual("[") {
-		return arrayDimensions(rest, tok.Next, ty)
-	}
-
-	*rest = tok
-	return ty
+	return arrayDimensions(rest, tok, ty)
 }
 
 // pointers = ("*" ("const" | "volatile" | "restrict")*)*
