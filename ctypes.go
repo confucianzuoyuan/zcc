@@ -346,6 +346,10 @@ func (node *AstNode) addType() {
 		node.Ty = TyInt
 		return
 	case ND_BITNOT, ND_SHL, ND_SHR:
+		if !node.Lhs.Ty.isInteger() {
+			errorTok(node.Lhs.Tok, "invalid operand")
+		}
+		intPromotion(&node.Lhs)
 		node.Ty = node.Lhs.Ty
 		return
 	case ND_VAR:
@@ -468,4 +472,54 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 	}
 
 	return false
+}
+
+func (node *AstNode) isBitField() bool {
+	return node.Kind == ND_MEMBER && node.Member.IsBitfield
+}
+
+func (t *CType) IntRank() int {
+	switch t.Kind {
+	case TY_ENUM, TY_BOOL, TY_CHAR, TY_SHORT:
+		return 0
+	case TY_INT:
+		return 1
+	case TY_LONG:
+		return 2
+	}
+	panic("unreachable")
+}
+
+func intPromotion(node **AstNode) {
+	ty := (*node).Ty
+
+	if (*node).isBitField() {
+		intWidth := TyInt.Size * 8
+		bitWidth := (*node).Member.BitWidth
+
+		if bitWidth == intWidth && ty.IsUnsigned {
+			*node = newCast(*node, TyUInt)
+		} else if bitWidth <= intWidth {
+			*node = newCast(*node, TyInt)
+		} else {
+			*node = newCast(*node, ty)
+		}
+
+		return
+	}
+
+	if ty.Size < TyInt.Size {
+		*node = newCast(*node, TyInt)
+		return
+	}
+
+	if ty.Size == TyInt.Size && ty.IntRank() < TyInt.IntRank() {
+		if ty.IsUnsigned {
+			*node = newCast(*node, TyUInt)
+		} else {
+			*node = newCast(*node, TyInt)
+		}
+
+		return
+	}
 }
