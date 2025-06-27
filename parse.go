@@ -276,14 +276,18 @@ func newAlloca(sz *AstNode, v *Obj, top *Obj, align int64) *AstNode {
 	return node
 }
 
-func (node *AstNode) isConstExpr() bool {
+func (node *AstNode) isConstExpr(val *int64) bool {
+	node.addType()
 	failed := false
 
 	if evalRecover != nil {
 		panic("evalRecover != nil")
 	}
 	evalRecover = &failed
-	eval(node)
+	v := eval(node)
+	if val != nil {
+		*val = v
+	}
 	evalRecover = nil
 	return !failed
 }
@@ -1631,10 +1635,11 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 	}
 
 	expr := assign(&tok, tok)
+	expr.addType()
 	tok = skip(tok, "]")
 	ty = typeSuffix(rest, tok, ty)
 
-	if ty.Kind == TY_VLA || !expr.isConstExpr() {
+	if ty.Kind == TY_VLA || !expr.isConstExpr(nil) {
 		if scope.Parent == nil {
 			errorTok(tok, "variably-modified type at file scope")
 		}
@@ -1886,6 +1891,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 				if expr == nil {
 					continue
 				}
+				expr.addType()
 
 				loc := offset + mem.Offset
 				oldVal := readBuf(buf, loc, mem.Ty.Size)
@@ -1910,6 +1916,8 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	if init.Expr == nil {
 		return cur
 	}
+
+	init.Expr.addType()
 
 	if ty.Kind == TY_FLOAT {
 		val := math.Float32bits(float32(evalDouble(init.Expr)))
@@ -2368,8 +2376,6 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 }
 
 func evalDouble(node *AstNode) float64 {
-	node.addType()
-
 	if node.Ty.isInteger() {
 		if node.Ty.IsUnsigned {
 			return float64(uint64(eval(node)))
@@ -2435,8 +2441,6 @@ func staticAssertion(rest **Token, tok *Token) {
 // number. The latter form is accepted only as an initialization
 // expression for a global variable.
 func eval2(node *AstNode, label **string) int64 {
-	node.addType()
-
 	if node.Ty.isFloat() {
 		return int64(evalDouble(node))
 	}
@@ -2621,6 +2625,7 @@ func evalRval(node *AstNode, label **string) int64 {
 
 func constExpr(rest **Token, tok *Token) int64 {
 	node := conditional(rest, tok)
+	node.addType()
 	return eval(node)
 }
 

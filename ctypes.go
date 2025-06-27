@@ -249,27 +249,54 @@ func structType() *CType {
 	return newType(TY_STRUCT, 0, 1)
 }
 
-func getCommonType(lhs **AstNode, rhs **AstNode) *CType {
+func (node *AstNode) isNullPointer() bool {
+	if node.Kind == ND_CAST && node.Ty.Kind == TY_PTR && node.Ty.Base.Kind == TY_VOID {
+		node = node.Lhs
+	}
+
+	var val int64 = 0
+
+	if node.Ty.isInteger() && node.isConstExpr(&val) && val == 0 {
+		return true
+	}
+
+	return false
+}
+
+func getCommonType(lhs **AstNode, rhs **AstNode, handlePtr bool) *CType {
 	ty1 := (*lhs).Ty
 	ty2 := (*rhs).Ty
+
+	if handlePtr {
+		if ty1.Kind == TY_FUNC {
+			ty1 = pointerTo(ty1)
+		}
+		if ty2.Kind == TY_FUNC {
+			ty2 = pointerTo(ty2)
+		}
+
+		if ty1.Base != nil && (*rhs).isNullPointer() {
+			return pointerTo(ty1.Base)
+		}
+
+		if ty2.Base != nil && (*lhs).isNullPointer() {
+			return pointerTo(ty2.Base)
+		}
+
+		if ty1.Base != nil && ty2.Base != nil {
+			if ty1.Base.isCompatibleWith(ty2.Base) {
+				return pointerTo(ty1.Base)
+			}
+			return pointerTo(TyVoid)
+		}
+	}
 
 	if ty1.Base != nil {
 		return pointerTo(ty1.Base)
 	}
 
-	if ty1.Kind == TY_FUNC {
-		return pointerTo(ty1)
-	}
-
-	if ty2.Kind == TY_FUNC {
-		return pointerTo(ty2)
-	}
-
 	if !ty1.isNumeric() || !ty2.isNumeric() {
-		if !ty1.isCompatibleWith(ty2) {
-			panic("")
-		}
-		return ty1
+		errorTok((*rhs).Tok, "invalid operand")
 	}
 
 	if ty1.Kind == TY_LDOUBLE || ty2.Kind == TY_LDOUBLE {
@@ -327,8 +354,8 @@ func getCommonType(lhs **AstNode, rhs **AstNode) *CType {
 // be promoted to match with the other.
 //
 // This operation is called the "usual arithmetic conversion".
-func usualArithConv(lhs **AstNode, rhs **AstNode) {
-	ty := getCommonType(lhs, rhs)
+func usualArithConv(lhs **AstNode, rhs **AstNode, handlePtr bool) {
+	ty := getCommonType(lhs, rhs, handlePtr)
 	*lhs = newCast(*lhs, ty)
 	*rhs = newCast(*rhs, ty)
 }
@@ -355,7 +382,7 @@ func (node *AstNode) addType() {
 		node.Ty = TyInt
 		return
 	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD, ND_BITAND, ND_BITOR, ND_BITXOR:
-		usualArithConv(&node.Lhs, &node.Rhs)
+		usualArithConv(&node.Lhs, &node.Rhs, false)
 		node.Ty = node.Lhs.Ty
 		return
 	case ND_POS, ND_NEG:
@@ -377,7 +404,7 @@ func (node *AstNode) addType() {
 		node.Ty = node.Lhs.Ty
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
-		usualArithConv(&node.Lhs, &node.Rhs)
+		usualArithConv(&node.Lhs, &node.Rhs, true)
 		node.Ty = TyInt
 		return
 	case ND_FUNCALL:
@@ -401,8 +428,10 @@ func (node *AstNode) addType() {
 	case ND_COND:
 		if node.Then.Ty.Kind == TY_VOID || node.Else.Ty.Kind == TY_VOID {
 			node.Ty = TyVoid
+		} else if node.Then.Ty.isCompatibleWith(node.Else.Ty) {
+			node.Ty = node.Then.Ty
 		} else {
-			usualArithConv(&node.Then, &node.Else)
+			usualArithConv(&node.Then, &node.Else, true)
 			node.Ty = node.Then.Ty
 		}
 		return
