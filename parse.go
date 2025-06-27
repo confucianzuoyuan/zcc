@@ -1639,13 +1639,15 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 	tok = skip(tok, "]")
 	ty = typeSuffix(rest, tok, ty)
 
-	if ty.Kind == TY_VLA || !expr.isConstExpr(nil) {
-		if scope.Parent == nil {
-			errorTok(tok, "variably-modified type at file scope")
-		}
-		return vlaOf(ty, expr)
+	arrayLength := int64(0)
+	if ty.Kind != TY_VLA && expr.isConstExpr(&arrayLength) {
+		return arrayOf(ty, arrayLength)
 	}
-	return arrayOf(ty, eval(expr))
+
+	if scope.Parent == nil {
+		errorTok(tok, "variably-modified type at file scope")
+	}
+	return vlaOf(ty, expr)
 }
 
 /*
