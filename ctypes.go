@@ -235,50 +235,73 @@ func structType() *CType {
 	return newType(TY_STRUCT, 0, 1)
 }
 
-func (ty *CType) getCommonType(other *CType) *CType {
-	if ty.Base != nil {
-		return pointerTo(ty.Base)
+func getCommonType(lhs **AstNode, rhs **AstNode) *CType {
+	ty1 := (*lhs).Ty
+	ty2 := (*rhs).Ty
+
+	if ty1.Base != nil {
+		return pointerTo(ty1.Base)
 	}
 
-	if ty.Kind == TY_FUNC {
-		return pointerTo(ty)
-	}
-	if other.Kind == TY_FUNC {
-		return pointerTo(other)
+	if ty1.Kind == TY_FUNC {
+		return pointerTo(ty1)
 	}
 
-	if ty.Kind == TY_LDOUBLE || other.Kind == TY_LDOUBLE {
+	if ty2.Kind == TY_FUNC {
+		return pointerTo(ty2)
+	}
+
+	if !ty1.isNumeric() || !ty2.isNumeric() {
+		if !ty1.isCompatibleWith(ty2) {
+			panic("")
+		}
+		return ty1
+	}
+
+	if ty1.Kind == TY_LDOUBLE || ty2.Kind == TY_LDOUBLE {
 		return TyLDouble
 	}
 
-	if ty.Kind == TY_DOUBLE || other.Kind == TY_DOUBLE {
+	if ty1.Kind == TY_DOUBLE || ty2.Kind == TY_DOUBLE {
 		return TyDouble
 	}
 
-	if ty.Kind == TY_FLOAT || other.Kind == TY_FLOAT {
+	if ty1.Kind == TY_FLOAT || ty2.Kind == TY_FLOAT {
 		return TyFloat
 	}
 
-	if ty.Size < 4 {
-		ty = TyInt
-	}
-	if other.Size < 4 {
-		other = TyInt
-	}
+	intPromotion(lhs)
+	intPromotion(rhs)
+	ty1 = (*lhs).Ty
+	ty2 = (*rhs).Ty
 
-	if ty.Size != other.Size {
-		if ty.Size > other.Size {
-			return ty
+	if ty1.Size != ty2.Size {
+		if ty1.Size > ty2.Size {
+			return ty1
 		} else {
-			return other
+			return ty2
 		}
 	}
 
-	if other.IsUnsigned {
-		return other
+	rankedTy := ty2
+	if ty1.IntRank() > ty2.IntRank() {
+		rankedTy = ty1
 	}
 
-	return ty
+	if ty1.IsUnsigned == ty2.IsUnsigned {
+		return rankedTy
+	}
+
+	// If same size but different sign, the common type is unsigned
+	// variant of the highest-ranked type between the two.
+	switch rankedTy.Kind {
+	case TY_INT:
+		return TyUInt
+	case TY_LONG:
+		return TyULong
+	}
+
+	panic("unreachable")
 }
 
 // For many binary operators, we implicitly promote operands so that
@@ -289,7 +312,7 @@ func (ty *CType) getCommonType(other *CType) *CType {
 //
 // This operation is called the "usual arithmetic conversion".
 func usualArithConv(lhs **AstNode, rhs **AstNode) {
-	ty := (*lhs).Ty.getCommonType((*rhs).Ty)
+	ty := getCommonType(lhs, rhs)
 	*lhs = newCast(*lhs, ty)
 	*rhs = newCast(*rhs, ty)
 }
