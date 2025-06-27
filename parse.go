@@ -1688,9 +1688,7 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 
 	if tok.isEqual("(") {
 		start := tok
-		dummy := CType{}
-		declarator(&tok, tok.Next, &dummy)
-		tok = skip(tok, ")")
+		tok = skipParen(tok.Next)
 		ty = typeSuffix(rest, tok, ty)
 		return declarator(&tok, start.Next, ty)
 	}
@@ -1715,9 +1713,7 @@ func abstractDeclarator(rest **Token, tok *Token, ty *CType) *CType {
 
 	if tok.isEqual("(") {
 		start := tok
-		dummy := CType{}
-		abstractDeclarator(&tok, tok.Next, &dummy)
-		tok = skip(tok, ")")
+		tok = skipParen(tok.Next)
 		ty = typeSuffix(rest, tok, ty)
 		return abstractDeclarator(&tok, start.Next, ty)
 	}
@@ -2978,6 +2974,28 @@ func shift(rest **Token, tok *Token) *AstNode {
 		*rest = tok
 		return node
 	}
+}
+
+func skipParen(tok *Token) *Token {
+	level := 0
+	for {
+		if level == 0 && tok.isEqual(")") {
+			break
+		}
+
+		if tok.Kind == TK_EOF {
+			errorTok(tok, "premature end of input")
+		}
+
+		if tok.isEqual("(") {
+			level++
+		} else if tok.isEqual(")") {
+			level--
+		}
+
+		tok = tok.Next
+	}
+	return tok.Next
 }
 
 // In C, `+` operator is overloaded to perform the pointer arithmetic.
