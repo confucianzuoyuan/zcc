@@ -1639,8 +1639,8 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 		tok = tok.Next
 	}
 
-	if tok.isEqual("]") {
-		ty = arrayDimensions(rest, tok.Next, ty)
+	if consume(&tok, tok, "]") || (tok.isEqual("*") && consume(&tok, tok.Next, "]")) {
+		ty = arrayDimensions(rest, tok, ty)
 		return arrayOf(ty, -1)
 	}
 
