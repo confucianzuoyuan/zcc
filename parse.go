@@ -3364,7 +3364,7 @@ func genericSelection(rest **Token, tok *Token) *AstNode {
 	t1 := ctrl.Ty
 	if t1.Kind == TY_FUNC {
 		t1 = pointerTo(t1)
-	} else if t1.Kind == TY_ARRAY {
+	} else if t1.Kind == TY_ARRAY || t1.Kind == TY_VLA {
 		t1 = pointerTo(t1.Base)
 	}
 
