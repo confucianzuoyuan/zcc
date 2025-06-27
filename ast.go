@@ -9,6 +9,7 @@ const (
 	ND_SUB                          // -
 	ND_MUL                          // *
 	ND_DIV                          // /
+	ND_POS                          // unary +
 	ND_NEG                          // unary -
 	ND_EQ                           // ==
 	ND_NE                           // !=

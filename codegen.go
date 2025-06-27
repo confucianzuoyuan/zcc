@@ -965,6 +965,9 @@ func genExpr(node *AstNode) {
 		}
 		printlnToFile("  mov $%d, %%rax", node.Value)
 		return
+	case ND_POS:
+		genExpr(node.Lhs)
+		return
 	case ND_NEG:
 		genExpr(node.Lhs)
 

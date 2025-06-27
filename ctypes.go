@@ -319,10 +319,14 @@ func (node *AstNode) addType() {
 		usualArithConv(&node.Lhs, &node.Rhs)
 		node.Ty = node.Lhs.Ty
 		return
-	case ND_NEG:
-		ty := TyInt.getCommonType(node.Lhs.Ty)
-		node.Lhs = newCast(node.Lhs, ty)
-		node.Ty = ty
+	case ND_POS, ND_NEG:
+		if !node.Lhs.Ty.isNumeric() {
+			errorTok(node.Lhs.Tok, "invalid operand")
+		}
+		if node.Lhs.Ty.isInteger() {
+			intPromotion(&node.Lhs)
+		}
+		node.Ty = node.Lhs.Ty
 		return
 	case ND_ASSIGN:
 		if node.Lhs.Ty.Kind == TY_ARRAY {

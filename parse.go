@@ -2364,6 +2364,8 @@ func evalDouble(node *AstNode) float64 {
 		return evalDouble(node.Lhs) * evalDouble(node.Rhs)
 	case ND_DIV:
 		return evalDouble(node.Lhs) / evalDouble(node.Rhs)
+	case ND_POS:
+		return evalDouble(node.Lhs)
 	case ND_NEG:
 		return -evalDouble(node.Lhs)
 	case ND_COND:
@@ -2429,6 +2431,8 @@ func eval2(node *AstNode, label **string) int64 {
 			return int64(uint64(eval(node.Lhs)) / uint64(eval(node.Rhs)))
 		}
 		return eval(node.Lhs) / eval(node.Rhs)
+	case ND_POS:
+		return eval(node.Lhs)
 	case ND_NEG:
 		return -eval(node.Lhs)
 	case ND_MOD:
@@ -3101,7 +3105,7 @@ func castExpr(rest **Token, tok *Token) *AstNode {
  */
 func unary(rest **Token, tok *Token) *AstNode {
 	if tok.isEqual("+") {
-		return castExpr(rest, tok.Next)
+		return newUnary(ND_POS, castExpr(rest, tok.Next), tok)
 	}
 
 	if tok.isEqual("-") {
