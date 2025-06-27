@@ -369,8 +369,8 @@ func parseArgs(args []string) {
 		}
 
 		if strings.HasPrefix(args[idx], "-") && len(args[idx]) > 1 {
-			e := fmt.Sprintf("unknown argument: %s", args[idx])
-			panic(e)
+			fmt.Fprintf(os.Stderr, "unknown argument: %s\n", args[idx])
+			os.Exit(1)
 		}
 
 		inputPaths = append(inputPaths, args[idx])
@@ -495,7 +495,9 @@ func parseOptX(s string) FileType {
 	if s == "none" {
 		return FILE_NONE
 	}
-	panic("<command line>: unknown argument for -x: " + s)
+	fmt.Fprintf(os.Stderr, "<command line>: unknown argument for -x: %s\n", s)
+	os.Exit(1)
+	panic("unreachable")
 }
 
 func runSubprocess(args []string) {
