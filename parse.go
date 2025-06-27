@@ -3029,19 +3029,13 @@ func newSub(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 	// VLA - num
 	if lhs.Ty.Base.Kind == TY_VLA {
 		rhs = newBinary(ND_MUL, rhs, newVarNode(lhs.Ty.Base.VlaSize, tok), tok)
-		rhs.addType()
-		node := newBinary(ND_SUB, lhs, rhs, tok)
-		node.Ty = lhs.Ty
-		return node
+		return newBinary(ND_SUB, lhs, rhs, tok)
 	}
 
 	// ptr - num
 	if lhs.Ty.Base != nil && rhs.Ty.isInteger() {
 		rhs = newBinary(ND_MUL, rhs, newLong(lhs.Ty.Base.Size, tok), tok)
-		rhs.addType()
-		node := newBinary(ND_SUB, lhs, rhs, tok)
-		node.Ty = lhs.Ty
-		return node
+		return newBinary(ND_SUB, lhs, rhs, tok)
 	}
 
 	// ptr - ptr, which returns how many elements are between the two.

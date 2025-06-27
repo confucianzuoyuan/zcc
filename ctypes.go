@@ -291,10 +291,6 @@ func getCommonType(lhs **AstNode, rhs **AstNode, handlePtr bool) *CType {
 		}
 	}
 
-	if ty1.Base != nil {
-		return pointerTo(ty1.Base)
-	}
-
 	if !ty1.isNumeric() || !ty2.isNumeric() {
 		errorTok((*rhs).Tok, "invalid operand")
 	}
@@ -381,7 +377,19 @@ func (node *AstNode) addType() {
 	case ND_NUM:
 		node.Ty = TyInt
 		return
-	case ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD, ND_BITAND, ND_BITOR, ND_BITXOR:
+	case ND_ADD, ND_SUB:
+		if node.Lhs.Ty.Base != nil {
+			if node.Lhs.Ty.Kind != TY_PTR {
+				node.Lhs = newCast(node.Lhs, pointerTo(node.Lhs.Ty.Base))
+			}
+			node.Rhs = newCast(node.Rhs, TyULLong)
+			node.Ty = node.Lhs.Ty
+			return
+		}
+		usualArithConv(&node.Lhs, &node.Rhs, false)
+		node.Ty = node.Lhs.Ty
+		return
+	case ND_MUL, ND_DIV, ND_MOD, ND_BITAND, ND_BITOR, ND_BITXOR:
 		usualArithConv(&node.Lhs, &node.Rhs, false)
 		node.Ty = node.Lhs.Ty
 		return
