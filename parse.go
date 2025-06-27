@@ -258,7 +258,7 @@ func loopBody(rest **Token, tok *Token, node *AstNode) {
 	vla := BreakVLA
 	BreakVLA = CurrentVLA
 
-	node.Then = stmt(rest, tok)
+	node.Then = stmt(rest, tok, true)
 
 	breakLabel = brk
 	continueLabel = cont
@@ -1996,7 +1996,7 @@ func (tok *Token) isTypename() bool {
  *	    | "{" compound-stmt
  *	    | expr-stmt
  */
-func stmt(rest **Token, tok *Token) *AstNode {
+func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 	if tok.isEqual("return") {
 		node := newNode(ND_RETURN, tok)
 		if consume(rest, tok.Next, ";") {
@@ -2019,9 +2019,9 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		tok = skip(tok.Next, "(")
 		node.Cond = expr(&tok, tok)
 		tok = skip(tok, ")")
-		node.Then = stmt(&tok, tok)
+		node.Then = stmt(&tok, tok, true)
 		if tok.isEqual("else") {
-			node.Else = stmt(&tok, tok.Next)
+			node.Else = stmt(&tok, tok.Next, true)
 		}
 		*rest = tok
 		return node
@@ -2043,7 +2043,7 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		vla := BreakVLA
 		BreakVLA = CurrentVLA
 
-		node.Then = stmt(rest, tok)
+		node.Then = stmt(rest, tok, true)
 
 		currentSwitch = sw
 		breakLabel = brk
@@ -2060,6 +2060,8 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 
 		node := newNode(ND_CASE, tok)
+		node.Label = newUniqueName()
+
 		begin := constExpr(&tok, tok.Next)
 		end := int64(0)
 
@@ -2086,12 +2088,16 @@ func stmt(rest **Token, tok *Token) *AstNode {
 			errorTok(tok, "empty case range specified")
 		}
 
-		node.Label = newUniqueName()
+		tok = skip(tok, ":")
+		if chained {
+			node.Lhs = stmt(rest, tok, true)
+		} else {
+			*rest = tok
+		}
 		node.Begin = begin
 		node.End = end
 		node.CaseNext = currentSwitch.CaseNext
 		currentSwitch.CaseNext = node
-		*rest = skip(tok, ":")
 		return node
 	}
 
@@ -2104,8 +2110,14 @@ func stmt(rest **Token, tok *Token) *AstNode {
 		}
 		node := newNode(ND_CASE, tok)
 		node.Label = newUniqueName()
+
+		tok = skip(tok.Next, ":")
+		if chained {
+			node.Lhs = stmt(rest, tok, true)
+		} else {
+			*rest = tok
+		}
 		currentSwitch.DefaultCase = node
-		*rest = skip(tok.Next, ":")
 		return node
 	}
 
@@ -2218,11 +2230,17 @@ func stmt(rest **Token, tok *Token) *AstNode {
 	if tok.Kind == TK_IDENT && tok.Next.isEqual(":") {
 		node := newNode(ND_LABEL, tok)
 		node.Label = tok.getIdent()
+
+		tok = tok.Next.Next
+		if chained {
+			node.Lhs = stmt(rest, tok, true)
+		} else {
+			*rest = tok
+		}
 		node.UniqueLabel = newUniqueName()
 		node.GotoNext = labels
 		node.TopVLA = CurrentVLA
 		labels = node
-		*rest = tok.Next.Next
 
 		return node
 	}
@@ -2319,7 +2337,7 @@ func compoundStmt(rest **Token, tok *Token, last **AstNode) *AstNode {
 			continue
 		}
 
-		cur.Next = stmt(&tok, tok)
+		cur.Next = stmt(&tok, tok, false)
 		cur = cur.Next
 	}
 
