@@ -743,9 +743,14 @@ func unionInitializer(rest **Token, tok *Token, init *Initializer) {
  *             | assign
  */
 func initializer2(rest **Token, tok *Token, init *Initializer) {
-	if init.Ty.Kind == TY_ARRAY && tok.Kind == TK_STR {
-		stringInitializer(rest, tok, init)
-		return
+	if init.Ty.Kind == TY_ARRAY && init.Ty.Base.Base == nil {
+		if tok.isEqual("{") && stringInitializer2(&tok, tok.Next, init) {
+			*rest = skip(tok, "}")
+			return
+		}
+		if stringInitializer2(rest, tok, init) {
+			return
+		}
 	}
 
 	if init.Ty.Kind == TY_ARRAY {
@@ -3345,6 +3350,18 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 		node.ReturnBuffer = newLocalVar("", node.Ty)
 	}
 	return node
+}
+
+func stringInitializer2(rest **Token, tok *Token, init *Initializer) bool {
+	if tok.isEqual("(") && stringInitializer2(&tok, tok.Next, init) {
+		*rest = skip(tok, ")")
+		return true
+	}
+	if tok.Kind == TK_STR {
+		stringInitializer(rest, tok, init)
+		return true
+	}
+	return false
 }
 
 /*
