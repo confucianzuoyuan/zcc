@@ -2558,13 +2558,13 @@ func eval2(node *AstNode, label **string) int64 {
 	case ND_CAST:
 		if node.Ty.Kind == TY_BOOL {
 			if node.Lhs.Ty.isFloat() {
-				if node.Lhs.FloatValue != 0 {
+				if evalDouble(node.Lhs) != 0 {
 					return 1
 				} else {
 					return 0
 				}
 			}
-			if node.Lhs.Value != 0 {
+			if eval2(node.Lhs, label) != 0 {
 				return 1
 			} else {
 				return 0
