@@ -10,6 +10,7 @@ type Obj struct {
 
 	// Local variable
 	Offset      int64
+	Pointer     string
 	ParamNext   *Obj
 	VlaNext     *Obj
 	PassByStack bool
@@ -32,6 +33,7 @@ type Obj struct {
 	Body              *AstNode
 	VaArea            *Obj // Variable argument area
 	VlaBase           *Obj
+	StackAlign        int64
 	LocalVarStackSize int64
 
 	// Static inline function

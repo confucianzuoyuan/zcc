@@ -31,6 +31,8 @@ var DontReuseStack bool
 var FileNoInCg int
 var LineNoInCg int
 
+var LocalVarPointer string
+
 func printLoc(tok *Token) {
 	if FileNoInCg == tok.DisplayFileNo && LineNoInCg == tok.DisplayLineNo {
 		return
@@ -86,23 +88,23 @@ func popTmpStack() int {
 
 func pushTmp() int {
 	offset := pushTmpStack()
-	printlnToFile("  mov %%rax, %d(%%rbp)", offset)
+	printlnToFile("  mov %%rax, %d(%s)", offset, LocalVarPointer)
 	return offset
 }
 
 func popTmp(arg string) {
 	offset := popTmpStack()
-	printlnToFile("  mov %d(%%rbp), %s", offset, arg)
+	printlnToFile("  mov %d(%s), %s", offset, LocalVarPointer, arg)
 }
 
 func pushTmpF() {
 	offset := pushTmpStack()
-	printlnToFile("  movsd %%xmm0, %d(%%rbp)", offset)
+	printlnToFile("  movsd %%xmm0, %d(%s)", offset, LocalVarPointer)
 }
 
 func popTmpF(reg int) {
 	offset := popTmpStack()
-	printlnToFile("  movsd %d(%%rbp), %%xmm%d", offset, reg)
+	printlnToFile("  movsd %d(%s), %%xmm%d", offset, LocalVarPointer, reg)
 }
 
 func movExtend(v *Obj, reg string) {
@@ -112,13 +114,13 @@ func movExtend(v *Obj, reg string) {
 	}
 
 	if v.Ty.Size == 1 {
-		printlnToFile("  %sb %d(%%rbp), %s", insn, v.Offset, reg)
+		printlnToFile("  %sb %d(%s), %s", insn, v.Offset, v.Pointer, reg)
 	} else if v.Ty.Size == 2 {
-		printlnToFile("  %sw %d(%%rbp), %s", insn, v.Offset, reg)
+		printlnToFile("  %sw %d(%s), %s", insn, v.Offset, v.Pointer, reg)
 	} else if v.Ty.Size == 4 {
-		printlnToFile("  movsxd %d(%%rbp), %s", v.Offset, reg)
+		printlnToFile("  movsxd %d(%s), %s", v.Offset, v.Pointer, reg)
 	} else {
-		printlnToFile("  mov %d(%%rbp), %s", v.Offset, reg)
+		printlnToFile("  mov %d(%s), %s", v.Offset, v.Pointer, reg)
 	}
 }
 
@@ -209,14 +211,14 @@ func placeStackArgs(node *AstNode) {
 		switch v.Ty.Kind {
 		case TY_STRUCT, TY_UNION:
 			for i := int64(0); i < v.Ty.Size; i++ {
-				printlnToFile("  mov %d(%%rbp), %%r8b", i+v.Offset)
+				printlnToFile("  mov %d(%s), %%r8b", i+v.Offset, v.Pointer)
 				printlnToFile("  mov %%r8b, %d(%%rsp)", i+v.StackOffset)
 			}
 		case TY_FLOAT, TY_DOUBLE:
-			printlnToFile("  movsd %d(%%rbp), %%xmm0", v.Offset)
+			printlnToFile("  movsd %d(%s), %%xmm0", v.Offset, v.Pointer)
 			printlnToFile("  movsd %%xmm0, %d(%%rsp)", v.StackOffset)
 		case TY_LDOUBLE:
-			printlnToFile("  fldt %d(%%rbp)", v.Offset)
+			printlnToFile("  fldt %d(%s)", v.Offset, v.Pointer)
 			printlnToFile("  fstpt %d(%%rsp)", v.StackOffset)
 		default:
 			if v.Ty.Size > 8 {
@@ -239,7 +241,7 @@ func placeRegArgs(node *AstNode, gpStart bool) {
 	// If the return type is a large struct/union, the caller passes
 	// a pointer to a buffer as if it were the first argument.
 	if gpStart {
-		printlnToFile("  lea %d(%%rbp), %s", node.ReturnBuffer.Offset, argreg64[gp])
+		printlnToFile("  lea %d(%s), %s", node.ReturnBuffer.Offset, node.ReturnBuffer.Pointer, argreg64[gp])
 		gp++
 	}
 
@@ -251,29 +253,29 @@ func placeRegArgs(node *AstNode, gpStart bool) {
 		switch v.Ty.Kind {
 		case TY_STRUCT, TY_UNION:
 			if v.Ty.hasFloatNumber1() {
-				printlnToFile("  movsd %d(%%rbp), %%xmm%d", v.Offset, fp)
+				printlnToFile("  movsd %d(%s), %%xmm%d", v.Offset, v.Pointer, fp)
 				fp++
 			} else {
-				printlnToFile("  mov %d(%%rbp), %s", v.Offset, argreg64[gp])
+				printlnToFile("  mov %d(%s), %s", v.Offset, v.Pointer, argreg64[gp])
 				gp++
 			}
 
 			if v.Ty.Size > 8 {
 				if v.Ty.hasFloatNumber2() {
-					printlnToFile("  movsd %d(%%rbp), %%xmm%d", 8+v.Offset, fp)
+					printlnToFile("  movsd %d(%s), %%xmm%d", 8+v.Offset, v.Pointer, fp)
 					fp++
 				} else {
-					printlnToFile("  mov %d(%%rbp), %s", 8+v.Offset, argreg64[gp])
+					printlnToFile("  mov %d(%s), %s", 8+v.Offset, v.Pointer, argreg64[gp])
 					gp++
 				}
 			}
 			continue
 		case TY_FLOAT:
-			printlnToFile("  movss %d(%%rbp), %%xmm%d", v.Offset, fp)
+			printlnToFile("  movss %d(%s), %%xmm%d", v.Offset, v.Pointer, fp)
 			fp++
 			continue
 		case TY_DOUBLE:
-			printlnToFile("  movsd %d(%%rbp), %%xmm%d", v.Offset, fp)
+			printlnToFile("  movsd %d(%s), %%xmm%d", v.Offset, v.Pointer, fp)
 			fp++
 			continue
 		case TY_LDOUBLE:
@@ -348,14 +350,14 @@ func (v *Obj) copyReturnBuffer() {
 			panic("")
 		}
 		if ty.Size == 4 {
-			printlnToFile("  movss %%xmm0, %d(%%rbp)", v.Offset)
+			printlnToFile("  movss %%xmm0, %d(%s)", v.Offset, v.Pointer)
 		} else {
-			printlnToFile("  movsd %%xmm0, %d(%%rbp)", v.Offset)
+			printlnToFile("  movsd %%xmm0, %d(%s)", v.Offset, v.Pointer)
 		}
 		fp += 1
 	} else {
 		for i := int64(0); i < int64(math.Min(8, float64(ty.Size))); i += 1 {
-			printlnToFile("  mov %%al, %d(%%rbp)", v.Offset+i)
+			printlnToFile("  mov %%al, %d(%s)", v.Offset+i, v.Pointer)
 			printlnToFile("  shr $8, %%rax")
 		}
 		gp += 1
@@ -368,9 +370,9 @@ func (v *Obj) copyReturnBuffer() {
 			}
 
 			if ty.Size == 12 {
-				printlnToFile("  movss %%xmm%d, %d(%%rbp)", fp, v.Offset+8)
+				printlnToFile("  movss %%xmm%d, %d(%s)", fp, v.Offset+8, v.Pointer)
 			} else {
-				printlnToFile("  movsd %%xmm%d, %d(%%rbp)", fp, v.Offset+8)
+				printlnToFile("  movsd %%xmm%d, %d(%s)", fp, v.Offset+8, v.Pointer)
 			}
 		} else {
 			reg1 := "%al"
@@ -380,7 +382,7 @@ func (v *Obj) copyReturnBuffer() {
 				reg2 = "%rdx"
 			}
 			for i := int64(8); i < int64(math.Min(16, float64(ty.Size))); i += 1 {
-				printlnToFile("  mov %s, %d(%%rbp)", reg1, v.Offset+i)
+				printlnToFile("  mov %s, %d(%s)", reg1, v.Offset+i, v.Pointer)
 				printlnToFile("  shr $8, %s", reg2)
 			}
 		}
@@ -394,7 +396,7 @@ func copyStructReg() {
 
 	printlnToFile("  mov %%rax, %%rdi")
 
-	if ty.hasFloatNumber(0, 8, 0) {
+	if ty.hasFloatNumber1() {
 		if !(ty.Size == 4 || 8 <= ty.Size) {
 			panic("")
 		}
@@ -414,7 +416,7 @@ func copyStructReg() {
 	}
 
 	if ty.Size > 8 {
-		if ty.hasFloatNumber(8, 16, 0) {
+		if ty.hasFloatNumber2() {
 			if !(ty.Size == 12 || ty.Size == 16) {
 				panic("type size must be 12 or 16")
 			}
@@ -444,7 +446,7 @@ func copyStructMem() {
 	ty := currentFn.Ty.ReturnType
 	v := currentFn.Ty.ParamList
 
-	printlnToFile("  mov %d(%%rbp), %%rdi", v.Offset)
+	printlnToFile("  mov %d(%s), %%rdi", v.Offset, v.Pointer)
 
 	for i := int64(0); i < ty.Size; i += 1 {
 		printlnToFile("  mov %d(%%rax), %%dl", i)
@@ -498,12 +500,13 @@ func genAddr(node *AstNode) {
 	case ND_VAR:
 		// Variable-length array, which is always local.
 		if node.Variable.Ty.Kind == TY_VLA {
-			printlnToFile("  mov %d(%%rbp), %%rax", node.Variable.Offset)
+			printlnToFile("  mov %d(%s), %%rax", node.Variable.Offset, node.Variable.Pointer)
 			return
 		}
+
 		// Local variable
 		if node.Variable.IsLocal {
-			printlnToFile("  lea %d(%%rbp), %%rax", node.Variable.Offset)
+			printlnToFile("  lea %d(%s), %%rax", node.Variable.Offset, node.Variable.Pointer)
 			return
 		}
 
@@ -864,35 +867,35 @@ func cast(from *CType, to *CType) {
 	}
 }
 
-func storeFp(r int, offset int64, sz int64) {
+func storeFp(r int, sz int64, offset int64, ptr string) {
 	if sz == 4 {
-		printlnToFile("  movss %%xmm%d, %d(%%rbp)", r, offset)
+		printlnToFile("  movss %%xmm%d, %d(%s)", r, offset, ptr)
 		return
 	}
 	if sz == 8 {
-		printlnToFile("  movsd %%xmm%d, %d(%%rbp)", r, offset)
+		printlnToFile("  movsd %%xmm%d, %d(%s)", r, offset, ptr)
 		return
 	}
 	panic("unreachable")
 }
 
-func storeGp(r int, offset int64, sz int64) {
+func storeGp(r int, sz int64, offset int64, ptr string) {
 	switch sz {
 	case 1:
-		printlnToFile("  mov %s, %d(%%rbp)", argreg8[r], offset)
+		printlnToFile("  mov %s, %d(%s)", argreg8[r], offset, ptr)
 		return
 	case 2:
-		printlnToFile("  mov %s, %d(%%rbp)", argreg16[r], offset)
+		printlnToFile("  mov %s, %d(%s)", argreg16[r], offset, ptr)
 		return
 	case 4:
-		printlnToFile("  mov %s, %d(%%rbp)", argreg32[r], offset)
+		printlnToFile("  mov %s, %d(%s)", argreg32[r], offset, ptr)
 		return
 	case 8:
-		printlnToFile("  mov %s, %d(%%rbp)", argreg64[r], offset)
+		printlnToFile("  mov %s, %d(%s)", argreg64[r], offset, ptr)
 		return
 	default:
 		for i := int64(0); i < sz; i += 1 {
-			printlnToFile("  mov %s, %d(%%rbp)", argreg8[r], offset+i)
+			printlnToFile("  mov %s, %d(%s)", argreg8[r], offset+i, ptr)
 			printlnToFile("  shr $8, %s", argreg64[r])
 		}
 		return
@@ -1030,7 +1033,7 @@ func genExpr(node *AstNode) {
 			printlnToFile("  and %%rdi, %%rax")
 			printlnToFile("  mov %%rax, %%r8")
 
-			printlnToFile("  mov %d(%%rbp), %%rax", tmpOffset)
+			printlnToFile("  mov %d(%s), %%rax", tmpOffset, LocalVarPointer)
 			load(mem.Ty)
 
 			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
@@ -1070,7 +1073,7 @@ func genExpr(node *AstNode) {
 	case ND_MEMZERO:
 		// `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.
 		printlnToFile("  mov $%d, %%rcx", node.Variable.Ty.Size)
-		printlnToFile("  lea %d(%%rbp), %%rdi", node.Variable.Offset)
+		printlnToFile("  lea %d(%s), %%rdi", node.Variable.Offset, node.Variable.Pointer)
 		printlnToFile("  xor %%al, %%al")
 		printlnToFile("  rep stosb")
 		return
@@ -1186,7 +1189,7 @@ func genExpr(node *AstNode) {
 		// using up to two registers.
 		if node.ReturnBuffer != nil && node.Ty.Size <= 16 {
 			node.ReturnBuffer.copyReturnBuffer()
-			printlnToFile("  lea %d(%%rbp), %%rax", node.ReturnBuffer.Offset)
+			printlnToFile("  lea %d(%s), %%rax", node.ReturnBuffer.Offset, node.ReturnBuffer.Pointer)
 		}
 
 		return
@@ -1500,6 +1503,22 @@ func genStmt(node *AstNode) {
 	errorTok(node.Tok, "invalid statement")
 }
 
+func getLovalVarAlign(sc *Scope, align int64) int64 {
+	for v := sc.Locals; v != nil; v = v.Next {
+		if v.Offset != 0 {
+			continue
+		}
+		align = int64(math.Max(float64(align), float64(v.Align)))
+	}
+
+	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
+		subMax := getLovalVarAlign(sub, align)
+		align = int64(math.Max(float64(align), float64(subMax)))
+	}
+
+	return align
+}
+
 // Assign offsets to local variables.
 func assignLocalVariableOffsets(prog *Obj) {
 	for fn := prog; fn != nil; fn = fn.Next {
@@ -1526,13 +1545,21 @@ func assignLocalVariableOffsets(prog *Obj) {
 			}
 
 			v.Offset = v.StackOffset + top
+			v.Pointer = "%rbp"
 		}
 
-		fn.LocalVarStackSize = int64(assignLocalVariableOffsets2(fn.Ty.Scopes, 0))
+		fn.StackAlign = getLovalVarAlign(fn.Ty.Scopes, 16)
+
+		lvarPtr := "%rbp"
+		if fn.StackAlign > 16 {
+			lvarPtr = "%rbx"
+		}
+
+		fn.LocalVarStackSize = int64(assignLocalVariableOffsets2(fn.Ty.Scopes, 0, lvarPtr))
 	}
 }
 
-func assignLocalVariableOffsets2(sc *Scope, bottom int) int {
+func assignLocalVariableOffsets2(sc *Scope, bottom int, ptr string) int {
 	for v := sc.Locals; v != nil; v = v.Next {
 		if v.Offset != 0 {
 			continue
@@ -1550,11 +1577,12 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int) int {
 		bottom += int(v.Ty.Size)
 		bottom = int(alignTo(int64(bottom), align))
 		v.Offset = -int64(bottom)
+		v.Pointer = ptr
 	}
 
 	maxDepth := bottom
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
-		subDepth := assignLocalVariableOffsets2(sub, bottom)
+		subDepth := assignLocalVariableOffsets2(sub, bottom, ptr)
 		if opt_optimize && !DontReuseStack {
 			maxDepth = int(math.Max(float64(maxDepth), float64(subDepth)))
 		} else {
@@ -1576,8 +1604,8 @@ func builtin_alloca(node *AstNode) {
 	}
 	printlnToFile("  and $-%d, %%rsp", align)
 	if node.Variable != nil {
-		printlnToFile("  mov %%rsp, %d(%%rbp)", node.Variable.Offset)
-		printlnToFile("  mov %%rsp, %d(%%rbp)", node.TopVLA.Offset)
+		printlnToFile("  mov %%rsp, %d(%s)", node.Variable.Offset, node.Variable.Pointer)
+		printlnToFile("  mov %%rsp, %d(%s)", node.TopVLA.Offset, node.Variable.Pointer)
 	}
 	printlnToFile("  mov %%rsp, %%rax")
 }
@@ -1591,7 +1619,7 @@ func dealloc_vla(node *AstNode) {
 	if node.TargetVLA != nil {
 		vla = node.TargetVLA
 	}
-	printlnToFile("  mov %d(%%rbp), %%rsp", vla.Offset)
+	printlnToFile("  mov %d(%s), %%rsp", vla.Offset, vla.Pointer)
 }
 
 func emitData(prog *Obj) {
@@ -1683,13 +1711,25 @@ func emitText(prog *Obj) {
 		currentFn = fn
 		tmpStack.Bottom = int(fn.LocalVarStackSize)
 
+		useRBX := fn.StackAlign > 16
+		LocalVarPointer = "%rbp"
+		if useRBX {
+			LocalVarPointer = "%rbx"
+		}
+
 		// Prologue
 		printlnToFile("  push %%rbp")
 		printlnToFile("  mov %%rsp, %%rbp")
+		if useRBX {
+			printlnToFile("  push %%rbx")
+			printlnToFile("  mov %%rsp, %%rbx")
+			printlnToFile("  and $-%d, %%rbx", fn.StackAlign)
+			printlnToFile("  mov %%rbx, %%rsp")
+		}
 		reservedPos := len(*cgOutputFile)
 		printlnToFile("PLACEHOLDER")
 		if fn.VlaBase != nil {
-			printlnToFile("  mov %%rsp, %d(%%rbp)", fn.VlaBase.Offset)
+			printlnToFile("  mov %%rsp, %d(%s)", fn.VlaBase.Offset, fn.VlaBase.Pointer)
 		}
 
 		// Save arg registers if function is variadic
@@ -1699,33 +1739,34 @@ func emitText(prog *Obj) {
 			stack := callingConvention(fn.Ty.ParamList, 0, &gp, &fp, nil)
 
 			off := fn.VaArea.Offset
+			ptr := LocalVarPointer
 
 			//__reg_save_area__
-			printlnToFile("  movq %%rdi, %d(%%rbp)", off+24)
-			printlnToFile("  movq %%rsi, %d(%%rbp)", off+32)
-			printlnToFile("  movq %%rdx, %d(%%rbp)", off+40)
-			printlnToFile("  movq %%rcx, %d(%%rbp)", off+48)
-			printlnToFile("  movq %%r8, %d(%%rbp)", off+56)
-			printlnToFile("  movq %%r9, %d(%%rbp)", off+64)
+			printlnToFile("  movq %%rdi, %d(%s)", off+24, ptr)
+			printlnToFile("  movq %%rsi, %d(%s)", off+32, ptr)
+			printlnToFile("  movq %%rdx, %d(%s)", off+40, ptr)
+			printlnToFile("  movq %%rcx, %d(%s)", off+48, ptr)
+			printlnToFile("  movq %%r8, %d(%s)", off+56, ptr)
+			printlnToFile("  movq %%r9, %d(%s)", off+64, ptr)
 			printlnToFile("  test %%al, %%al")
 			printlnToFile("  je 1f")
-			printlnToFile("  movsd %%xmm0, %d(%%rbp)", off+72)
-			printlnToFile("  movsd %%xmm1, %d(%%rbp)", off+88)
-			printlnToFile("  movsd %%xmm2, %d(%%rbp)", off+104)
-			printlnToFile("  movsd %%xmm3, %d(%%rbp)", off+120)
-			printlnToFile("  movsd %%xmm4, %d(%%rbp)", off+136)
-			printlnToFile("  movsd %%xmm5, %d(%%rbp)", off+152)
-			printlnToFile("  movsd %%xmm6, %d(%%rbp)", off+168)
-			printlnToFile("  movsd %%xmm7, %d(%%rbp)", off+184)
+			printlnToFile("  movsd %%xmm0, %d(%s)", off+72, ptr)
+			printlnToFile("  movsd %%xmm1, %d(%s)", off+88, ptr)
+			printlnToFile("  movsd %%xmm2, %d(%s)", off+104, ptr)
+			printlnToFile("  movsd %%xmm3, %d(%s)", off+120, ptr)
+			printlnToFile("  movsd %%xmm4, %d(%s)", off+136, ptr)
+			printlnToFile("  movsd %%xmm5, %d(%s)", off+152, ptr)
+			printlnToFile("  movsd %%xmm6, %d(%s)", off+168, ptr)
+			printlnToFile("  movsd %%xmm7, %d(%s)", off+184, ptr)
 			printlnToFile("1:")
 
 			// va_elem
-			printlnToFile("  movl $%d, %d(%%rbp)", gp*8, off)       // gp_offset
-			printlnToFile("  movl $%d, %d(%%rbp)", fp*16+48, off+4) // fp_offset
-			printlnToFile("  lea %d(%%rbp), %%rax", stack+16)       // overflow_arg_area
-			printlnToFile("  mov %%rax, %d(%%rbp)", off+8)
-			printlnToFile("  lea %d(%%rbp), %%rax", off+24) // reg_save_area
-			printlnToFile("  mov %%rax, %d(%%rbp)", off+16)
+			printlnToFile("  movl $%d, %d(%s)", gp*8, off, ptr)       // gp_offset
+			printlnToFile("  movl $%d, %d(%s)", fp*16+48, off+4, ptr) // fp_offset
+			printlnToFile("  lea %d(%%rbp), %%rax", stack+16)         // overflow_arg_area
+			printlnToFile("  mov %%rax, %d(%s)", off+8, ptr)
+			printlnToFile("  lea %d(%s), %%rax", off+24, ptr) // reg_save_area
+			printlnToFile("  mov %%rax, %d(%s)", off+16, ptr)
 		}
 
 		// Save passed-by-register arguments to the stack
@@ -1737,22 +1778,35 @@ func emitText(prog *Obj) {
 			}
 
 			ty := v.Ty
-			if ty.hasFloatNumber1() {
-				storeFp(fp, v.Offset, int64(math.Min(8, float64(ty.Size))))
-				fp++
-			} else {
-				storeGp(gp, v.Offset, int64(math.Min(8, float64(ty.Size))))
-				gp++
-			}
-
-			if ty.Size > 8 {
-				if ty.hasFloatNumber2() {
-					storeFp(fp, v.Offset+8, ty.Size-8)
+			switch ty.Kind {
+			case TY_STRUCT, TY_UNION:
+				if ty.Size > 16 {
+					panic("ty.Size > 16")
+				}
+				if ty.hasFloatNumber1() {
+					storeFp(fp, int64(math.Min(8, float64(ty.Size))), v.Offset, v.Pointer)
 					fp++
 				} else {
-					storeGp(gp, v.Offset+8, ty.Size-8)
+					storeGp(gp, int64(math.Min(8, float64(ty.Size))), v.Offset, v.Pointer)
 					gp++
 				}
+				if ty.Size > 8 {
+					if ty.hasFloatNumber2() {
+						storeFp(fp, ty.Size-8, v.Offset+8, v.Pointer)
+						fp++
+					} else {
+						storeGp(gp, ty.Size-8, v.Offset+8, v.Pointer)
+						gp++
+					}
+				}
+			case TY_FLOAT, TY_DOUBLE:
+				storeFp(fp, ty.Size, v.Offset, v.Pointer)
+				fp++
+			case TY_LDOUBLE:
+				panic("unreachable")
+			default:
+				storeGp(gp, ty.Size, v.Offset, v.Pointer)
+				gp++
 			}
 		}
 
@@ -1776,6 +1830,9 @@ func emitText(prog *Obj) {
 
 		// Epilogue
 		printlnToFile(".L.return.%s:", fn.Name)
+		if useRBX {
+			printlnToFile("  mov -8(%%rbp), %%rbx")
+		}
 		printlnToFile("  mov %%rbp, %%rsp")
 		printlnToFile("  pop %%rbp")
 		printlnToFile("  ret")
