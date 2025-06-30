@@ -909,6 +909,63 @@ func genExpr(node *AstNode) {
 	case ND_LABEL_VAL:
 		printlnToFile("  lea %s(%%rip), %%rax", node.UniqueLabel)
 		return
+	case ND_VA_ARG:
+		genExpr(node.Lhs)
+		ty := node.Ty
+		v := node.Variable
+
+		if ty.Size <= 16 {
+			regClass0 := !ty.hasFloatNumber1()
+			regClass1 := false
+			if ty.Size > 8 {
+				regClass1 = !ty.hasFloatNumber2()
+			}
+
+			gpInc := boolToInt(regClass0) + boolToInt(ty.Size > 8 && regClass1)
+			if gpInc != 0 {
+				printlnToFile("  cmpl $%d, (%%rax)", 48-gpInc*8)
+				printlnToFile("  ja 1f")
+			}
+			fpInc := boolToInt(!regClass0) + boolToInt(ty.Size > 8 && !regClass1)
+			if fpInc != 0 {
+				printlnToFile("  cmpl $%d, 4(%%rax)", 176-fpInc*16)
+				printlnToFile("  ja 1f")
+			}
+			for i := 0; i < (int(ty.Size)+7)/8; i++ {
+				if (i == 0 && regClass0) || (i == 1 && regClass1) {
+					printlnToFile("  movl (%%rax), %%edi")   // gp_offset
+					printlnToFile("  addq 16(%%rax), %%rdi") // reg_save_area
+					printlnToFile("  addq $8, (%%rax)")
+				} else {
+					printlnToFile("  movl 4(%%rax), %%edi")  // fp_offset
+					printlnToFile("  addq 16(%%rax), %%rdi") // reg_save_area
+					printlnToFile("  addq $16, 4(%%rax)")
+				}
+				for ofs := 0; ofs < (int(ty.Size) - i*8); ofs++ {
+					printlnToFile("  mov %d(%%rdi), %%r8b", ofs)
+					printlnToFile("  mov %%r8b, %d(%s)", ofs+i*8+int(v.Offset), v.Pointer)
+				}
+			}
+			printlnToFile("  jmp 2f")
+			printlnToFile("1:")
+		}
+
+		printlnToFile("  movq 8(%%rax), %%rdi") // overflow_arg_area
+		if ty.Align > 8 {
+			printlnToFile("  addq $%d, %%rdi", ty.Align-1)
+			printlnToFile("  andq $-%d, %%rdi", ty.Align)
+		}
+		printlnToFile("  movq %%rdi, %%rdx")
+		printlnToFile("  addq $%d, %%rdx", alignTo(ty.Size, 8))
+		printlnToFile("  movq %%rdx, 8(%%rax)")
+		for ofs := int64(0); ofs < ty.Size; ofs++ {
+			printlnToFile("  mov %d(%%rdi), %%r8b", ofs)
+			printlnToFile("  mov %%r8b, %d(%s)", ofs+v.Offset, v.Pointer)
+		}
+		if ty.Size <= 16 {
+			printlnToFile("2:")
+		}
+		return
 	case ND_EXCH:
 		genExpr(node.Lhs)
 		pushTmp()
@@ -1496,6 +1553,29 @@ func genStmt(node *AstNode) {
 	case ND_ASM:
 		printlnToFile("  %s", node.AsmStr)
 		return
+	case ND_VA_START:
+		genExpr(node.Lhs)
+		fn := currentFn
+		printlnToFile("  movl $%d, (%%rax)", fn.VaGpOffset)
+		printlnToFile("  movl $%d, 4(%%rax)", fn.VaFpOffset)
+		printlnToFile("  lea %d(%%rbp), %%rdx", fn.VaStOffset)
+		printlnToFile("  movq %%rdx, 8(%%rax)")
+		printlnToFile("  lea %d(%s), %%rdx", fn.VaArea.Offset, fn.VaArea.Pointer)
+		printlnToFile("  movq %%rdx, 16(%%rax)")
+		return
+	case ND_VA_COPY:
+		genExpr(node.Lhs)
+		pushTmp()
+		genExpr(node.Rhs)
+		popTmp("%rdi")
+
+		printlnToFile("  movq (%%rax), %%rdx")
+		printlnToFile("  movq %%rdx, (%%rdi)")
+		printlnToFile("  movq 8(%%rax), %%rdx")
+		printlnToFile("  movq %%rdx, 8(%%rdi)")
+		printlnToFile("  movq 16(%%rax), %%rdx")
+		printlnToFile("  movq %%rdx, 16(%%rdi)")
+		return
 	}
 
 	errorTok(node.Tok, "invalid statement")
@@ -1747,36 +1827,31 @@ func emitText(prog *Obj) {
 			gp := 0
 			fp := 0
 			stack := callingConvention(fn.Ty.ParamList, 0, &gp, &fp, nil)
+			fn.VaGpOffset = int64(gp) * 8
+			fn.VaFpOffset = int64(fp)*16 + 48
+			fn.VaStOffset = int64(stack) + 16
 
 			off := fn.VaArea.Offset
 			ptr := LocalVarPointer
 
 			//__reg_save_area__
-			printlnToFile("  movq %%rdi, %d(%s)", off+24, ptr)
-			printlnToFile("  movq %%rsi, %d(%s)", off+32, ptr)
-			printlnToFile("  movq %%rdx, %d(%s)", off+40, ptr)
-			printlnToFile("  movq %%rcx, %d(%s)", off+48, ptr)
-			printlnToFile("  movq %%r8, %d(%s)", off+56, ptr)
-			printlnToFile("  movq %%r9, %d(%s)", off+64, ptr)
+			printlnToFile("  movq %%rdi, %d(%s)", off, ptr)
+			printlnToFile("  movq %%rsi, %d(%s)", off+8, ptr)
+			printlnToFile("  movq %%rdx, %d(%s)", off+16, ptr)
+			printlnToFile("  movq %%rcx, %d(%s)", off+24, ptr)
+			printlnToFile("  movq %%r8, %d(%s)", off+32, ptr)
+			printlnToFile("  movq %%r9, %d(%s)", off+40, ptr)
 			printlnToFile("  test %%al, %%al")
 			printlnToFile("  je 1f")
-			printlnToFile("  movsd %%xmm0, %d(%s)", off+72, ptr)
-			printlnToFile("  movsd %%xmm1, %d(%s)", off+88, ptr)
-			printlnToFile("  movsd %%xmm2, %d(%s)", off+104, ptr)
-			printlnToFile("  movsd %%xmm3, %d(%s)", off+120, ptr)
-			printlnToFile("  movsd %%xmm4, %d(%s)", off+136, ptr)
-			printlnToFile("  movsd %%xmm5, %d(%s)", off+152, ptr)
-			printlnToFile("  movsd %%xmm6, %d(%s)", off+168, ptr)
-			printlnToFile("  movsd %%xmm7, %d(%s)", off+184, ptr)
+			printlnToFile("  movsd %%xmm0, %d(%s)", off+48, ptr)
+			printlnToFile("  movsd %%xmm1, %d(%s)", off+64, ptr)
+			printlnToFile("  movsd %%xmm2, %d(%s)", off+80, ptr)
+			printlnToFile("  movsd %%xmm3, %d(%s)", off+96, ptr)
+			printlnToFile("  movsd %%xmm4, %d(%s)", off+112, ptr)
+			printlnToFile("  movsd %%xmm5, %d(%s)", off+128, ptr)
+			printlnToFile("  movsd %%xmm6, %d(%s)", off+144, ptr)
+			printlnToFile("  movsd %%xmm7, %d(%s)", off+160, ptr)
 			printlnToFile("1:")
-
-			// va_elem
-			printlnToFile("  movl $%d, %d(%s)", gp*8, off, ptr)       // gp_offset
-			printlnToFile("  movl $%d, %d(%s)", fp*16+48, off+4, ptr) // fp_offset
-			printlnToFile("  lea %d(%%rbp), %%rax", stack+16)         // overflow_arg_area
-			printlnToFile("  mov %%rax, %d(%s)", off+8, ptr)
-			printlnToFile("  lea %d(%s), %%rax", off+24, ptr) // reg_save_area
-			printlnToFile("  mov %%rax, %d(%s)", off+16, ptr)
 		}
 
 		// Save passed-by-register arguments to the stack

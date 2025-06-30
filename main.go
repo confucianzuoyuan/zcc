@@ -672,6 +672,23 @@ func cc1() {
 	head := Token{}
 	cur := &head
 
+	if !opt_E {
+		end := &Token{}
+		src := `typedef struct {
+                unsigned int gp_offset;
+                unsigned int fp_offset;
+                void *overflow_arg_area;
+                void *reg_save_area;
+              } __builtin_va_list[1];`
+		srcInInt8 := []int8{}
+		for _, b := range src {
+			srcInInt8 = append(srcInInt8, int8(b))
+		}
+		srcInInt8 = append(srcInInt8, 0)
+		head.Next = tokenize(addInputFile("zcc_builtins", &srcInInt8), &end)
+		cur = end
+	}
+
 	// Process -include option
 	for i := 0; i < len(opt_include); i++ {
 		incl := opt_include[i]

@@ -2273,6 +2273,35 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 		return node
 	}
 
+	if tok.isEqual("__builtin_va_start") {
+		node := newNode(ND_VA_START, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = conditional(&tok, tok)
+		if tok.isEqual(",") {
+			assign(&tok, tok.Next)
+		}
+		*rest = skip(tok, ")")
+		return node
+	}
+
+	if tok.isEqual("__builtin_va_copy") {
+		node := newNode(ND_VA_COPY, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = conditional(&tok, tok)
+		tok = skip(tok, ",")
+		node.Rhs = conditional(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
+	if tok.isEqual("__builtin_va_end") {
+		node := newNode(ND_EXPR_STMT, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = conditional(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
 	if tok.isEqual("{") {
 		return compoundStmt(rest, tok.Next, nil)
 	}
@@ -3671,19 +3700,22 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return newNum(0, start)
 	}
 
-	if tok.isEqual("__builtin_reg_class") {
+	if tok.isEqual("__builtin_va_arg") {
+		node := newNode(ND_VA_ARG, tok)
 		tok = skip(tok.Next, "(")
-		ty := typeName(&tok, tok)
+
+		apArg := conditional(&tok, tok)
+		apArg.addType()
+		node.Lhs = apArg
+		tok = skip(tok, ",")
+
+		enterScope()
+		node.Variable = newLocalVar("", typeName(&tok, tok))
+		node.Ty = node.Variable.Ty
+		leaveScope()
+		chainExpr(&node, newVarNode(node.Variable, tok))
 		*rest = skip(tok, ")")
-
-		if ty.isInteger() || ty.Kind == TY_PTR {
-			return newNum(0, start)
-		}
-		if ty.Kind == TY_FLOAT || ty.Kind == TY_DOUBLE {
-			return newNum(1, start)
-		}
-
-		return newNum(2, start)
+		return node
 	}
 
 	if tok.isEqual("__builtin_atomic_exchange") {
@@ -3834,7 +3866,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	}
 
 	if ty.IsVariadic {
-		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyPChar, 200))
+		fn.VaArea = newLocalVar("", arrayOf(TyPChar, 176))
 	}
 
 	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is

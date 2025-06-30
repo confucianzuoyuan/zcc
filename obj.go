@@ -32,6 +32,9 @@ type Obj struct {
 	LargeRtn          *Obj
 	Body              *AstNode
 	VaArea            *Obj // Variable argument area
+	VaGpOffset        int64
+	VaFpOffset        int64
+	VaStOffset        int64
 	VlaBase           *Obj
 	StackAlign        int64
 	LocalVarStackSize int64
