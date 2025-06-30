@@ -6,6 +6,7 @@ const (
 	TY_VOID CTypeKind = iota
 	TY_BOOL
 	TY_CHAR
+	TY_PCHAR // Plain Char
 	TY_INT
 	TY_SHORT
 	TY_LONG
@@ -198,6 +199,12 @@ var TyLDouble = &CType{
 	Align: 16,
 }
 
+var TyPChar = &CType{
+	Kind:  TY_PCHAR,
+	Size:  1,
+	Align: 1,
+}
+
 func newType(kind CTypeKind, size int64, align int64) *CType {
 	ty := &CType{
 		Kind:  kind,
@@ -209,7 +216,7 @@ func newType(kind CTypeKind, size int64, align int64) *CType {
 }
 
 func (t *CType) isInteger() bool {
-	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL || t.Kind == TY_ENUM || t.Kind == TY_LONGLONG
+	return t.Kind == TY_CHAR || t.Kind == TY_INT || t.Kind == TY_LONG || t.Kind == TY_SHORT || t.Kind == TY_BOOL || t.Kind == TY_ENUM || t.Kind == TY_LONGLONG || t.Kind == TY_PCHAR
 }
 
 func (t *CType) isFloat() bool {
@@ -519,7 +526,7 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 	}
 
 	switch t1.Kind {
-	case TY_CHAR, TY_SHORT, TY_INT, TY_LONG, TY_LONGLONG:
+	case TY_CHAR, TY_PCHAR, TY_SHORT, TY_INT, TY_LONG, TY_LONGLONG:
 		return t1.IsUnsigned == t2.IsUnsigned
 	case TY_FLOAT, TY_DOUBLE, TY_LDOUBLE:
 		return true

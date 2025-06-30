@@ -735,7 +735,7 @@ const (
 
 func getTypeId(ty *CType) int {
 	switch ty.Kind {
-	case TY_CHAR:
+	case TY_CHAR, TY_PCHAR:
 		if ty.IsUnsigned {
 			return U8
 		} else {
@@ -1166,7 +1166,7 @@ func genExpr(node *AstNode) {
 		case TY_BOOL:
 			printlnToFile("  movzx %%al, %%eax")
 			return
-		case TY_CHAR:
+		case TY_CHAR, TY_PCHAR:
 			if node.Ty.IsUnsigned {
 				printlnToFile("  movzbl %%al, %%eax")
 			} else {

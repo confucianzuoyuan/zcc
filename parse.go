@@ -1178,7 +1178,9 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			ty = TyVoid
 		case BOOL:
 			ty = TyBool
-		case CHAR, SIGNED + CHAR:
+		case CHAR:
+			ty = TyPChar
+		case SIGNED + CHAR:
 			ty = TyChar
 		case UNSIGNED + CHAR:
 			ty = TyUChar
@@ -2666,7 +2668,7 @@ func toAssign(binary *AstNode) *AstNode {
 	tok := binary.Tok
 
 	// Convert `A.x op= C` to `tmp = &A, (*tmp).x = (*tmp).x op C`.
-	if binary.Lhs.Kind == ND_MEMBER {
+	if binary.Lhs.isBitField() {
 		v := newLocalVar("", pointerTo(binary.Lhs.Lhs.Ty))
 
 		expr1 := newBinary(ND_ASSIGN, newVarNode(v, tok), newUnary(ND_ADDR, binary.Lhs.Lhs, tok), tok)
@@ -2776,7 +2778,7 @@ func asmStmt(rest **Token, tok *Token) *AstNode {
 	}
 
 	tok = skip(tok, "(")
-	if tok.Kind != TK_STR || tok.Ty.Base.Kind != TY_CHAR {
+	if tok.Kind != TK_STR || tok.Ty.Base.Kind != TY_PCHAR {
 		errorTok(tok, "expected string literal")
 	}
 
@@ -3237,7 +3239,7 @@ func unary(rest **Token, tok *Token) *AstNode {
 // Convert A++ to `(ptr = &A, tmp = *ptr, *ptr += 1, tmp)`
 func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
 	node.addType()
-	if node.Kind == ND_MEMBER {
+	if node.isBitField() {
 		enterScope()
 		tmp := newLocalVar("", node.Ty)
 		ptr := newLocalVar("", pointerTo(node.Lhs.Ty))
@@ -3771,7 +3773,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	}
 
 	if ty.IsVariadic {
-		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyChar, 200))
+		fn.VaArea = newLocalVar("__va_area__", arrayOf(TyPChar, 200))
 	}
 
 	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
@@ -3780,7 +3782,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	buf := []uint8(fn.Name)
 	buf = append(buf, 0)
 	newBuf := U82I8(buf)
-	v := newStringLiteral(newBuf, arrayOf(TyChar, int64(len(fn.Name)+1)))
+	v := newStringLiteral(newBuf, arrayOf(TyPChar, int64(len(fn.Name)+1)))
 	pushScope("__func__").Variable = v
 
 	// [GNU] __FUNCTION__ is yet another name of __func__.

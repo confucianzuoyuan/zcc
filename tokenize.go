@@ -337,7 +337,7 @@ func readStringLiteral(file *File, start int, quote int) *Token {
 
 	tok := newToken(TK_STR, start, end+1)
 	tok.File = file
-	tok.Ty = arrayOf(TyChar, len+1)
+	tok.Ty = arrayOf(TyPChar, len+1)
 	tok.StringLiteral = str
 	return tok
 }
