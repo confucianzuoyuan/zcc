@@ -31,7 +31,6 @@ var opt_func_sections bool
 var opt_g bool
 var opt_optimize bool
 var opt_fpic bool
-var opt_x FileType
 var opt_include []string
 var opt_fcommon bool = true
 var opt_E bool
@@ -254,12 +253,14 @@ func parseArgs(args []string) {
 
 		if args[idx] == "-x" {
 			idx++
-			opt_x = parseOptX(args[idx])
+			inputPaths = append(inputPaths, "-x")
+			inputPaths = append(inputPaths, args[idx])
 			continue
 		}
 
 		if strings.HasPrefix(args[idx], "-x") {
-			opt_x = parseOptX(args[idx][2:])
+			inputPaths = append(inputPaths, "-x")
+			inputPaths = append(inputPaths, args[idx][2:])
 			continue
 		}
 
@@ -407,11 +408,6 @@ func parseArgs(args []string) {
 	if len(inputPaths) == 0 {
 		panic("no input files")
 	}
-
-	// -E implies that the input is the C macro language.
-	if opt_E {
-		opt_x = FILE_C
-	}
 }
 
 func inStdIncludePath(path string) bool {
@@ -474,10 +470,6 @@ func printDependencies() {
 }
 
 func getFileType(filename string) FileType {
-	if opt_x != FILE_NONE {
-		return opt_x
-	}
-
 	if strings.HasSuffix(filename, ".a") {
 		return FILE_AR
 	}
@@ -494,6 +486,10 @@ func getFileType(filename string) FileType {
 
 	if strings.HasSuffix(filename, ".s") {
 		return FILE_ASM
+	}
+
+	if opt_E && filename == "-" {
+		return FILE_C
 	}
 
 	if strings.Contains(filename, ".so.") {
@@ -860,14 +856,19 @@ func main() {
 		return
 	}
 
-	if len(inputPaths) > 1 && opt_o != "" && (opt_c || opt_S || opt_E) {
-		panic("cannot specify '-o' with '-c' ,'-S' or '-E' with multiple files")
-	}
-
 	ldArgs := []string{}
+	fileCount := 0
+	opt_x := FILE_NONE
 
-	for _, p := range inputPaths {
-		input := p
+	for i := 0; i < len(inputPaths); i++ {
+		if inputPaths[i] == "-x" {
+			i++
+			opt_x = parseOptX(inputPaths[i])
+			continue
+		}
+
+		input := inputPaths[i]
+
 		if strings.HasPrefix(input, "-l") {
 			ldArgs = append(ldArgs, input)
 			continue
@@ -880,6 +881,14 @@ func main() {
 			continue
 		}
 
+		if opt_o != "" && (opt_c || opt_S || opt_E) {
+			fileCount++
+			if fileCount > 1 {
+				fmt.Fprintf(os.Stderr, "cannot specify '-o' with '-c', '-S' or '-E' with multiple files")
+				os.Exit(1)
+			}
+		}
+
 		output := ""
 
 		if opt_o != "" {
@@ -890,7 +899,12 @@ func main() {
 			output = replaceExtension(input, ".o")
 		}
 
-		filetype := getFileType(input)
+		var filetype FileType
+		if opt_x != FILE_NONE {
+			filetype = opt_x
+		} else {
+			filetype = getFileType(input)
+		}
 
 		// Handle .o or .a
 		if filetype == FILE_OBJ || filetype == FILE_AR || filetype == FILE_DSO {
