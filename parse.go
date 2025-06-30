@@ -51,11 +51,12 @@ var TypeNames = map[string]struct{}{
 	"_Noreturn":     {},
 	"float":         {},
 	"double":        {},
-	"typeof":        {},
 	"inline":        {},
 	"_Thread_local": {},
 	"__thread":      {},
 	"_Atomic":       {},
+	"__typeof":      {},
+	"__typeof__":    {},
 }
 
 // Scope for local, global variables or typedefs
@@ -1126,7 +1127,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 		// Handle user-defined types.
 		ty2 := findTypeDef(tok)
-		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || ty2 != nil {
+		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") || ty2 != nil {
 			if counter != 0 {
 				break
 			}
@@ -1137,7 +1138,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				ty = unionDecl(&tok, tok.Next)
 			} else if tok.isEqual("enum") {
 				ty = enumSpecifier(&tok, tok.Next)
-			} else if tok.isEqual("typeof") {
+			} else if tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") {
 				ty = typeofSpecifier(&tok, tok.Next)
 			} else {
 				ty = ty2
@@ -1989,6 +1990,9 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 
 // Returns true if a given token represents a type.
 func (tok *Token) isTypename() bool {
+	if opt_std == STD_NONE || opt_std >= STD_C23 {
+		TypeNames["typeof"] = struct{}{}
+	}
 	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	_, ok := TypeNames[name]
 	if ok {
@@ -2007,7 +2011,7 @@ func (tok *Token) isTypename() bool {
  *	    | "for" "(" expr-stmt expr? ";" expr? ")" stmt
  *	    | "while" "(" expr ")" stmt
  *	    | "do" stmt "while" "(" expr ")" ";"
- *      | "asm" asm-stmt
+ *      | "__asm__" asm-stmt
  *      | "goto" (ident | "*" expr) ";"
  *      | "break" ";"
  *	    | "continue" ";"
@@ -2200,7 +2204,7 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 		return node
 	}
 
-	if tok.isEqual("asm") {
+	if tok.Kind == TK_KEYWORD && (tok.isEqual("asm") || tok.isEqual("__asm") || tok.isEqual("__asm__")) {
 		return asmStmt(rest, tok)
 	}
 
@@ -2813,7 +2817,7 @@ func expr(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-// asm-stmt = "asm" ("volatile" | "inline")* "(" string-literal ")"
+// asm-stmt = "__asm__" ("volatile" | "inline")* "(" string-literal ")"
 func asmStmt(rest **Token, tok *Token) *AstNode {
 	node := newNode(ND_ASM, tok)
 	tok = tok.Next

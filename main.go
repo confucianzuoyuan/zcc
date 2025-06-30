@@ -11,6 +11,17 @@ import (
 	"syscall"
 )
 
+type StdVer int
+
+const (
+	STD_NONE StdVer = iota
+	STD_C89
+	STD_C99
+	STD_C11
+	STD_C17
+	STD_C23
+)
+
 type FileType int
 
 const (
@@ -26,6 +37,7 @@ var includePaths []string
 var ldExtraArgs []string
 var stdIncludePaths []string
 
+var opt_std StdVer
 var opt_data_sections bool
 var opt_func_sections bool
 var opt_g bool
@@ -356,6 +368,31 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if strings.HasPrefix(args[idx], "-std=c") {
+			if len(args[idx]) < 8 {
+				fmt.Fprintf(os.Stderr, "unknown c standard")
+				os.Exit(1)
+			}
+
+			version := args[idx][6:8]
+			if version == "89" || version == "90" {
+				opt_std = STD_C89
+			} else if version == "99" {
+				opt_std = STD_C99
+			} else if version == "11" {
+				opt_std = STD_C11
+			} else if version == "17" || version == "18" {
+				opt_std = STD_C17
+			} else if version == "23" {
+				opt_std = STD_C23
+			} else {
+				fmt.Fprintf(os.Stderr, "unknown c standard")
+				os.Exit(1)
+			}
+
+			continue
+		}
+
 		if strings.HasPrefix(args[idx], "-fstack-reuse=") {
 			if args[idx] == "-fstack-reuse=all" {
 				DontReuseStack = true
@@ -391,7 +428,7 @@ func parseArgs(args []string) {
 			continue
 		}
 
-		if strings.HasPrefix(args[idx], "-W") || strings.HasPrefix(args[idx], "-std=") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" || args[idx] == "-fno-lto" || args[idx] == "-pedantic" {
+		if strings.HasPrefix(args[idx], "-W") || args[idx] == "-ffreestanding" || args[idx] == "-fno-builtin" || args[idx] == "-fno-omit-frame-pointer" || args[idx] == "-fno-stack-protector" || args[idx] == "-fno-strict-aliasing" || args[idx] == "-m64" || args[idx] == "-mno-red-zone" || args[idx] == "-w" || args[idx] == "-fno-lto" || args[idx] == "-pedantic" {
 			continue
 		}
 

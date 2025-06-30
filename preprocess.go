@@ -1306,7 +1306,6 @@ func initMacros() {
 	defineMacro("__SIZE_TYPE__", "unsigned long")
 	defineMacro("__STDC_HOSTED__", "1")
 	defineMacro("__STDC_NO_COMPLEX__", "1")
-	defineMacro("__STDC_VERSION__", "201112L")
 	defineMacro("__STDC__", "1")
 	defineMacro("__USER_LABEL_PREFIX__", "")
 	defineMacro("__alignof__", "_Alignof")
@@ -1319,7 +1318,6 @@ func initMacros() {
 	defineMacro("__linux", "1")
 	defineMacro("__linux__", "1")
 	defineMacro("__signed__", "signed")
-	defineMacro("__typeof__", "typeof")
 	defineMacro("__unix", "1")
 	defineMacro("__unix__", "1")
 	defineMacro("__volatile__", "volatile")
@@ -1332,7 +1330,20 @@ func initMacros() {
 	defineMacro("__BYTE_ORDER__", "1234")
 	defineMacro("__ORDER_BIG_ENDIAN__", "4321")
 	defineMacro("__ORDER_LITTLE_ENDIAN__", "1234")
-	defineMacro("__typeof", "typeof")
+
+	switch opt_std {
+	case STD_C89:
+	case STD_C99:
+		defineMacro("__STDC_VERSION__", "199901L")
+	case STD_C11:
+		defineMacro("__STDC_VERSION__", "201112L")
+	case STD_C17:
+		defineMacro("__STDC_VERSION__", "201710L")
+	case STD_C23:
+		defineMacro("__STDC_VERSION__", "202311L")
+	default:
+		defineMacro("__STDC_VERSION__", "201710L")
+	}
 
 	addBuiltin("__FILE__", fileMacro)
 	addBuiltin("__LINE__", lineMacro)
