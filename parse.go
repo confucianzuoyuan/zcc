@@ -2497,16 +2497,37 @@ func eval2(node *AstNode, label **string) int64 {
 		}
 		return eval(node.Lhs) >> eval(node.Rhs)
 	case ND_EQ:
+		if node.Lhs.Ty.isFloat() {
+			if evalDouble(node.Lhs) == evalDouble(node.Rhs) {
+				return 1
+			} else {
+				return 0
+			}
+		}
 		if eval(node.Lhs) == eval(node.Rhs) {
 			return 1
 		}
 		return 0
 	case ND_NE:
+		if node.Lhs.Ty.isFloat() {
+			if evalDouble(node.Lhs) != evalDouble(node.Rhs) {
+				return 1
+			} else {
+				return 0
+			}
+		}
 		if eval(node.Lhs) != eval(node.Rhs) {
 			return 1
 		}
 		return 0
 	case ND_LT:
+		if node.Lhs.Ty.isFloat() {
+			if evalDouble(node.Lhs) < evalDouble(node.Rhs) {
+				return 1
+			} else {
+				return 0
+			}
+		}
 		if node.Lhs.Ty.IsUnsigned {
 			if eval(node.Rhs) < 0 {
 				return 0
@@ -2523,6 +2544,13 @@ func eval2(node *AstNode, label **string) int64 {
 		}
 		return 0
 	case ND_LE:
+		if node.Lhs.Ty.isFloat() {
+			if evalDouble(node.Lhs) <= evalDouble(node.Rhs) {
+				return 1
+			} else {
+				return 0
+			}
+		}
 		if node.Lhs.Ty.IsUnsigned {
 			if eval(node.Rhs) < 0 {
 				return 0
