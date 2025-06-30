@@ -322,6 +322,9 @@ func evalConstExpr(rest **Token, tok *Token) int64 {
 	for t := expr; t.Kind != TK_EOF; t = t.Next {
 		if t.Kind == TK_IDENT {
 			next := t.Next
+			if next.isEqual("(") {
+				errorTok(t, "undefined function-like macro")
+			}
 			*t = *newNumberToken(0, t)
 			t.Next = next
 		}
