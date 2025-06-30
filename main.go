@@ -914,9 +914,18 @@ func main() {
 
 		// Handle .s
 		if filetype == FILE_ASM {
-			if !opt_S {
-				assemble(input, output)
+			if opt_S || opt_E || opt_M {
+				continue
 			}
+
+			if opt_c {
+				assemble(input, output)
+				continue
+			}
+
+			tmp := createTmpfile()
+			assemble(input, tmp)
+			ldArgs = append(ldArgs, tmp)
 			continue
 		}
 
