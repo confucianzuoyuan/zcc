@@ -26,6 +26,7 @@ var includePaths []string
 var ldExtraArgs []string
 var stdIncludePaths []string
 
+var opt_data_sections bool
 var opt_func_sections bool
 var opt_g bool
 var opt_optimize bool
@@ -375,6 +376,11 @@ func parseArgs(args []string) {
 
 		if args[idx] == "-ffunction-sections" {
 			opt_func_sections = true
+			continue
+		}
+
+		if args[idx] == "-fdata-sections" {
+			opt_data_sections = true
 			continue
 		}
 

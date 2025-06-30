@@ -1650,8 +1650,12 @@ func emitData(prog *Obj) {
 
 		// .data or .tdata
 		if v.InitData != nil {
-			if v.IsTls {
+			if v.IsTls && opt_data_sections {
+				printlnToFile("  .section .tdata.%s,\"awT\",@progbits", v.Name)
+			} else if v.IsTls {
 				printlnToFile("  .section .tdata,\"awT\",@progbits")
+			} else if opt_data_sections {
+				printlnToFile("  .section .data.%s,\"aw\",@progbits", v.Name)
 			} else {
 				printlnToFile("  .data")
 			}
@@ -1678,8 +1682,12 @@ func emitData(prog *Obj) {
 		}
 
 		// .bss or .tbss
-		if v.IsTls {
+		if v.IsTls && opt_data_sections {
+			printlnToFile("  .section .tbss.%s,\"awT\",@nobits", v.Name)
+		} else if v.IsTls {
 			printlnToFile("  .section .tbss,\"awT\",@nobits")
+		} else if opt_data_sections {
+			printlnToFile("  .section .bss.%s,\"aw\",@nobits", v.Name)
 		} else {
 			printlnToFile("  .bss")
 		}
