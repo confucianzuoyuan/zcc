@@ -423,7 +423,7 @@ func skipExcessElement(tok *Token) *Token {
 }
 
 // string-initializer = string-literal
-func stringInitializer(rest **Token, tok *Token, init *Initializer) {
+func stringInitializer(tok *Token, init *Initializer) {
 	if init.IsFlexible {
 		*init = *newInitializer(arrayOf(init.Ty.Base, tok.Ty.ArrayLength), false)
 	}
@@ -455,7 +455,6 @@ func stringInitializer(rest **Token, tok *Token, init *Initializer) {
 	} else {
 		panic("unreachable")
 	}
-	*rest = tok.Next
 }
 
 // An array length can be omitted if an array has an initializer
@@ -744,12 +743,18 @@ func unionInitializer(rest **Token, tok *Token, init *Initializer) {
  *             | assign
  */
 func initializer2(rest **Token, tok *Token, init *Initializer) {
-	if init.Ty.Kind == TY_ARRAY && init.Ty.Base.Base == nil {
-		if tok.isEqual("{") && stringInitializer2(&tok, tok.Next, init) {
-			*rest = skip(tok, "}")
-			return
+	if init.Ty.Kind == TY_ARRAY && init.Ty.Base.isInteger() {
+		start := tok
+		strToken := &Token{}
+		if tok.isEqual("{") && isStringToken(&tok, tok.Next, &strToken) {
+			if consume(rest, tok, "}") {
+				stringInitializer(strToken, init)
+				return
+			}
+			tok = start
 		}
-		if stringInitializer2(rest, tok, init) {
+		if isStringToken(rest, tok, &strToken) {
+			stringInitializer(strToken, init)
 			return
 		}
 	}
@@ -3455,13 +3460,14 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	return node
 }
 
-func stringInitializer2(rest **Token, tok *Token, init *Initializer) bool {
-	if tok.isEqual("(") && stringInitializer2(&tok, tok.Next, init) {
-		*rest = skip(tok, ")")
+func isStringToken(rest **Token, tok *Token, strToken **Token) bool {
+	if tok.isEqual("(") && isStringToken(&tok, tok.Next, strToken) && consume(rest, tok, ")") {
 		return true
 	}
+
 	if tok.Kind == TK_STR {
-		stringInitializer(rest, tok, init)
+		*strToken = tok
+		*rest = tok.Next
 		return true
 	}
 	return false
