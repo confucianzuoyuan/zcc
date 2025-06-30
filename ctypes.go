@@ -109,9 +109,10 @@ var TyVoid = &CType{
 }
 
 var TyBool = &CType{
-	Kind:  TY_BOOL,
-	Size:  1,
-	Align: 1,
+	Kind:       TY_BOOL,
+	Size:       1,
+	Align:      1,
+	IsUnsigned: true,
 }
 
 var TyChar = &CType{
