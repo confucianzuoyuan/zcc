@@ -1693,11 +1693,14 @@ func pointers(rest **Token, tok *Token, ty *CType) *CType {
 func declarator(rest **Token, tok *Token, ty *CType) *CType {
 	ty = pointers(&tok, tok, ty)
 
-	if tok.isEqual("(") {
-		start := tok
-		tok = skipParen(tok.Next)
-		ty = typeSuffix(rest, tok, ty)
-		return declarator(&tok, start.Next, ty)
+	if consume(&tok, tok, "(") {
+		if tok.isTypename() || tok.isEqual(")") {
+			return funcParams(rest, tok, ty)
+		}
+
+		ty = typeSuffix(rest, skipParen(tok), ty)
+		t := &Token{}
+		return declarator(&t, tok, ty)
 	}
 
 	var name *Token = nil
@@ -1718,11 +1721,14 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 func abstractDeclarator(rest **Token, tok *Token, ty *CType) *CType {
 	ty = pointers(&tok, tok, ty)
 
-	if tok.isEqual("(") {
-		start := tok
-		tok = skipParen(tok.Next)
-		ty = typeSuffix(rest, tok, ty)
-		return abstractDeclarator(&tok, start.Next, ty)
+	if consume(&tok, tok, "(") {
+		if tok.isTypename() || tok.isEqual(")") {
+			return funcParams(rest, tok, ty)
+		}
+
+		ty = typeSuffix(rest, skipParen(tok), ty)
+		t := &Token{}
+		return abstractDeclarator(&t, tok, ty)
 	}
 
 	return typeSuffix(rest, tok, ty)
@@ -3452,6 +3458,9 @@ func genericSelection(rest **Token, tok *Token) *AstNode {
 		}
 
 		t2 := typeName(&tok, tok)
+		if t2.Kind == TY_FUNC {
+			errorTok(tok, "association has function type")
+		}
 		tok = skip(tok, ":")
 		node := assign(&tok, tok)
 		if t1.isCompatibleWith(t2) {
