@@ -3234,10 +3234,41 @@ func unary(rest **Token, tok *Token) *AstNode {
 	return postfix(rest, tok)
 }
 
-// Convert A++ to `(typeof A)((A += 1) - 1)`
+// Convert A++ to `(ptr = &A, tmp = *ptr, *ptr += 1, tmp)`
 func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
 	node.addType()
-	return newCast(newAdd(toAssign(newAdd(node, newNum(int64(addend), tok), tok)), newNum(-int64(addend), tok), tok), node.Ty)
+	if node.Kind == ND_MEMBER {
+		enterScope()
+		tmp := newLocalVar("", node.Ty)
+		ptr := newLocalVar("", pointerTo(node.Lhs.Ty))
+
+		expr := newBinary(ND_ASSIGN, newVarNode(ptr, tok), newUnary(ND_ADDR, node.Lhs, tok), tok)
+
+		memref1 := newUnary(ND_MEMBER, newUnary(ND_DEREF, newVarNode(ptr, tok), tok), tok)
+
+		memref1.Member = node.Member
+
+		memref2 := newUnary(ND_MEMBER, newUnary(ND_DEREF, newVarNode(ptr, tok), tok), tok)
+
+		memref2.Member = node.Member
+
+		chainExpr(&expr, newBinary(ND_ASSIGN, newVarNode(tmp, tok), memref1, tok))
+		chainExpr(&expr, toAssign(newAdd(memref2, newNum(int64(addend), tok), tok)))
+		chainExpr(&expr, newVarNode(tmp, tok))
+		leaveScope()
+		return expr
+	}
+
+	enterScope()
+	tmp := newLocalVar("", node.Ty)
+	ptr := newLocalVar("", pointerTo(node.Ty))
+
+	expr := newBinary(ND_ASSIGN, newVarNode(ptr, tok), newUnary(ND_ADDR, node, tok), tok)
+	chainExpr(&expr, newBinary(ND_ASSIGN, newVarNode(tmp, tok), newUnary(ND_DEREF, newVarNode(ptr, tok), tok), tok))
+	chainExpr(&expr, toAssign(newAdd(newUnary(ND_DEREF, newVarNode(ptr, tok), tok), newNum(int64(addend), tok), tok)))
+	chainExpr(&expr, newVarNode(tmp, tok))
+	leaveScope()
+	return expr
 }
 
 /*
