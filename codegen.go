@@ -795,7 +795,9 @@ const F32U16 = "cvttss2sil %xmm0, %eax; movzwl %ax, %eax"
 const F32I32 = "cvttss2sil %xmm0, %eax"
 const F32U32 = "cvttss2siq %xmm0, %rax"
 const F32I64 = "cvttss2siq %xmm0, %rax"
-const F32U64 = "cvttss2siq %xmm0, %rax"
+const F32U64 = `cvttss2siq %xmm0, %rcx; movq %rcx, %rdx; movl $0x5F000000, %eax; 
+  movd %eax, %xmm1; subss %xmm1, %xmm0; cvttss2siq %xmm0, %rax; 
+  sarq $63, %rdx; andq %rdx, %rax; orq %rcx, %rax;`
 const F32F64 = "cvtss2sd %xmm0, %xmm0"
 const F32F80 = "movss %xmm0, -4(%rsp); flds -4(%rsp)"
 
@@ -807,7 +809,9 @@ const F64I32 = "cvttsd2sil %xmm0, %eax"
 const F64U32 = "cvttsd2siq %xmm0, %rax"
 const F64F32 = "cvtsd2ss %xmm0, %xmm0"
 const F64I64 = "cvttsd2siq %xmm0, %rax"
-const F64U64 = "cvttsd2siq %xmm0, %rax"
+const F64U64 = `cvttsd2siq %xmm0, %rcx; movq %rcx, %rdx; mov $0x43e0000000000000, %rax; 
+  movq %rax, %xmm1; subsd %xmm1, %xmm0; cvttsd2siq %xmm0, %rax; 
+  sarq $63, %rdx; andq %rdx, %rax; orq %rcx, %rax`
 const F64F80 = "movsd %xmm0, -8(%rsp); fldl -8(%rsp)"
 
 const FROM_F80_1 = "fnstcw -10(%rsp); movzwl -10(%rsp), %eax; or $12, %ah; " + "mov %ax, -12(%rsp); fldcw -12(%rsp); "
