@@ -824,7 +824,7 @@ const F80U16 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "movswl -24(%rsp), %eax"
 const F80I32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov -24(%rsp), %eax"
 const F80U32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov -24(%rsp), %eax"
 const F80I64 = FROM_F80_1 + "fistpq" + FROM_F80_2 + "mov -24(%rsp), %rax"
-const F80U64 = FROM_F80_1 + "fistpq" + FROM_F80_2 + "mov -24(%rsp), %rax"
+const F80U64 = `movl $0x5f000000, -4(%rsp); flds -4(%rsp); fucomi %st(1), %st; setbe %al;fldz; fcmovbe %st(1), %st; fstp %st(1); fsubrp %st, %st(1); fnstcw -12(%rsp);movzwl -12(%rsp), %ecx; orl $3072, %ecx; movw %cx, -10(%rsp); fldcw -10(%rsp);fistpll -8(%rsp); fldcw -12(%rsp); shlq $63, %rax; xorq -8(%rsp), %rax;`
 const F80F32 = "fstps -8(%rsp); movss -8(%rsp), %xmm0"
 const F80F64 = "fstpl -8(%rsp); movsd -8(%rsp), %xmm0"
 
@@ -1843,14 +1843,14 @@ func emitText(prog *Obj) {
 			printlnToFile("  movq %%r9, %d(%s)", off+40, ptr)
 			printlnToFile("  test %%al, %%al")
 			printlnToFile("  je 1f")
-			printlnToFile("  movsd %%xmm0, %d(%s)", off+48, ptr)
-			printlnToFile("  movsd %%xmm1, %d(%s)", off+64, ptr)
-			printlnToFile("  movsd %%xmm2, %d(%s)", off+80, ptr)
-			printlnToFile("  movsd %%xmm3, %d(%s)", off+96, ptr)
-			printlnToFile("  movsd %%xmm4, %d(%s)", off+112, ptr)
-			printlnToFile("  movsd %%xmm5, %d(%s)", off+128, ptr)
-			printlnToFile("  movsd %%xmm6, %d(%s)", off+144, ptr)
-			printlnToFile("  movsd %%xmm7, %d(%s)", off+160, ptr)
+			printlnToFile("  movdqu %%xmm0, %d(%s)", off+48, ptr)
+			printlnToFile("  movdqu %%xmm1, %d(%s)", off+64, ptr)
+			printlnToFile("  movdqu %%xmm2, %d(%s)", off+80, ptr)
+			printlnToFile("  movdqu %%xmm3, %d(%s)", off+96, ptr)
+			printlnToFile("  movdqu %%xmm4, %d(%s)", off+112, ptr)
+			printlnToFile("  movdqu %%xmm5, %d(%s)", off+128, ptr)
+			printlnToFile("  movdqu %%xmm6, %d(%s)", off+144, ptr)
+			printlnToFile("  movdqu %%xmm7, %d(%s)", off+160, ptr)
 			printlnToFile("1:")
 		}
 
