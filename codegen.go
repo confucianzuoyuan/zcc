@@ -107,21 +107,30 @@ func popTmpF(reg int) {
 	printlnToFile("  movsd %d(%s), %%xmm%d", offset, LocalVarPointer, reg)
 }
 
-func movExtend(v *Obj, reg string) {
+// When we load a char or a short value to a register, we always
+// extend them to the size of int, so we can assume the lower half of
+// a register always contains a valid value.
+func loadExtendInt(ty *CType, offset int, ptr string, reg string) {
 	insn := "movs"
-	if v.Ty.IsUnsigned {
+	if ty.IsUnsigned {
 		insn = "movz"
 	}
 
-	if v.Ty.Size == 1 {
-		printlnToFile("  %sb %d(%s), %s", insn, v.Offset, v.Pointer, reg)
-	} else if v.Ty.Size == 2 {
-		printlnToFile("  %sw %d(%s), %s", insn, v.Offset, v.Pointer, reg)
-	} else if v.Ty.Size == 4 {
-		printlnToFile("  movsxd %d(%s), %s", v.Offset, v.Pointer, reg)
-	} else {
-		printlnToFile("  mov %d(%s), %s", v.Offset, v.Pointer, reg)
+	switch ty.Size {
+	case 1:
+		printlnToFile("  %sbl %d(%s), %s", insn, offset, ptr, reg)
+		return
+	case 2:
+		printlnToFile("  %swl %d(%s), %s", insn, offset, ptr, reg)
+		return
+	case 4:
+		printlnToFile("  movl %d(%s), %s", offset, ptr, reg)
+		return
+	case 8:
+		printlnToFile("  mov %d(%s), %s", offset, ptr, reg)
+		return
 	}
+	panic("unreachable")
 }
 
 func callingConvention(v *Obj, gpStart int64, gpCount *int, fpCount *int, stackAlign *int) int64 {
@@ -214,24 +223,23 @@ func placeStackArgs(node *AstNode) {
 				printlnToFile("  mov %d(%s), %%r8b", i+v.Offset, v.Pointer)
 				printlnToFile("  mov %%r8b, %d(%%rsp)", i+v.StackOffset)
 			}
+			continue
 		case TY_FLOAT, TY_DOUBLE:
 			printlnToFile("  movsd %d(%s), %%xmm0", v.Offset, v.Pointer)
 			printlnToFile("  movsd %%xmm0, %d(%%rsp)", v.StackOffset)
+			continue
 		case TY_LDOUBLE:
 			printlnToFile("  fldt %d(%s)", v.Offset, v.Pointer)
 			printlnToFile("  fstpt %d(%%rsp)", v.StackOffset)
-		default:
-			if v.Ty.Size > 8 {
-				panic("v.Ty.Size > 8")
-			}
-
-			ax := regAX(8)
-			if v.Ty.Size < 4 {
-				ax = regAX(4)
-			}
-			movExtend(v, ax)
-			printlnToFile("  mov %%rax, %d(%%rsp)", v.StackOffset)
+			continue
 		}
+
+		ax := "%rax"
+		if v.Ty.Size <= 4 {
+			ax = "%eax"
+		}
+		loadExtendInt(v.Ty, int(v.Offset), v.Pointer, ax)
+		printlnToFile("  mov %%rax, %d(%%rsp)", v.StackOffset)
 	}
 }
 
@@ -278,16 +286,14 @@ func placeRegArgs(node *AstNode, gpStart bool) {
 			printlnToFile("  movsd %d(%s), %%xmm%d", v.Offset, v.Pointer, fp)
 			fp++
 			continue
-		case TY_LDOUBLE:
-			panic("unreachable")
-		default:
-			reg := argreg64
-			if v.Ty.Size < 4 {
-				reg = argreg32
-			}
-			movExtend(v, reg[gp])
-			gp++
 		}
+
+		argreg := argreg64[gp]
+		if v.Ty.Size <= 4 {
+			argreg = argreg32[gp]
+		}
+		gp++
+		loadExtendInt(v.Ty, int(v.Offset), v.Pointer, argreg)
 	}
 }
 
@@ -631,27 +637,11 @@ func load(ty *CType) {
 		return
 	}
 
-	insn := ""
-	if ty.IsUnsigned {
-		insn = "movz"
-	} else {
-		insn = "movs"
+	ax := "%rax"
+	if ty.Size <= 4 {
+		ax = "%eax"
 	}
-
-	// When we load a char or a short value to a register, we always
-	// extend them to the size of int, so we can assume the lower half of
-	// a register always contains a valid value. The upper half of a
-	// register for char, short and int may contain garbage. When we load
-	// a long value to a register, it simply occupies the entire register.
-	if ty.Size == 1 {
-		printlnToFile("  %sbl (%%rax), %%eax", insn)
-	} else if ty.Size == 2 {
-		printlnToFile("  %swl (%%rax), %%eax", insn)
-	} else if ty.Size == 4 {
-		printlnToFile("  movsxd (%%rax), %%rax")
-	} else {
-		printlnToFile("  mov (%%rax), %%rax")
-	}
+	loadExtendInt(ty, 0, "%rax", ax)
 }
 
 // Store %rax to an address that the stack top is pointing to.
@@ -775,7 +765,7 @@ const I32U8 = "movzbl %al, %eax"
 const I32I16 = "movswl %ax, %eax"
 const I32U16 = "movzwl %ax, %eax"
 const I32F32 = "cvtsi2ssl %eax, %xmm0"
-const I32I64 = "movsxd %eax, %rax"
+const I32I64 = "movslq %eax, %rax"
 const I32F64 = "cvtsi2sdl %eax, %xmm0"
 const I32F80 = "mov %eax, -4(%rsp); fildl -4(%rsp)"
 
