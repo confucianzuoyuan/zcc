@@ -3662,7 +3662,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 			if name == "alloca" {
 				DontDeallocVLA = true
 			}
-			if opt_optimize && (strings.Contains(name, "setjmp") || strings.Contains(name, "savectx") || strings.Contains(name, "vfork") || strings.Contains(name, "getcontext")) {
+			if strings.Contains(name, "setjmp") || strings.Contains(name, "savectx") || strings.Contains(name, "vfork") || strings.Contains(name, "getcontext") {
 				DontReuseStack = true
 			}
 		}

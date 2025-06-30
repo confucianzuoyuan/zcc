@@ -67,7 +67,7 @@ func pushTmpStack() int {
 	}
 
 	var offset int
-	if opt_optimize && !DontReuseStack {
+	if !DontReuseStack {
 		bottom := currentFn.LocalVarStackSize + (int64(tmpStack.Depth)+1)*8
 		tmpStack.Bottom = int(math.Max(float64(tmpStack.Bottom), float64(bottom)))
 		offset = -int(bottom)
@@ -1586,7 +1586,7 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int, ptr string) int {
 	maxDepth := bottom
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
 		subDepth := assignLocalVariableOffsets2(sub, bottom, ptr)
-		if opt_optimize && !DontReuseStack {
+		if !DontReuseStack {
 			maxDepth = int(math.Max(float64(maxDepth), float64(subDepth)))
 		} else {
 			maxDepth = subDepth
