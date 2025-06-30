@@ -2419,6 +2419,9 @@ func evalDouble(node *AstNode) float64 {
 		if node.Lhs.Ty.isFloat() {
 			return evalDouble(node.Lhs)
 		}
+		if node.Lhs.Ty.Size == 8 && node.Lhs.Ty.IsUnsigned {
+			return float64(uint64(eval(node.Lhs)))
+		}
 		return float64(eval(node.Lhs))
 	case ND_NUM:
 		return node.FloatValue
@@ -2607,6 +2610,14 @@ func eval2(node *AstNode, label **string) int64 {
 				return 0
 			}
 		}
+
+		if node.Lhs.Ty.isFloat() {
+			if node.Ty.Size == 8 && node.Ty.IsUnsigned {
+				return int64(uint64(evalDouble(node.Lhs)))
+			}
+			return int64(evalDouble(node.Lhs))
+		}
+
 		val := eval2(node.Lhs, label)
 		if node.Ty.isInteger() {
 			switch node.Ty.Size {
