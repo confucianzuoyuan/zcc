@@ -89,6 +89,9 @@ echo foo > $tmp/dir/i-option-test
 echo "#include \"i-option-test\"" | ./zcc -I$tmp/dir -E -xc - | grep -q foo
 check -I
 
+echo "#include \"i-option-test\"" | ./zcc -I $tmp/dir -E -xc - | grep -q foo
+check -I
+
 # -D
 echo foo | ./zcc -Dfoo -E -xc - | grep -q 1
 check -D

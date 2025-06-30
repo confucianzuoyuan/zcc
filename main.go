@@ -188,6 +188,12 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-I" {
+			idx++
+			includePaths = append(includePaths, args[idx])
+			continue
+		}
+
 		if strings.HasPrefix(args[idx], "-I") {
 			includePaths = append(includePaths, args[idx][2:])
 			continue
