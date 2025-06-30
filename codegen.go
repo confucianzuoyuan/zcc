@@ -458,6 +458,7 @@ func copyStructMem() {
 		printlnToFile("  mov %d(%%rax), %%dl", i)
 		printlnToFile("  mov %%dl, %d(%%rdi)", i)
 	}
+	printlnToFile("  mov %%rdi, %%rax")
 }
 
 func count() int {
