@@ -597,6 +597,7 @@ func readMacroArgOne(rest **Token, tok *Token, readRest bool) *MacroArg {
 	head := Token{}
 	cur := &head
 	level := 0
+	start := tok
 
 	for {
 		popMacroLock(tok)
@@ -615,7 +616,7 @@ func readMacroArgOne(rest **Token, tok *Token, readRest bool) *MacroArg {
 		}
 
 		if tok.Kind == TK_EOF {
-			errorTok(tok, "premature end of input")
+			errorTok(start, "unterminated list")
 		}
 
 		if tok.isEqual("(") {

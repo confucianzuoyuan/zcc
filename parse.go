@@ -3089,13 +3089,14 @@ func shift(rest **Token, tok *Token) *AstNode {
 
 func skipParen(tok *Token) *Token {
 	level := 0
+	start := tok
 	for {
 		if level == 0 && tok.isEqual(")") {
 			break
 		}
 
 		if tok.Kind == TK_EOF {
-			errorTok(tok, "premature end of input")
+			errorTok(start, "unterminated list")
 		}
 
 		if tok.isEqual("(") {
