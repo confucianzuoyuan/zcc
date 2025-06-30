@@ -1708,7 +1708,11 @@ func emitText(prog *Obj) {
 			printlnToFile("  .globl %s", fn.Name)
 		}
 
-		printlnToFile("  .text")
+		if opt_func_sections {
+			printlnToFile("  .section .text.%s,\"ax\",@progbits", fn.Name)
+		} else {
+			printlnToFile("  .text")
+		}
 		printlnToFile("  .type %s, @function", fn.Name)
 		printlnToFile("%s:", fn.Name)
 		currentFn = fn

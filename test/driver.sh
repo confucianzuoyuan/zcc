@@ -185,6 +185,10 @@ echo 'int main(void){ return (char)-1 != (unsigned char)-1; }' | ./zcc -funsigne
 $tmp/out
 check '-funsigned-char'
 
+# -ffunction-sections
+echo 'void f1() {}' | ./zcc -xc - -S -o- -ffunction-sections | grep -q '.text.f1,'
+check '-ffunction-sections'
+
 # -include
 echo foo > $tmp/out.h
 echo bar | ./zcc -include $tmp/out.h -E -o- -xc - | grep -q -z 'foo.*bar'

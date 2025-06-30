@@ -26,6 +26,7 @@ var includePaths []string
 var ldExtraArgs []string
 var stdIncludePaths []string
 
+var opt_func_sections bool
 var opt_g bool
 var opt_optimize bool
 var opt_fpic bool
@@ -369,6 +370,11 @@ func parseArgs(args []string) {
 		}
 		if args[idx] == "-funsigned-char" {
 			TyPChar.IsUnsigned = true
+			continue
+		}
+
+		if args[idx] == "-ffunction-sections" {
+			opt_func_sections = true
 			continue
 		}
 
