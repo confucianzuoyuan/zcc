@@ -3628,12 +3628,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 		if stmt != nil && stmt.Kind == ND_EXPR_STMT {
 			expr := stmt.Lhs
-			if expr.Ty.Kind == TY_STRUCT || expr.Ty.Kind == TY_UNION {
-				v := newLocalVar("", expr.Ty)
-				expr = newBinary(ND_ASSIGN, newVarNode(v, tok), expr, tok)
-				expr.addType()
-				stmt.Lhs = expr
-			} else if expr.Ty.Kind == TY_ARRAY || expr.Ty.Kind == TY_VLA {
+			if expr.Ty.Kind == TY_ARRAY || expr.Ty.Kind == TY_VLA {
 				stmt.Lhs = newCast(expr, pointerTo(expr.Ty.Base))
 			}
 		}
