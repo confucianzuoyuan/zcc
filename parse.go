@@ -3572,6 +3572,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 			return computeVlaSize(ty, tok)
 		}
+		if ty.Size < 0 {
+			errorTok(tok, "sizeof applied to incomplete type")
+		}
 		return newULong(ty.Size, start)
 	}
 
