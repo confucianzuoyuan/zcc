@@ -3765,6 +3765,24 @@ func primary(rest **Token, tok *Token) *AstNode {
 			}
 		}
 
+		// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
+		// automatically defined as a local variable containing the
+		// current function name.
+		// [GNU] __FUNCTION__ is yet another name of __func__.
+		if currentFunction != nil && (tok.isEqual("__func__") || tok.isEqual("__FUNCTION__")) {
+			name := currentFunction.Name
+			vsc := &VarScope{}
+			buf := U82I8([]uint8(name))
+			buf = append(buf, 0)
+			vsc.Variable = newStringLiteral(buf, arrayOf(TyPChar, int64(len(buf))))
+			if currentFunction.Ty.Scopes.Vars == nil {
+				currentFunction.Ty.Scopes.Vars = map[string]*VarScope{}
+			}
+			currentFunction.Ty.Scopes.Vars["__func__"] = vsc
+			currentFunction.Ty.Scopes.Vars["__FUNCTION__"] = vsc
+			return newVarNode(vsc.Variable, tok)
+		}
+
 		if tok.Next.isEqual("(") {
 			errorTok(tok, "implicit declaration of a function")
 		}
@@ -3863,18 +3881,6 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 	if ty.IsVariadic {
 		fn.VaArea = newLocalVar("", arrayOf(TyPChar, 176))
 	}
-
-	// [https://www.sigbus.info/n1570#6.4.2.2p1] "__func__" is
-	// automatically defined as a local variable containing the
-	// current function name.
-	buf := []uint8(fn.Name)
-	buf = append(buf, 0)
-	newBuf := U82I8(buf)
-	v := newStringLiteral(newBuf, arrayOf(TyPChar, int64(len(fn.Name)+1)))
-	pushScope("__func__").Variable = v
-
-	// [GNU] __FUNCTION__ is yet another name of __func__.
-	pushScope("__FUNCTION__").Variable = v
 
 	fn.Body = compoundStmt(rest, tok.Next, nil)
 	if ty.VlaCalc != nil {
