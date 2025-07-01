@@ -3600,6 +3600,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 		// Compound literal
 		start := tok
 		ty := typeName(&tok, tok.Next)
+		if ty.Kind == TY_VLA {
+			errorTok(tok, "compound literals cannot be VLA")
+		}
 		tok = skip(tok, ")")
 
 		if scope.Parent == nil {
