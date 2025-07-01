@@ -218,7 +218,7 @@ func placeStackArgs(node *AstNode) {
 		}
 
 		switch v.Ty.Kind {
-		case TY_STRUCT, TY_UNION:
+		case TY_STRUCT, TY_UNION, TY_LDOUBLE:
 			for i := int64(0); i < v.Ty.Size; i++ {
 				printlnToFile("  mov %d(%s), %%r8b", i+v.Offset, v.Pointer)
 				printlnToFile("  mov %%r8b, %d(%%rsp)", i+v.StackOffset)
@@ -227,10 +227,6 @@ func placeStackArgs(node *AstNode) {
 		case TY_FLOAT, TY_DOUBLE:
 			printlnToFile("  movsd %d(%s), %%xmm0", v.Offset, v.Pointer)
 			printlnToFile("  movsd %%xmm0, %d(%%rsp)", v.StackOffset)
-			continue
-		case TY_LDOUBLE:
-			printlnToFile("  fldt %d(%s)", v.Offset, v.Pointer)
-			printlnToFile("  fstpt %d(%%rsp)", v.StackOffset)
 			continue
 		}
 
@@ -1887,8 +1883,6 @@ func emitText(prog *Obj) {
 			case TY_FLOAT, TY_DOUBLE:
 				storeFp(fp, ty.Size, v.Offset, v.Pointer)
 				fp++
-			case TY_LDOUBLE:
-				panic("unreachable")
 			default:
 				storeGp(gp, ty.Size, v.Offset, v.Pointer)
 				gp++
