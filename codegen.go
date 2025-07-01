@@ -1178,15 +1178,17 @@ func genExpr(node *AstNode) {
 			return
 		}
 
-		printlnToFile("  mov %%rsp, %%rax")
-		pushTmp()
-
 		genExpr(node.Lhs)
 		pushTmp()
 
 		if node.ArgsExpr != nil {
 			genExpr(node.ArgsExpr)
 		}
+
+		popTmp("%r10")
+
+		printlnToFile("  mov %%rsp, %%rax")
+		pushTmp()
 		// If the return type is a large struct/union, the caller passes
 		// a pointer to a buffer as if it were the first argument.
 		gpStart := node.ReturnBuffer != nil && node.Ty.Size > 16
@@ -1204,7 +1206,6 @@ func genExpr(node *AstNode) {
 		if node.Lhs.Ty.IsVariadic {
 			printlnToFile("  mov $%d, %%eax", fpCount)
 		}
-		popTmp("%r10")
 		printlnToFile("  call *%%r10")
 
 		popTmp("%rsp")
