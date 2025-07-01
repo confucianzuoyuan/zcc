@@ -1638,24 +1638,21 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 // array-dimensions = ("static" | "restrict")* const-expr? "]" type-suffix
 func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
-	if !consume(&tok, tok, "[") {
-		*rest = tok
-		return ty
-	}
-
-	for tok.isEqual("static") || tok.isEqual("restrict") {
-		tok = tok.Next
-	}
-
 	if consume(&tok, tok, "]") || (tok.isEqual("*") && consume(&tok, tok.Next, "]")) {
-		ty = arrayDimensions(rest, tok, ty)
+		if tok.isEqual("[") {
+			ty = arrayDimensions(&tok, tok.Next, ty)
+		}
+		*rest = tok
 		return arrayOf(ty, -1)
 	}
 
 	expr := assign(&tok, tok)
 	expr.addType()
 	tok = skip(tok, "]")
-	ty = arrayDimensions(rest, tok, ty)
+	if tok.isEqual("[") {
+		ty = arrayDimensions(&tok, tok.Next, ty)
+	}
+	*rest = tok
 
 	arrayLength := int64(0)
 	if ty.Kind != TY_VLA && expr.isConstExpr(&arrayLength) {
@@ -1678,7 +1675,15 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 		return funcParams(rest, tok.Next, ty)
 	}
 
-	return arrayDimensions(rest, tok, ty)
+	if consume(&tok, tok, "[") {
+		for tok.isEqual("static") || tok.isEqual("const") || tok.isEqual("volatile") || tok.isEqual("restrict") || tok.isEqual("__restrict") || tok.isEqual("__restrict__") {
+			tok = tok.Next
+		}
+		return arrayDimensions(rest, tok, ty)
+	}
+
+	*rest = tok
+	return ty
 }
 
 // pointers = ("*" ("const" | "volatile" | "restrict")*)*
