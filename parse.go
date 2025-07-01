@@ -533,8 +533,6 @@ func arrayDesignator(rest **Token, tok *Token, ty *CType, begin *int64, end *int
 
 // struct-designator = "." ident
 func structDesignator(rest **Token, tok *Token, ty *CType) *Member {
-	start := tok
-	tok = skip(tok, ".")
 	if tok.Kind != TK_IDENT {
 		errorTok(tok, "expected a field designator")
 	}
@@ -543,7 +541,6 @@ func structDesignator(rest **Token, tok *Token, ty *CType) *Member {
 	if mem == nil {
 		errorTok(tok, "struct has no such member")
 	}
-	*rest = start
 	if mem.Name != nil {
 		*rest = tok.Next
 	}
@@ -570,7 +567,7 @@ func designation(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	if tok.isEqual(".") && init.Ty.Kind == TY_STRUCT {
-		mem := structDesignator(&tok, tok, init.Ty)
+		mem := structDesignator(&tok, tok.Next, init.Ty)
 		designation(&tok, tok, init.Children[mem.Index])
 		init.Expr = nil
 		structInitializer2(rest, tok, init, mem.Next, true)
@@ -578,7 +575,7 @@ func designation(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	if tok.isEqual(".") && init.Ty.Kind == TY_UNION {
-		mem := structDesignator(&tok, tok, init.Ty)
+		mem := structDesignator(&tok, tok.Next, init.Ty)
 		init.Member = mem
 		designation(rest, tok, init.Children[mem.Index])
 		return
@@ -682,7 +679,7 @@ func structInitializer1(rest **Token, tok *Token, init *Initializer) {
 
 	for ; commaList(rest, &tok, "}", !first); first = false {
 		if tok.isEqual(".") {
-			mem = structDesignator(&tok, tok, init.Ty)
+			mem = structDesignator(&tok, tok.Next, init.Ty)
 			designation(&tok, tok, init.Children[mem.Index])
 			mem = mem.Next
 			continue
@@ -723,7 +720,7 @@ func unionInitializer(rest **Token, tok *Token, init *Initializer) {
 
 	for ; commaList(rest, &tok, "}", !first); first = false {
 		if tok.isEqual(".") {
-			init.Member = structDesignator(&tok, tok, init.Ty)
+			init.Member = structDesignator(&tok, tok.Next, init.Ty)
 			designation(&tok, tok, init.Children[init.Member.Index])
 			continue
 		}
@@ -3699,6 +3696,39 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 	if tok.isEqual("_Generic") {
 		return genericSelection(rest, tok.Next)
+	}
+
+	if tok.isEqual("__builtin_offsetof") {
+		tok = skip(tok.Next, "(")
+		ty := typeName(&tok, tok)
+		tok = skip(tok, ",")
+
+		offset := 0
+
+		for {
+			var mem *Member
+			for {
+				mem = structDesignator(&tok, tok, ty)
+				offset += int(mem.Offset)
+				ty = mem.Ty
+				if mem.Name != nil {
+					break
+				}
+			}
+
+			for ty.Base != nil && consume(&tok, tok, "[") {
+				offset += int(ty.Base.Size) * int(constExpr(&tok, tok))
+				ty = ty.Base
+				tok = skip(tok, "]")
+			}
+
+			if !consume(&tok, tok, ".") {
+				break
+			}
+		}
+
+		*rest = skip(tok, ")")
+		return newULong(int64(offset), tok)
 	}
 
 	if tok.isEqual("__builtin_types_compatible_p") {
