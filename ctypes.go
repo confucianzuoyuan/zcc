@@ -444,7 +444,7 @@ func (node *AstNode) addType() {
 	case ND_COND:
 		if node.Then.Ty.Kind == TY_VOID || node.Else.Ty.Kind == TY_VOID {
 			node.Ty = TyVoid
-		} else if node.Then.Ty.isCompatibleWith(node.Else.Ty) {
+		} else if !node.Then.Ty.isNumeric() && node.Then.Ty.isCompatibleWith(node.Else.Ty) {
 			node.Ty = node.Then.Ty
 		} else {
 			usualArithConv(&node.Then, &node.Else, true)
@@ -582,10 +582,10 @@ func (t *CType) IntRank() int {
 
 func intPromotion(node **AstNode) {
 	ty := (*node).Ty
+	bitWidth := int64(0)
 
-	if (*node).isBitField() {
+	if (*node).isBitField2(&bitWidth) {
 		intWidth := TyInt.Size * 8
-		bitWidth := (*node).Member.BitWidth
 
 		if bitWidth == intWidth && ty.IsUnsigned {
 			*node = newCast(*node, TyUInt)
@@ -611,5 +611,34 @@ func intPromotion(node **AstNode) {
 		}
 
 		return
+	}
+}
+
+func (node *AstNode) isBitField2(width *int64) bool {
+	for {
+		switch node.Kind {
+		case ND_MEMBER:
+			if node.Member.IsBitfield {
+				*width = node.Member.BitWidth
+				return true
+			}
+			return false
+		case ND_COMMA:
+			node = node.Rhs
+			continue
+		case ND_STMT_EXPR:
+			if node.Body != nil {
+				stmt := node.Body
+				for stmt.Next != nil {
+					stmt = stmt.Next
+				}
+				if stmt.Kind == ND_EXPR_STMT {
+					node = stmt.Lhs
+					continue
+				}
+			}
+		}
+
+		return false
 	}
 }
