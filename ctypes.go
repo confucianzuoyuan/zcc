@@ -615,30 +615,29 @@ func intPromotion(node **AstNode) {
 }
 
 func (node *AstNode) isBitField2(width *int64) bool {
-	for {
-		switch node.Kind {
-		case ND_MEMBER:
-			if node.Member.IsBitfield {
-				*width = node.Member.BitWidth
-				return true
-			}
+	if node.Kind == ND_MEMBER {
+		if !node.Member.IsBitfield {
 			return false
-		case ND_COMMA:
-			node = node.Rhs
-			continue
-		case ND_STMT_EXPR:
-			if node.Body != nil {
-				stmt := node.Body
-				for stmt.Next != nil {
-					stmt = stmt.Next
-				}
-				if stmt.Kind == ND_EXPR_STMT {
-					node = stmt.Lhs
-					continue
-				}
-			}
 		}
 
-		return false
+		*width = node.Member.BitWidth
+		return true
 	}
+	if node.Kind == ND_COMMA {
+		return node.Rhs.isBitField2(width)
+	}
+	if node.Kind == ND_ASSIGN {
+		return node.Lhs.isBitField2(width)
+	}
+	if node.Kind == ND_STMT_EXPR && node.Body != nil {
+		stmt := node.Body
+		for stmt.Next != nil {
+			stmt = stmt.Next
+		}
+		if stmt.Kind == ND_EXPR_STMT {
+			return stmt.Lhs.isBitField2(width)
+		}
+	}
+
+	return false
 }
