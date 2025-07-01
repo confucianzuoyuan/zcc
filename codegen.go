@@ -1201,7 +1201,9 @@ func genExpr(node *AstNode) {
 		placeStackArgs(node)
 		placeRegArgs(node, gpStart)
 
-		printlnToFile("  mov $%d, %%rax", fpCount)
+		if node.Lhs.Ty.IsVariadic {
+			printlnToFile("  mov $%d, %%eax", fpCount)
+		}
 		popTmp("%r10")
 		printlnToFile("  call *%%r10")
 
