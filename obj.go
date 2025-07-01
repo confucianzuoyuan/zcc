@@ -61,7 +61,8 @@ type Scope struct {
 	Children    *Scope
 	SiblingNext *Scope
 
-	Locals *Obj
+	Locals      *Obj
+	IsTemporary bool
 	// C has two block scopes; one is for variables/typedefs and
 	// the other is for struct/union/enum tags.
 	Vars map[string]*VarScope

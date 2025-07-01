@@ -3441,6 +3441,9 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	cur := &head
 	var expr *AstNode = nil
 
+	enterScope()
+	scope.IsTemporary = true
+
 	for commaList(rest, &tok, ")", cur != &head) {
 		arg := assign(&tok, tok)
 		arg.addType()
@@ -3488,6 +3491,8 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	if node.Ty.Kind == TY_STRUCT || node.Ty.Kind == TY_UNION {
 		node.ReturnBuffer = newLocalVar("", node.Ty)
 	}
+
+	leaveScope()
 	return node
 }
 
@@ -3616,7 +3621,15 @@ func primary(rest **Token, tok *Token) *AstNode {
 			return newVarNode(v, start)
 		}
 
-		v := newLocalVar("", ty)
+		sc := scope
+		for sc.IsTemporary {
+			sc = sc.Parent
+		}
+		v := newVar("", ty)
+		v.IsLocal = true
+		v.Next = sc.Locals
+		sc.Locals = v
+
 		lhs := localVarInitializer(rest, tok, v)
 		rhs := newVarNode(v, tok)
 		return newBinary(ND_COMMA, lhs, rhs, start)
