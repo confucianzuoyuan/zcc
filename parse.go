@@ -2023,6 +2023,9 @@ func (tok *Token) isTypename() bool {
 	if opt_std == STD_NONE || opt_std >= STD_C23 {
 		TypeNames["typeof"] = struct{}{}
 	}
+	if opt_std >= STD_C23 {
+		TypeNames["constexpr"] = struct{}{}
+	}
 	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	_, ok := TypeNames[name]
 	if ok {

@@ -259,6 +259,9 @@ func (tok *Token) isKeyword() bool {
 	if opt_std == STD_NONE || opt_std >= STD_C23 {
 		Keywords["typeof"] = struct{}{}
 	}
+	if opt_std >= STD_C23 {
+		Keywords["constexpr"] = struct{}{}
+	}
 	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	_, ok := Keywords[name]
 	return ok

@@ -411,7 +411,7 @@ func (node *AstNode) addType() {
 		node.Ty = node.Lhs.Ty
 		return
 	case ND_ASSIGN:
-		if node.Lhs.Ty.Kind == TY_ARRAY {
+		if node.Lhs.Ty.Kind == TY_ARRAY && node.Lhs.Variable.ConstExprData == nil {
 			errorTok(node.Lhs.Tok, "not an lvalue")
 		}
 		if node.Lhs.Ty.Kind != TY_STRUCT {
