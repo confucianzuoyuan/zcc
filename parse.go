@@ -106,6 +106,18 @@ type InitDesg struct {
 	Variable *Obj // Variable to initialize
 }
 
+type EvalKind int
+
+const (
+	EV_CONST EvalKind = iota
+	EV_LABEL
+)
+
+type EvalContext struct {
+	Kind    EvalKind
+	Pointer **string
+}
+
 var CurrentVLA *Obj
 var BreakVLA *Obj
 var FnUseVLA bool
@@ -1965,7 +1977,11 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	}
 
 	var label *string = nil
-	val := eval2(init.Expr, &label)
+	ctx := EvalContext{
+		Kind:    EV_LABEL,
+		Pointer: &label,
+	}
+	val := eval2(init.Expr, &ctx)
 
 	if label == nil {
 		writeBuf(buf, offset, uint64(val), ty.Size)
@@ -2494,16 +2510,12 @@ func staticAssertion(rest **Token, tok *Token) {
 // is a pointer to a global variable and n is a postiive/negative
 // number. The latter form is accepted only as an initialization
 // expression for a global variable.
-func eval2(node *AstNode, label **string) int64 {
-	if node.Ty.isFloat() {
-		return int64(evalDouble(node))
-	}
-
+func eval2(node *AstNode, ctx *EvalContext) int64 {
 	switch node.Kind {
 	case ND_ADD:
-		return eval2(node.Lhs, label) + eval(node.Rhs)
+		return eval2(node.Lhs, ctx) + eval(node.Rhs)
 	case ND_SUB:
-		return eval2(node.Lhs, label) - eval(node.Rhs)
+		return eval2(node.Lhs, ctx) - eval(node.Rhs)
 	case ND_MUL:
 		return eval(node.Lhs) * eval(node.Rhs)
 	case ND_DIV:
@@ -2611,13 +2623,13 @@ func eval2(node *AstNode, label **string) int64 {
 		return 0
 	case ND_COND:
 		if eval(node.Cond) != 0 {
-			return eval2(node.Then, label)
+			return eval2(node.Then, ctx)
 		} else {
-			return eval2(node.Else, label)
+			return eval2(node.Else, ctx)
 		}
 	case ND_COMMA:
-		eval2(node.Lhs, label)
-		return eval2(node.Rhs, label)
+		eval2(node.Lhs, ctx)
+		return eval2(node.Rhs, ctx)
 	case ND_NOT:
 		if eval(node.Lhs) == 0 {
 			return 1
@@ -2644,7 +2656,7 @@ func eval2(node *AstNode, label **string) int64 {
 					return 0
 				}
 			}
-			if eval2(node.Lhs, label) != 0 {
+			if eval2(node.Lhs, ctx) != 0 {
 				return 1
 			} else {
 				return 0
@@ -2658,7 +2670,7 @@ func eval2(node *AstNode, label **string) int64 {
 			return int64(evalDouble(node.Lhs))
 		}
 
-		val := eval2(node.Lhs, label)
+		val := eval2(node.Lhs, ctx)
 		if node.Ty.isInteger() {
 			switch node.Ty.Size {
 			case 1:
@@ -2679,59 +2691,37 @@ func eval2(node *AstNode, label **string) int64 {
 			}
 		}
 		return val
-	case ND_ADDR:
-		return evalRval(node.Lhs, label)
-	case ND_LABEL_VAL:
-		*label = &node.UniqueLabel
-		return 0
-	case ND_DEREF:
-		if node.Ty.Kind != TY_ARRAY {
-			return evalError(node.Tok, "not a compile-time constant")
-		}
-		return eval2(node.Lhs, label)
-	case ND_MEMBER:
-		if label == nil {
-			return evalError(node.Tok, "not a compile-time constant")
-		}
-		if node.Ty.Kind != TY_ARRAY {
-			return evalError(node.Tok, "invalid initializer")
-		}
-		return evalRval(node.Lhs, label) + node.Member.Offset
-	case ND_VAR:
-		if label == nil {
-			return evalError(node.Tok, "not a compile-time constant")
-		}
-		if node.Variable.Ty.Kind != TY_ARRAY && node.Variable.Ty.Kind != TY_FUNC {
-			return evalError(node.Tok, "invalid initializer")
-		}
-		*label = &node.Variable.Name
-		return 0
 	case ND_NUM:
 		return node.Value
+	}
+
+	if ctx.Kind == EV_LABEL {
+		switch node.Kind {
+		case ND_ADDR, ND_DEREF:
+			return eval2(node.Lhs, ctx)
+		case ND_MEMBER:
+			return eval2(node.Lhs, ctx) + node.Member.Offset
+		case ND_LABEL_VAL:
+			*ctx.Pointer = &node.UniqueLabel
+			return 0
+		case ND_VAR:
+			if node.Variable.IsLocal {
+				return evalError(node.Tok, "not a compile-time constant")
+			}
+			*ctx.Pointer = &node.Variable.Name
+			return 0
+		}
+		return evalError(node.Tok, "invalid initializer")
 	}
 
 	return evalError(node.Tok, "not a compile-time constant")
 }
 
 func eval(node *AstNode) int64 {
-	return eval2(node, nil)
-}
-
-func evalRval(node *AstNode, label **string) int64 {
-	switch node.Kind {
-	case ND_VAR:
-		if node.Variable.IsLocal {
-			return evalError(node.Tok, "not a compile-time constant")
-		}
-		*label = &node.Variable.Name
-		return 0
-	case ND_DEREF:
-		return eval2(node.Lhs, label)
-	case ND_MEMBER:
-		return evalRval(node.Lhs, label) + node.Member.Offset
+	if node.Ty.isFloat() {
+		return int64(evalDouble(node))
 	}
-
-	return evalError(node.Tok, "invalid initializer")
+	return eval2(node, &EvalContext{Kind: EV_CONST})
 }
 
 func constExpr(rest **Token, tok *Token) int64 {
