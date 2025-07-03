@@ -1,5 +1,4 @@
 #include "test.h"
-#define DASSERT(x) _Static_assert(x); ASSERT(1, x)
 
 #if !1u - 1 > 0
 #error
