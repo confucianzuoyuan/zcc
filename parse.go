@@ -1959,7 +1959,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 		return cur
 	}
 
-	if ty.Kind == TY_DOUBLE {
+	if ty.Kind == TY_DOUBLE || ty.Kind == TY_LDOUBLE {
 		val := math.Float64bits(evalDouble(init.Expr))
 		(*buf)[offset+0] = int8(val)
 		(*buf)[offset+1] = int8(val >> 8)
