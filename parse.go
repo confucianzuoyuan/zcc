@@ -2473,6 +2473,9 @@ func evalDouble(node *AstNode) float64 {
 		return evalDouble(node.Rhs)
 	case ND_CAST:
 		if node.Lhs.Ty.isFloat() {
+			if node.Ty.Size == 4 {
+				return float64(float32(evalDouble(node.Lhs)))
+			}
 			return evalDouble(node.Lhs)
 		}
 		if node.Lhs.Ty.Size == 8 && node.Lhs.Ty.IsUnsigned {
