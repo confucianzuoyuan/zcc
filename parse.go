@@ -2493,6 +2493,18 @@ func evalDouble(node *AstNode) float64 {
 		return node.FloatValue
 	}
 
+	if node.Kind == ND_VAR && node.Variable.ConstExprData != nil {
+		return readDoubleBuf(&node.Variable.ConstExprData, node.Variable.Ty)
+	}
+
+	if node.Kind == ND_MEMBER || node.Kind == ND_DEREF {
+		data := evalConstExprAgg(node)
+		if data == nil {
+			return 0
+		}
+		return readDoubleBuf(&data, node.Ty)
+	}
+
 	return float64(evalError(node.Tok, "not a compile-time constant"))
 }
 
@@ -2736,14 +2748,66 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return evalError(node.Tok, "invalid initializer")
 	}
 
+	if ctx.Kind == EV_AGG {
+		if node.Kind == ND_DEREF {
+			return eval2(node.Lhs, ctx)
+		}
+		if node.Kind == ND_MEMBER {
+			return eval2(node.Lhs, ctx) + node.Member.Offset
+		}
+		if node.Kind == ND_VAR && node.Variable.ConstExprData != nil {
+			if ptr, ok := ctx.Pointer.(PtrPtrObj); ok {
+				*ptr.Ptr = node.Variable
+				return 0
+			}
+		}
+		return evalError(node.Tok, "not a compile-time constant")
+	}
+
+	if ctx.Kind == EV_CONST {
+		if node.Kind == ND_VAR && node.Variable.ConstExprData != nil {
+			return int64(readBuf(&node.Variable.ConstExprData, 0, node.Variable.Ty.Size))
+		}
+
+		if node.Kind == ND_MEMBER || node.Kind == ND_DEREF {
+			data := evalConstExprAgg(node)
+			if data == nil {
+				return 0
+			}
+			val := readBuf(&data, 0, node.Ty.Size)
+			if node.isBitField() {
+				val <<= 64 - node.Member.BitWidth - node.Member.BitOffset
+				if node.Ty.IsUnsigned {
+					return int64(uint64(val) >> (64 - node.Member.BitWidth))
+				}
+				return int64(val >> (64 - node.Member.BitWidth))
+			}
+
+			return int64(val)
+		}
+	}
+
 	return evalError(node.Tok, "not a compile-time constant")
 }
 
 func eval(node *AstNode) int64 {
-	if node.Ty.isFloat() {
-		return int64(evalDouble(node))
+	return eval2(node, &EvalContext{})
+}
+
+func evalConstExprAgg(node *AstNode) []int8 {
+	v := &Obj{}
+	ctx := EvalContext{
+		Kind:    EV_AGG,
+		Pointer: PtrPtrObj{&v},
 	}
-	return eval2(node, &EvalContext{Kind: EV_CONST})
+	ofs := eval2(node, &ctx)
+	if evalRecover != nil && *evalRecover {
+		return nil
+	}
+	if ofs < 0 || (v.Ty.Size < (ofs + node.Ty.Size)) {
+		return Int64ToInt8Slice(evalError(node.Tok, "constexpr access out of bounds"))
+	}
+	return v.ConstExprData[ofs:]
 }
 
 func constExpr(rest **Token, tok *Token) int64 {
@@ -3993,6 +4057,16 @@ func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 		if attr.Align > 0 {
 			variable.Align = attr.Align
 		}
+
+		if attr.IsConstExpr {
+			if !tok.isEqual("=") {
+				errorTok(tok, "constexpr variable not initialized")
+			}
+			constExprInitializer(&tok, tok.Next, variable, variable)
+			variable.IsStatic = true
+			continue
+		}
+
 		if tok.isEqual("=") {
 			globalVarInitializer(&tok, tok.Next, variable)
 		} else if !attr.IsExtern && !attr.IsTls {
