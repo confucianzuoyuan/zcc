@@ -975,15 +975,16 @@ func newUniqueName() string {
 	return n
 }
 
-func newAnonGlobalVar(ty *CType) *Obj {
-	v := newGlobalVar(newUniqueName(), ty)
+func newAnonymousGlobalVariable(ty *CType) *Obj {
+	v := newGlobalVar("", ty)
+	v.Name = newUniqueName()
 	v.IsDefinition = true
 	v.IsStatic = true
 	return v
 }
 
 func newStringLiteral(lit []int8, ty *CType) *Obj {
-	variable := newAnonGlobalVar(ty)
+	variable := newAnonymousGlobalVariable(ty)
 	variable.InitData = lit
 	return variable
 }
@@ -1793,7 +1794,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			}
 
 			// static local variable
-			variable := newAnonGlobalVar(ty)
+			variable := newAnonymousGlobalVariable(ty)
 			pushScope(ty.Name.getIdent()).Variable = variable
 			if tok.isEqual("=") {
 				globalVarInitializer(&tok, tok.Next, variable)
@@ -3612,7 +3613,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 		tok = skip(tok, ")")
 
 		if scope.Parent == nil {
-			v := newAnonGlobalVar(ty)
+			v := newAnonymousGlobalVariable(ty)
 			globalVarInitializer(rest, tok, v)
 			return newVarNode(v, start)
 		}
