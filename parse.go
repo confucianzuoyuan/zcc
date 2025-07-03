@@ -1858,6 +1858,7 @@ func readBuf(buf *[]int8, offset int64, sz int64) uint64 {
 	return val
 }
 
+// 将 uint64 按小端顺序写入 []int8
 func writeBuf(buf *[]int8, offset int64, val uint64, sz int64) {
 	if sz != 1 && sz != 2 && sz != 4 && sz != 8 {
 		panic("writeBuf: unsupported size")
