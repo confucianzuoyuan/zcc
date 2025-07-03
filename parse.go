@@ -2631,6 +2631,12 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		eval2(node.Lhs, ctx)
 		return eval2(node.Rhs, ctx)
 	case ND_NOT:
+		if node.Lhs.Ty.isFloat() {
+			if evalDouble(node.Lhs) != 0 {
+				return 0
+			}
+			return 1
+		}
 		if eval(node.Lhs) == 0 {
 			return 1
 		}

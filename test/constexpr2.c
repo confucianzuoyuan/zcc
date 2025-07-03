@@ -23,11 +23,16 @@ int main(void) {
   DASSERT(!(0.2 <= 0.1));
   DASSERT(!(0.1 >= 0.2));
   DASSERT(!(0.1 == 0.2));
+  DASSERT(!!0.1);
 
   DASSERT(13835058055282163712.0  == (double)13835058055282163712ULL);
   DASSERT(13835058055282163712.0f == (float) 13835058055282163712ULL);
   DASSERT(13835058055282163712ULL == (unsigned long long) 13835058055282163712.0f);
   DASSERT(13835058055282163712ULL == (unsigned long long) 13835058055282163712.0);
+
+  // golang does not support `long double`
+  // ASSERT(1, 13835058055282163711ULL  == (unsigned long long) 13835058055282163711.0L);
+  // ASSERT(1, 13835058055282163711.0L  == (long double) 13835058055282163711ULL);
 
   ASSERT(1, ({ int i = 2; char arr[ (i++,3) ]; i == sizeof arr; }) );
 
