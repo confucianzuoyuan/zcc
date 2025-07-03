@@ -70,12 +70,13 @@ type VarScope struct {
 
 // Variable attributes such as typedef or extern.
 type VarAttr struct {
-	IsTypeDef bool // Is a typedef
-	IsStatic  bool
-	IsExtern  bool
-	IsInline  bool
-	IsTls     bool
-	Align     int64
+	IsTypeDef   bool // Is a typedef
+	IsStatic    bool
+	IsExtern    bool
+	IsInline    bool
+	IsTls       bool
+	IsConstExpr bool
+	Align       int64
 }
 
 // This struct represents a variable initializer. Since initializers
@@ -109,8 +110,9 @@ type InitDesg struct {
 type EvalKind int
 
 const (
-	EV_CONST EvalKind = iota
-	EV_LABEL
+	EV_CONST EvalKind = iota // constant expression
+	EV_LABEL                 // relocation label
+	EV_AGG                   // "constexpr" aggregate
 )
 
 type EvalContextPointer interface {
@@ -172,6 +174,16 @@ func evalError(tok *Token, msg string) int64 {
 
 func alignDown(n int64, align int64) int64 {
 	return alignTo(n-align+1, align)
+}
+
+func readDoubleBuf(buf *[]int8, ty *CType) float64 {
+	if ty.Kind == TY_FLOAT {
+		return float64(Int8SliceToFloat32((*buf)[0:4]))
+	}
+	if ty.Kind == TY_DOUBLE || ty.Kind == TY_LDOUBLE {
+		return Int8SliceToFloat64((*buf)[0:8])
+	}
+	panic("unreachable")
 }
 
 func enterScope() {
@@ -1095,7 +1107,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 	for tok.isTypename() {
 		// Handle storage class specifiers.
-		if tok.isEqual("typedef") || tok.isEqual("static") || tok.isEqual("extern") || tok.isEqual("inline") || tok.isEqual("_Thread_local") || tok.isEqual("__thread") {
+		if tok.isEqual("typedef") || tok.isEqual("static") || tok.isEqual("extern") || tok.isEqual("inline") || tok.isEqual("_Thread_local") || tok.isEqual("__thread") || tok.isEqual("constexpr") {
 			if attr == nil {
 				errorTok(tok, "storage class specifier is not allowed in this context")
 			}
@@ -1107,6 +1119,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				attr.IsExtern = true
 			} else if tok.isEqual("inline") {
 				attr.IsInline = true
+			} else if tok.isEqual("constexpr") {
+				attr.IsConstExpr = true
 			} else {
 				attr.IsTls = true
 			}
@@ -1806,6 +1820,13 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// static local variable
 			variable := newAnonymousGlobalVariable(ty)
 			pushScope(ty.Name.getIdent()).Variable = variable
+
+			if attr.IsConstExpr {
+				if !tok.isEqual("=") {
+					errorTok(tok, "constexpr variable not initialized")
+				}
+				constExprInitializer(&tok, tok.Next, variable, variable)
+			}
 			if tok.isEqual("=") {
 				globalVarInitializer(&tok, tok.Next, variable)
 			}
@@ -1837,6 +1858,16 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		variable := newLocalVar(ty.Name.getIdent(), ty)
 		if attr != nil && attr.Align > 0 {
 			variable.Align = attr.Align
+		}
+
+		if attr != nil && attr.IsConstExpr {
+			if !tok.isEqual("=") {
+				errorTok(tok, "constexpr variable not initialized")
+			}
+			initVar := newAnonymousGlobalVariable(ty)
+			constExprInitializer(&tok, tok.Next, initVar, variable)
+			chainExpr(&expr, newBinary(ND_ASSIGN, newVarNode(variable, tok), newVarNode(initVar, tok), tok))
+			continue
 		}
 
 		if tok.isEqual("=") {
@@ -1878,11 +1909,11 @@ func writeBuf(buf *[]int8, offset int64, val uint64, sz int64) {
 	}
 }
 
-func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]int8, offset int64) *Relocation {
+func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]int8, offset int64, kind EvalKind) *Relocation {
 	if ty.Kind == TY_ARRAY {
 		sz := ty.Base.Size
 		for i := int64(0); i < ty.ArrayLength; i++ {
-			cur = writeGlobalVarData(cur, init.Children[i], ty.Base, buf, offset+sz*i)
+			cur = writeGlobalVarData(cur, init.Children[i], ty.Base, buf, offset+sz*i, kind)
 		}
 		return cur
 	}
@@ -1903,7 +1934,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 				combined := uint64(oldVal) | uint64((newVal&mask)<<mem.BitOffset)
 				writeBuf(buf, loc, combined, mem.Ty.Size)
 			} else {
-				cur = writeGlobalVarData(cur, init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset)
+				cur = writeGlobalVarData(cur, init.Children[mem.Index], mem.Ty, buf, offset+mem.Offset, kind)
 			}
 		}
 		return cur
@@ -1913,7 +1944,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 		if init.Member == nil {
 			return cur
 		}
-		return writeGlobalVarData(cur, init.Children[init.Member.Index], init.Member.Ty, buf, offset)
+		return writeGlobalVarData(cur, init.Children[init.Member.Index], init.Member.Ty, buf, offset, kind)
 	}
 
 	if init.Expr == nil {
@@ -1940,8 +1971,10 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 
 	var label *string = nil
 	ctx := EvalContext{
-		Kind:    EV_LABEL,
-		Pointer: PtrPtrString{&label},
+		Kind: EV_LABEL,
+	}
+	if kind == EV_LABEL {
+		ctx.Pointer = PtrPtrString{&label}
 	}
 	val := eval2(init.Expr, &ctx)
 
@@ -1958,6 +1991,18 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	return cur.Next
 }
 
+func constExprInitializer(rest **Token, tok *Token, initVar *Obj, v *Obj) {
+	init := initializer(rest, tok, initVar.Ty, &initVar.Ty)
+
+	head := Relocation{}
+	buf := make([]int8, initVar.Ty.Size)
+	writeGlobalVarData(&head, init, initVar.Ty, &buf, 0, EV_CONST)
+	initVar.InitData = buf
+	v.ConstExprData = buf
+	initVar.Rel = head.Next
+	v.Ty = init.Ty
+}
+
 // Initializers for global variables are evaluated at compile-time and
 // embedded to .data section. This function serializes Initializer
 // objects to a flat byte array. It is a compile error if an
@@ -1968,7 +2013,7 @@ func globalVarInitializer(rest **Token, tok *Token, variable *Obj) {
 	head := Relocation{}
 	// char *buf = calloc(1, var->ty->size);
 	buf := make([]int8, variable.Ty.Size)
-	writeGlobalVarData(&head, init, variable.Ty, &buf, 0)
+	writeGlobalVarData(&head, init, variable.Ty, &buf, 0, EV_LABEL)
 	variable.InitData = buf
 	variable.Rel = head.Next
 }

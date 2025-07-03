@@ -27,6 +27,9 @@ type Obj struct {
 	InitData    []int8
 	Rel         *Relocation
 
+	// constexpr variable
+	ConstExprData []int8
+
 	// Function
 	IsInline          bool
 	LargeRtn          *Obj

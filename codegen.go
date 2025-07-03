@@ -645,7 +645,7 @@ func load(ty *CType) {
 func store(ty *CType) {
 	popTmp("%rdi")
 
-	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_ARRAY {
 		for i := int64(0); i < ty.Size; i += 1 {
 			printlnToFile("  mov %d(%%rax), %%r8b", i)
 			printlnToFile("  mov %%r8b, %d(%%rdi)", i)
