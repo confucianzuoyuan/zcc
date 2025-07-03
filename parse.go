@@ -1971,7 +1971,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 
 	var label *string = nil
 	ctx := EvalContext{
-		Kind: EV_LABEL,
+		Kind: kind,
 	}
 	if kind == EV_LABEL {
 		ctx.Pointer = PtrPtrString{&label}

@@ -8,4 +8,5 @@
 /chibicc
 /zcc
 /test/*.exe
+/test/c23/*.exe
 /stage2
