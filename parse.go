@@ -113,9 +113,19 @@ const (
 	EV_LABEL
 )
 
+type EvalContextPointer interface {
+	isEvalContextPointer()
+}
+
+type PtrPtrString struct{ Ptr **string }
+type PtrPtrObj struct{ Ptr **Obj }
+
+func (p PtrPtrString) isEvalContextPointer() {}
+func (p PtrPtrObj) isEvalContextPointer()    {}
+
 type EvalContext struct {
 	Kind    EvalKind
-	Pointer **string
+	Pointer EvalContextPointer
 }
 
 var CurrentVLA *Obj
@@ -1931,7 +1941,7 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	var label *string = nil
 	ctx := EvalContext{
 		Kind:    EV_LABEL,
-		Pointer: &label,
+		Pointer: PtrPtrString{&label},
 	}
 	val := eval2(init.Expr, &ctx)
 
@@ -2663,14 +2673,20 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		case ND_MEMBER:
 			return eval2(node.Lhs, ctx) + node.Member.Offset
 		case ND_LABEL_VAL:
-			*ctx.Pointer = &node.UniqueLabel
-			return 0
+			if ptr, ok := ctx.Pointer.(PtrPtrString); ok {
+				*ptr.Ptr = &node.UniqueLabel
+				return 0
+			}
+			return evalError(node.Tok, "invalid context pointer for ND_LABEL_VAL")
 		case ND_VAR:
 			if node.Variable.IsLocal {
 				return evalError(node.Tok, "not a compile-time constant")
 			}
-			*ctx.Pointer = &node.Variable.Name
-			return 0
+			if ptr, ok := ctx.Pointer.(PtrPtrString); ok {
+				*ptr.Ptr = &node.Variable.Name
+				return 0
+			}
+			return evalError(node.Tok, "invalid context pointer for ND_VAR")
 		}
 		return evalError(node.Tok, "invalid initializer")
 	}
