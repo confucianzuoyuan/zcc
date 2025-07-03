@@ -1844,67 +1844,27 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 	return expr
 }
 
+// 从 []int8 缓冲区按小端顺序读取 sz 字节（1、2、4、8），拼成一个 uint64 值
 func readBuf(buf *[]int8, offset int64, sz int64) uint64 {
-	if sz == 1 {
-		return uint64((*buf)[offset+0])
+	if sz != 1 && sz != 2 && sz != 4 && sz != 8 {
+		panic("unsupported size")
 	}
-	if sz == 2 {
-		hi := uint16((*buf)[offset+1]) << 8
-		lo := uint16((*buf)[offset+0]) << 0
-		val := hi | lo
-		return uint64(val)
+
+	var val uint64 = 0
+	for i := int64(0); i < sz; i++ {
+		b := uint64((*buf)[offset+i]) & 0xff // 转成无符号，避免符号扩展
+		val |= b << (8 * i)                  // 小端拼接
 	}
-	if sz == 4 {
-		v1 := uint32((*buf)[offset+3]) << 24
-		v2 := uint32((*buf)[offset+2]) << 16
-		v3 := uint32((*buf)[offset+1]) << 8
-		v4 := uint32((*buf)[offset+0]) << 0
-		val := v1 | v2 | v3 | v4
-		return uint64(val)
-	}
-	if sz == 8 {
-		v1 := uint64((*buf)[offset+7]) << 56
-		v2 := uint64((*buf)[offset+6]) << 48
-		v3 := uint64((*buf)[offset+5]) << 40
-		v4 := uint64((*buf)[offset+4]) << 32
-		v5 := uint64((*buf)[offset+3]) << 24
-		v6 := uint64((*buf)[offset+2]) << 16
-		v7 := uint64((*buf)[offset+1]) << 8
-		v8 := uint64((*buf)[offset+0]) << 0
-		val := v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8
-		return val
-	}
-	panic("unreachable")
+	return val
 }
 
 func writeBuf(buf *[]int8, offset int64, val uint64, sz int64) {
-	if sz == 1 {
-		(*buf)[offset] = int8(val)
-		return
+	if sz != 1 && sz != 2 && sz != 4 && sz != 8 {
+		panic("writeBuf: unsupported size")
 	}
-
-	if sz == 2 {
-		(*buf)[offset] = int8(val)
-		(*buf)[offset+1] = int8(val >> 8)
-		return
+	for i := int64(0); i < sz; i++ {
+		(*buf)[offset+i] = int8(val >> (8 * i))
 	}
-
-	if sz == 4 {
-		(*buf)[offset] = int8(val)
-		(*buf)[offset+1] = int8(val >> 8)
-		(*buf)[offset+2] = int8(val >> 16)
-		(*buf)[offset+3] = int8(val >> 24)
-		return
-	}
-
-	if sz == 8 {
-		for i := int64(0); i < 8; i++ {
-			(*buf)[offset+i] = int8(val >> (i * 8))
-		}
-		return
-	}
-
-	panic("writeBuf: unsupported size")
 }
 
 func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]int8, offset int64) *Relocation {
@@ -1952,24 +1912,14 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	init.Expr.addType()
 
 	if ty.Kind == TY_FLOAT {
-		val := math.Float32bits(float32(evalDouble(init.Expr)))
-		(*buf)[offset+0] = int8(val)
-		(*buf)[offset+1] = int8(val >> 8)
-		(*buf)[offset+2] = int8(val >> 16)
-		(*buf)[offset+3] = int8(val >> 24)
+		val := Float32ToInt8Slice(float32(evalDouble(init.Expr)))
+		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
 
 	if ty.Kind == TY_DOUBLE || ty.Kind == TY_LDOUBLE {
-		val := math.Float64bits(evalDouble(init.Expr))
-		(*buf)[offset+0] = int8(val)
-		(*buf)[offset+1] = int8(val >> 8)
-		(*buf)[offset+2] = int8(val >> 16)
-		(*buf)[offset+3] = int8(val >> 24)
-		(*buf)[offset+4] = int8(val >> 32)
-		(*buf)[offset+5] = int8(val >> 40)
-		(*buf)[offset+6] = int8(val >> 48)
-		(*buf)[offset+7] = int8(val >> 56)
+		val := Float64ToInt8Slice(evalDouble(init.Expr))
+		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
 
