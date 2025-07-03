@@ -561,32 +561,57 @@ func convertPpInt(tok *Token) bool {
 	l := false
 	u := false
 
-	suffix3 := ""
-	if p+3 < len(*currentInput) {
-		suffix3 = B2S((*currentInput)[p : p+3])
+	// 根据 currentInput 在位置 p 处的后缀字符串判断是否匹配一系列大小写组合的后缀，
+	// 并设置对应的标志位，同时移动 p。
+	suffixMap := map[string]func(){
+		"LLU": func() { p += 3; u, ll = true, true },
+		"LLu": func() { p += 3; u, ll = true, true },
+		"llU": func() { p += 3; u, ll = true, true },
+		"llu": func() { p += 3; u, ll = true, true },
+		"ULL": func() { p += 3; u, ll = true, true },
+		"Ull": func() { p += 3; u, ll = true, true },
+		"uLL": func() { p += 3; u, ll = true, true },
+		"ull": func() { p += 3; u, ll = true, true },
+
+		"lu": func() { p += 2; l, u = true, true },
+		"Lu": func() { p += 2; l, u = true, true },
+		"lU": func() { p += 2; l, u = true, true },
+		"LU": func() { p += 2; l, u = true, true },
+		"ul": func() { p += 2; l, u = true, true },
+		"Ul": func() { p += 2; l, u = true, true },
+		"uL": func() { p += 2; l, u = true, true },
+		"UL": func() { p += 2; l, u = true, true },
+
+		"LL": func() { p += 2; ll = true },
+		"ll": func() { p += 2; ll = true },
+
+		"L": func() { p += 1; l = true },
+		"l": func() { p += 1; l = true },
+
+		"U": func() { p += 1; u = true },
+		"u": func() { p += 1; u = true },
 	}
-	suffix2 := ""
-	if p+2 < len(*currentInput) {
-		suffix2 = B2S((*currentInput)[p : p+2])
+
+	// 先尝试3字符后缀
+	if p+3 <= len(*currentInput) {
+		suffix3 := B2S((*currentInput)[p : p+3])
+		if f, ok := suffixMap[suffix3]; ok {
+			f()
+		}
 	}
-	suffix1 := B2S((*currentInput)[p : p+1])
-	if suffix3 == "LLU" || suffix3 == "LLu" || suffix3 == "llU" || suffix3 == "llu" || suffix3 == "ULL" || suffix3 == "Ull" || suffix3 == "uLL" || suffix3 == "ull" {
-		p += 3
-		u = true
-		ll = true
-	} else if suffix2 == "lu" || suffix2 == "Lu" || suffix2 == "lU" || suffix2 == "LU" || suffix2 == "ul" || suffix2 == "Ul" || suffix2 == "uL" || suffix2 == "UL" {
-		p += 2
-		l = true
-		u = true
-	} else if suffix2 == "LL" || suffix2 == "ll" {
-		p += 2
-		ll = true
-	} else if suffix1 == "L" || suffix1 == "l" {
-		p += 1
-		l = true
-	} else if suffix1 == "U" || suffix1 == "u" {
-		p += 1
-		u = true
+	// 再尝试2字符后缀
+	if p+2 <= len(*currentInput) {
+		suffix2 := B2S((*currentInput)[p : p+2])
+		if f, ok := suffixMap[suffix2]; ok {
+			f()
+		}
+	}
+	// 最后尝试1字符后缀
+	if p+1 <= len(*currentInput) {
+		suffix1 := B2S((*currentInput)[p : p+1])
+		if f, ok := suffixMap[suffix1]; ok {
+			f()
+		}
 	}
 
 	if p != tok.Location+tok.Length {
