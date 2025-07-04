@@ -741,39 +741,39 @@ func load(ty *CType) {
 
 // Store %rax to an address that the stack top is pointing to.
 func store(ty *CType) {
-	popTmp("%rdi")
+	reg := popTmpKeepReg(true)
 
 	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_ARRAY {
 		for i := int64(0); i < ty.Size; i += 1 {
 			printlnToFile("  mov %d(%%rax), %%r8b", i)
-			printlnToFile("  mov %%r8b, %d(%%rdi)", i)
+			printlnToFile("  mov %%r8b, %d(%s)", i, reg)
 		}
 		return
 	}
 
 	if ty.Kind == TY_FLOAT {
-		printlnToFile("  movss %%xmm0, (%%rdi)")
+		printlnToFile("  movss %%xmm0, (%s)", reg)
 		return
 	}
 
 	if ty.Kind == TY_DOUBLE {
-		printlnToFile("  movsd %%xmm0, (%%rdi)")
+		printlnToFile("  movsd %%xmm0, (%s)", reg)
 		return
 	}
 
 	if ty.Kind == TY_LDOUBLE {
-		printlnToFile("  fstpt (%%rdi)")
+		printlnToFile("  fstpt (%s)", reg)
 		return
 	}
 
 	if ty.Size == 1 {
-		printlnToFile("  mov %%al, (%%rdi)")
+		printlnToFile("  mov %%al, (%s)", reg)
 	} else if ty.Size == 2 {
-		printlnToFile("  mov %%ax, (%%rdi)")
+		printlnToFile("  mov %%ax, (%s)", reg)
 	} else if ty.Size == 4 {
-		printlnToFile("  mov %%eax, (%%rdi)")
+		printlnToFile("  mov %%eax, (%s)", reg)
 	} else {
-		printlnToFile("  mov %%rax, (%%rdi)")
+		printlnToFile("  mov %%rax, (%s)", reg)
 	}
 }
 
@@ -1064,10 +1064,10 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 		pushTmp()
 		genExpr(node.Rhs)
-		popTmp("%rdi")
+		reg := popTmpKeepReg(true)
 
 		sz := int(node.Lhs.Ty.Base.Size)
-		printlnToFile("  xchg %s, (%%rdi)", regAX(sz))
+		printlnToFile("  xchg %s, (%s)", regAX(sz), reg)
 		return
 	case ND_CAS:
 		genExpr(node.CasAddr)
@@ -1078,10 +1078,10 @@ func genExpr(node *AstNode) {
 		printlnToFile("  mov %%rax, %%r8")
 		load(node.CasOld.Ty.Base)
 		popTmp("%rdx") // new
-		popTmp("%rdi") // addr
+		addr := popTmpKeepReg(true)
 
 		sz := int(node.CasAddr.Ty.Base.Size)
-		printlnToFile("  lock cmpxchg %s, (%%rdi)", regDX(sz))
+		printlnToFile("  lock cmpxchg %s, (%s)", regDX(sz), addr)
 		printlnToFile("  sete %%cl")
 		printlnToFile("  je 1f")
 		printlnToFile("  mov %s, (%%r8)", regAX(sz))
@@ -1666,14 +1666,12 @@ func genStmt(node *AstNode) {
 		genExpr(node.Lhs)
 		pushTmp()
 		genExpr(node.Rhs)
-		popTmp("%rdi")
+		reg := popTmpKeepReg(true)
 
-		printlnToFile("  movq (%%rax), %%rdx")
-		printlnToFile("  movq %%rdx, (%%rdi)")
-		printlnToFile("  movq 8(%%rax), %%rdx")
-		printlnToFile("  movq %%rdx, 8(%%rdi)")
+		printlnToFile("  movdqu (%%rax), %%xmm0")
 		printlnToFile("  movq 16(%%rax), %%rdx")
-		printlnToFile("  movq %%rdx, 16(%%rdi)")
+		printlnToFile("  movdqu %%xmm0, (%s)", reg)
+		printlnToFile("  movq %%rdx, 16(%s)", reg)
 		return
 	}
 
