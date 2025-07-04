@@ -787,6 +787,10 @@ func preprocess3(tok *Token) *Token {
 			tok.Kind = TK_KEYWORD
 		}
 
+		if tok.Kind == TK_STR && tok.Next.Kind == TK_STR {
+			joinAdjacentStringLiterals(tok)
+		}
+
 		cur.Next = tok
 		cur = cur.Next
 		tok = tok.Next
@@ -1681,75 +1685,56 @@ func (tok *Token) tokenizeStringLiteral(basety *CType) *Token {
 // Concatenate adjacent string literals into a single string literal
 // as per the C spec.
 func joinAdjacentStringLiterals(tok *Token) {
-	// First pass: If regular string literals are adjacent to wide
-	// string literals, regular string literals are converted to a wide
-	// type before concatenation. In this pass, we do the conversion.
-	for tok1 := tok; tok1.Kind != TK_EOF; {
-		if tok1.Kind != TK_STR || tok1.Next.Kind != TK_STR {
-			tok1 = tok1.Next
-			continue
-		}
+	end := tok.Next.Next
+	for end.Kind == TK_STR {
+		end = end.Next
+	}
 
-		kind := tok1.getStringKind()
-		basety := tok1.Ty.Base
+	fileno := tok.DisplayFileNo
+	lineno := tok.DisplayLineNo
 
-		for t := tok1.Next; t.Kind == TK_STR; t = t.Next {
-			k := t.getStringKind()
-			if kind == STR_NONE {
-				kind = k
-				basety = t.Ty.Base
-			} else if k != STR_NONE && kind != k {
-				errorTok(t, "unsupported non-standard concatenation of string literal")
-			}
-		}
+	// If regular string literals are adjacent to wide string literals,
+	// regular string literals are converted to the wide type.
+	kind := tok.getStringKind()
+	basety := tok.Ty.Base
 
-		if basety.Size > 1 {
-			for t := tok1; t.Kind == TK_STR; t = t.Next {
-				if t.Ty.Base.Size == 1 {
-					t1 := t.tokenizeStringLiteral(basety)
-					*t = *t1
-				}
-			}
-		}
-
-		for tok1.Kind == TK_STR {
-			tok1 = tok1.Next
+	for t := tok.Next; t != end; t = t.Next {
+		k := t.getStringKind()
+		if kind == STR_NONE {
+			kind = k
+			basety = t.Ty.Base
+		} else if k != STR_NONE && kind != k {
+			errorTok(t, "unsupported non-standard concatenation of string literals")
 		}
 	}
 
-	// Second pass: concatenate adjacent string literals.
-	for tok1 := tok; tok1 != nil && tok1.Kind != TK_EOF; {
-		if tok1.Kind != TK_STR || tok1.Next.Kind != TK_STR {
-			tok1 = tok1.Next
-			continue
-		}
-
-		tok2 := tok1.Next
-		for tok2.Kind == TK_STR {
-			tok2 = tok2.Next
-		}
-
-		length := tok1.Ty.ArrayLength
-		for t := tok1.Next; t != tok2; t = t.Next {
-			length = length + t.Ty.ArrayLength - 1
-		}
-
-		buf := make([]int8, tok1.Ty.Base.Size*length)
-
-		i := 0
-		for t := tok1; t != tok2; t = t.Next {
-			for j := 0; j < int(t.Ty.Size); j++ {
-				buf[i+j] = t.StringLiteral[j]
+	if basety.Size > 1 {
+		for t := tok; t != end; t = t.Next {
+			if t.Ty.Base.Size == 1 {
+				*t = *t.tokenizeStringLiteral(basety)
 			}
-			i = i + int(t.Ty.Size) - int(t.Ty.Base.Size)
 		}
-
-		*tok1 = *(tok1.copy())
-		tok1.Ty = arrayOf(tok1.Ty.Base, int64(length))
-		tok1.StringLiteral = buf
-		tok1.Next = tok2
-		tok1 = tok2
 	}
+
+	// Concatenate adjacent string literals.
+	length := tok.Ty.ArrayLength
+	for t := tok.Next; t != end; t = t.Next {
+		length = length + t.Ty.ArrayLength - 1
+	}
+
+	buf := make([]int8, basety.Size*length)
+	i := 0
+	for t := tok; t != end; t = t.Next {
+		copy(buf[i:i+int(t.Ty.Size)], t.StringLiteral)
+		i = i + int(t.Ty.Size) - int(t.Ty.Base.Size)
+	}
+
+	tok.DisplayFileNo = fileno
+	tok.DisplayLineNo = lineno
+
+	tok.Ty = arrayOf(basety, length)
+	tok.StringLiteral = buf
+	tok.Next = end
 }
 
 // Entry point function of the preprocessor.
@@ -1763,8 +1748,5 @@ func preprocess(tok *Token) *Token {
 		return tok
 	}
 
-	tok = preprocess3(tok)
-	joinAdjacentStringLiterals(tok)
-
-	return tok
+	return preprocess3(tok)
 }
