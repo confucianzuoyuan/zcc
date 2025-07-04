@@ -615,6 +615,7 @@ func hasAttributeMacro(start *Token) *Token {
 
 	val := isSupportedAttr(nil, tok)
 	tok = skip(tok.Next, ")")
+	popMacroLockUntil(start, tok)
 
 	tok2 := newNumberToken(val, start)
 	tok2.Next = tok
@@ -630,6 +631,7 @@ func hasCAttributeMacro(start *Token) *Token {
 	}
 	val := isSupportedAttr(&vendor, tok)
 	tok = skip(tok.Next, ")")
+	popMacroLockUntil(start, tok)
 
 	tok2 := newNumberToken(val, start)
 	tok2.Next = tok
@@ -642,6 +644,7 @@ func hasBuiltinMacro(start *Token) *Token {
 	hasIt := tok.isEqual("__builtin_offsetof") || tok.isEqual("__builtin_types_compatible_p") || tok.isEqual("__builtin_va_start") || tok.isEqual("__builtin_va_copy") || tok.isEqual("__builtin_va_end") || tok.isEqual("__builtin_va_arg")
 
 	tok = skip(tok.Next, ")")
+	popMacroLockUntil(start, tok)
 
 	tok2 := newNumberToken(boolToInt(hasIt), start)
 	tok2.Next = tok
@@ -1125,6 +1128,12 @@ func popMacroLock(tok *Token) {
 	}
 }
 
+func popMacroLockUntil(tok *Token, end *Token) {
+	for ; tok != end; tok = tok.Next {
+		popMacroLock(tok)
+	}
+}
+
 func (t *Token) isHash() bool {
 	return t.AtBeginningOfLine && t.isEqual("#")
 }
@@ -1183,6 +1192,8 @@ func hasIncludeMacro(start *Token) *Token {
 	if !found {
 		found = searchIncludePaths(filename) != ""
 	}
+
+	popMacroLockUntil(start, tok)
 
 	tok2 := newNumberToken(boolToInt(found), start)
 	tok2.Next = tok
