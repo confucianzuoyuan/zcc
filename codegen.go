@@ -289,11 +289,7 @@ func placeStackArgs(node *AstNode) {
 			continue
 		}
 
-		ax := "%rax"
-		if v.Ty.Size <= 4 {
-			ax = "%eax"
-		}
-		loadExtendInt(v.Ty, int(v.Offset), v.Pointer, ax)
+		loadExtendInt(v.Ty, int(v.Offset), v.Pointer, regOpAX(v.Ty))
 		printlnToFile("  mov %%rax, %d(%%rsp)", v.StackOffset)
 	}
 }
@@ -549,6 +545,16 @@ func regAX(sz int) string {
 	panic("unreachable")
 }
 
+func regOpAX(ty *CType) string {
+	switch ty.Size {
+	case 1, 2, 4:
+		return "%eax"
+	case 8:
+		return "%rax"
+	}
+	panic("unreachable")
+}
+
 // Round up `n` to the nearest multiple of `align`. For instance,
 // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
 func alignTo(n int64, align int64) int64 {
@@ -693,11 +699,7 @@ func load(ty *CType) {
 		return
 	}
 
-	ax := "%rax"
-	if ty.Size <= 4 {
-		ax = "%eax"
-	}
-	loadExtendInt(ty, 0, "%rax", ax)
+	loadExtendInt(ty, 0, "%rax", regOpAX(ty))
 }
 
 // Store %rax to an address that the stack top is pointing to.
@@ -1231,6 +1233,19 @@ func genExpr(node *AstNode) {
 		printlnToFile("  mov $1, %%rax")
 		printlnToFile(".L.end.%d:", c)
 		return
+	case ND_SHL, ND_SHR:
+		genExpr(node.Rhs)
+		pushTmp()
+		genExpr(node.Lhs)
+		popTmp("%rcx")
+		if node.Kind == ND_SHL {
+			printlnToFile("  shl %%cl, %s", regOpAX(node.Ty))
+		} else if node.Lhs.Ty.IsUnsigned {
+			printlnToFile("  shr %%cl, %s", regOpAX(node.Ty))
+		} else {
+			printlnToFile("  sar %%cl, %s", regOpAX(node.Ty))
+		}
+		return
 	case ND_FUNCALL:
 		if node.Lhs.Kind == ND_VAR && node.Lhs.Variable.Name == "alloca" {
 			genExpr(node.ArgsExpr)
@@ -1464,18 +1479,6 @@ func genExpr(node *AstNode) {
 		}
 
 		printlnToFile("  movzb %%al, %%rax")
-		return
-	case ND_SHL:
-		printlnToFile("  mov %%rdi, %%rcx")
-		printlnToFile("  shl %%cl, %s", ax)
-		return
-	case ND_SHR:
-		printlnToFile("  mov %%rdi, %%rcx")
-		if node.Lhs.Ty.IsUnsigned {
-			printlnToFile("  shr %%cl, %s", ax)
-		} else {
-			printlnToFile("  sar %%cl, %s", ax)
-		}
 		return
 	}
 
