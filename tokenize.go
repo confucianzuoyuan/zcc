@@ -67,6 +67,7 @@ const (
 	TK_NUM                      // Numeric literals
 	TK_PP_NUM                   // Preprocessing numbers
 	TK_PMARK                    // Placermarkers
+	TK_ATTR                     // GNU attribute
 	TK_EOF                      // End-of-file markers
 )
 
@@ -93,12 +94,14 @@ type Token struct {
 	File              *File // Source location
 	DisplayLineNo     int
 	DisplayFileNo     int
-	LineNo            int    // Line number
-	AtBeginningOfLine bool   // True if this token is at beginning of line
-	HasSpace          bool   // True if this token follows a space character
-	DontExpand        bool   // True if a macro token is encountered during the macro's expansion
+	LineNo            int  // Line number
+	AtBeginningOfLine bool // True if this token is at beginning of line
+	HasSpace          bool // True if this token follows a space character
+	DontExpand        bool // True if a macro token is encountered during the macro's expansion
+	IsHiddenAttr      bool
 	Origin            *Token // If this is expanded from a macro, the original token
 	GuardFile         string // The path of a potentially include-guarded file
+	AttrNext          *Token
 }
 
 // Input file

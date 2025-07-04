@@ -596,6 +596,62 @@ func readMacroParams(rest **Token, tok *Token, vaArgsName *string) *MacroParam {
 	return head.Next
 }
 
+func filterAttr(tok *Token, attr *Token, isHidden bool) {
+	first := true
+	for ; tok.Kind != TK_EOF; first = false {
+		if !first {
+			tok = skip(tok, ",")
+		}
+
+		if tok.Kind != TK_IDENT {
+			errorTok(tok, "expected attribute name")
+		}
+
+		tok.Kind = TK_ATTR
+
+		if tok.isEqual("packed") || tok.isEqual("__packed__") {
+			attr.AttrNext = tok
+			attr = attr.AttrNext
+			tok = tok.Next
+			continue
+		}
+
+		if consume(&tok, tok.Next, "(") {
+			tok = skipParen(tok)
+			continue
+		}
+
+		tok = tok.Next
+		continue
+	}
+}
+
+func preprocess3(tok *Token) *Token {
+	head := Token{}
+	cur := &head
+
+	for tok.Kind != TK_EOF {
+		if tok.isEqual("__attribute__") {
+			isHidden := tok.IsHiddenAttr
+
+			tok = skip(tok.Next, "(")
+			tok = skip(tok, "(")
+			list := splitParen(&tok, tok)
+			tok = skip(tok, ")")
+
+			filterAttr(list, tok, isHidden)
+			continue
+		}
+
+		cur.Next = tok
+		cur = cur.Next
+		tok = tok.Next
+		continue
+	}
+	cur.Next = tok
+	return head.Next
+}
+
 func readMacroDefinition(rest **Token, tok *Token) {
 	if tok.Kind != TK_IDENT {
 		errorTok(tok, "macro name must be an identifier")
@@ -914,6 +970,12 @@ func expandMacro(rest **Token, tok *Token) bool {
 
 	if m.IsLocked {
 		tok.DontExpand = true
+		return false
+	}
+
+	if tok.isEqual("__attribute__") && !m.IsObjlike && m.Body.Kind == TK_EOF {
+		tok.IsHiddenAttr = true
+		pushMacroLock(m, skipParen(skip(tok.Next, "(")))
 		return false
 	}
 
@@ -1510,6 +1572,8 @@ func preprocess(tok *Token) *Token {
 	if condIncl != nil {
 		errorTok(condIncl.Tok, "unterminated conditional directive")
 	}
+
+	tok = preprocess3(tok)
 	convertPpTokens(tok)
 	joinAdjacentStringLiterals(tok)
 
