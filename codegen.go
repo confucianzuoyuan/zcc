@@ -138,16 +138,48 @@ func pushTmp() {
 	pushTmpStack(SL_GP)
 }
 
+func popTmp2(sl *Slot, isR64 bool, arg string) {
+	ax := "%eax"
+	if isR64 {
+		ax = "%rax"
+	}
+	if sl.Kind == SL_GP {
+		reg := tmpreg32[sl.GpDepth]
+		if isR64 {
+			reg = tmpreg64[sl.GpDepth]
+		}
+		instructionLine("  mov %s, %s", int(sl.Location), ax, reg)
+		printlnToFile("  mov %s, %s", reg, arg)
+		return
+	}
+	instructionLine("  mov %s, %d(%s)", int(sl.Location), ax, sl.StOffset, LocalVarPointer)
+	printlnToFile("  mov %d(%s), %s", sl.StOffset, LocalVarPointer, arg)
+}
+
 func popTmp(arg string) {
+	sl := popTmpStack()
+	popTmp2(sl, true, arg)
+}
+
+func popTmpKeepReg(isR64 bool) string {
 	sl := popTmpStack()
 
 	if sl.Kind == SL_GP {
-		instructionLine("  mov %%rax, %s", int(sl.Location), tmpreg64[sl.GpDepth])
-		printlnToFile("  mov %s, %s", tmpreg64[sl.GpDepth], arg)
-		return
+		ax := "%eax"
+		reg := tmpreg32[sl.GpDepth]
+		if isR64 {
+			ax = "%rax"
+			reg = tmpreg64[sl.GpDepth]
+		}
+		instructionLine("  mov %s, %s", int(sl.Location), ax, reg)
+		return reg
 	}
-	instructionLine("  mov %%rax, %d(%s)", int(sl.Location), sl.StOffset, LocalVarPointer)
-	printlnToFile("  mov %d(%s), %s", sl.StOffset, LocalVarPointer, arg)
+	reg := "%ecx"
+	if isR64 {
+		reg = "%rcx"
+	}
+	popTmp2(sl, isR64, reg)
+	return reg
 }
 
 func pushTmpF() {
@@ -1409,37 +1441,35 @@ func genExpr(node *AstNode) {
 	genExpr(node.Rhs)
 	pushTmp()
 	genExpr(node.Lhs)
-	popTmp("%rdi")
 
+	isR64 := node.Lhs.Ty.Size == 8 || node.Lhs.Ty.Base != nil
 	ax := "%eax"
-	di := "%edi"
-
-	if node.Lhs.Ty.Size == 8 || node.Lhs.Ty.Base != nil {
+	if isR64 {
 		ax = "%rax"
-		di = "%rdi"
 	}
+	op := popTmpKeepReg(isR64)
 
 	switch node.Kind {
 	case ND_ADD:
-		printlnToFile("  add %s, %s", di, ax)
+		printlnToFile("  add %s, %s", op, ax)
 		return
 	case ND_SUB:
-		printlnToFile("  sub %s, %s", di, ax)
+		printlnToFile("  sub %s, %s", op, ax)
 		return
 	case ND_MUL:
-		printlnToFile("  imul %s, %s", di, ax)
+		printlnToFile("  imul %s, %s", op, ax)
 		return
 	case ND_DIV, ND_MOD:
 		if node.Ty.IsUnsigned {
 			printlnToFile("  xor %%edx, %%edx")
-			printlnToFile("  div %s", di)
+			printlnToFile("  div %s", op)
 		} else {
 			if node.Lhs.Ty.Size == 8 {
 				printlnToFile("  cqo")
 			} else {
 				printlnToFile("  cdq")
 			}
-			printlnToFile("  idiv %s", di)
+			printlnToFile("  idiv %s", op)
 		}
 
 		if node.Kind == ND_MOD {
@@ -1447,16 +1477,16 @@ func genExpr(node *AstNode) {
 		}
 		return
 	case ND_BITAND:
-		printlnToFile("  and %s, %s", di, ax)
+		printlnToFile("  and %s, %s", op, ax)
 		return
 	case ND_BITOR:
-		printlnToFile("  or %s, %s", di, ax)
+		printlnToFile("  or %s, %s", op, ax)
 		return
 	case ND_BITXOR:
-		printlnToFile("  xor %s, %s", di, ax)
+		printlnToFile("  xor %s, %s", op, ax)
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
-		printlnToFile("  cmp %s, %s", di, ax)
+		printlnToFile("  cmp %s, %s", op, ax)
 
 		if node.Kind == ND_EQ {
 			printlnToFile("  sete %%al")
