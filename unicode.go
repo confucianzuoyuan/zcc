@@ -72,11 +72,16 @@ func decodeUTF8(buf *[]int8, p int) (uint32, int) {
 	return c, newPos
 }
 
-func inRange(arr []uint32, c uint32) bool {
+// Values "range" points to must be in ascending order
+func inOrderedRange(arr []uint32, c uint32) bool {
 	for i := 0; arr[i] != math.MaxUint32; i += 2 {
-		if arr[i] <= c && c <= arr[i+1] {
+		if c > arr[i+1] {
+			continue
+		}
+		if arr[i] <= c {
 			return true
 		}
+		return false
 	}
 	return false
 }
@@ -93,7 +98,7 @@ func inRange(arr []uint32, c uint32) bool {
 // (U+3000, full-width space) are allowed because they are out of range.
 func isIdentFirstChar(c uint32) bool {
 	arr := []uint32{
-		'_', '_', 'a', 'z', 'A', 'Z', '$', '$',
+		'$', '$', 'A', 'Z', '_', '_', 'a', 'z',
 		0x00A8, 0x00A8, 0x00AA, 0x00AA, 0x00AD, 0x00AD, 0x00AF, 0x00AF,
 		0x00B2, 0x00B5, 0x00B7, 0x00BA, 0x00BC, 0x00BE, 0x00C0, 0x00D6,
 		0x00D8, 0x00F6, 0x00F8, 0x00FF, 0x0100, 0x02FF, 0x0370, 0x167F,
@@ -109,15 +114,15 @@ func isIdentFirstChar(c uint32) bool {
 		0xD0000, 0xDFFFD, 0xE0000, 0xEFFFD, math.MaxUint32,
 	}
 
-	return inRange(arr, c)
+	return inOrderedRange(arr, c)
 }
 
 // Returns true if a given character is acceptable as a non-first
 // character of an identifier.
 func isIdentInnerChar(c uint32) bool {
-	arr := []uint32{'0', '9', '$', '$', 0x0300, 0x036F, 0x1DC0, 0x1DFF, 0x20D0, 0x20FF,
+	arr := []uint32{'0', '9', 0x0300, 0x036F, 0x1DC0, 0x1DFF, 0x20D0, 0x20FF,
 		0xFE20, 0xFE2F, math.MaxUint32}
-	return isIdentFirstChar(c) || inRange(arr, c)
+	return isIdentFirstChar(c) || inOrderedRange(arr, c)
 }
 
 // Returns the number of columns needed to display a given
@@ -165,7 +170,7 @@ func charWidth(c uint32) int {
 		math.MaxUint32,
 	}
 
-	if inRange(range1, c) {
+	if inOrderedRange(range1, c) {
 		return 0
 	}
 
@@ -176,7 +181,7 @@ func charWidth(c uint32) int {
 		0x20000, 0x2FFFD, 0x30000, 0x3FFFD, math.MaxUint32,
 	}
 
-	if inRange(range2, c) {
+	if inOrderedRange(range2, c) {
 		return 2
 	}
 
