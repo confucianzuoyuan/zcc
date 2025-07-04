@@ -20,7 +20,7 @@ test: $(TESTS) $(TESTS_C23)
 	bash test/driver.sh
 
 clean:
-	rm -rf zcc
+	rm -rf zcc a.out
 	find * -type f '(' -name '*~' -o -name '*.o' ')' -exec rm {} ';'
 	find test/* -type f '(' -name '*~' -o -name '*.exe' ')' -exec rm {} ';'
 
