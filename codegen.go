@@ -617,6 +617,7 @@ func genAddr(node *AstNode) {
 		if opt_fpic {
 			// Thread-local variable
 			if node.Variable.IsTls {
+				saveTmpRegs()
 				printlnToFile("  data16 lea \"%s\"@tlsgd(%%rip), %%rdi", node.Variable.Name)
 				printlnToFile("  .value 0x6666")
 				printlnToFile("  rex64")
