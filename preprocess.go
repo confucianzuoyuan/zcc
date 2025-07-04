@@ -1464,6 +1464,19 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if opt_cc1_asm_pp {
+			tok = start
+			for {
+				cur.Next = tok
+				cur = cur.Next
+				tok = tok.Next
+				if tok.AtBeginningOfLine {
+					break
+				}
+			}
+			continue
+		}
+
 		// `#`-only line is legal. It's called a null directive.
 		if tok.AtBeginningOfLine {
 			continue

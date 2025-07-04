@@ -31,12 +31,14 @@ const (
 	FILE_OBJ
 	FILE_AR
 	FILE_DSO
+	FILE_PP_ASM
 )
 
 var includePaths []string
 var ldExtraArgs []string
 var stdIncludePaths []string
 
+var opt_cc1_asm_pp bool
 var opt_std StdVer
 var opt_data_sections bool
 var opt_func_sections bool
@@ -353,6 +355,12 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-cc1-asm-pp" {
+			opt_E = true
+			opt_cc1_asm_pp = true
+			continue
+		}
+
 		if args[idx] == "-idirafter" {
 			idirafter = append(idirafter, args[idx])
 			idx++
@@ -531,6 +539,10 @@ func getFileType(filename string) FileType {
 		return FILE_ASM
 	}
 
+	if strings.HasSuffix(filename, ".S") {
+		return FILE_PP_ASM
+	}
+
 	if opt_E && filename == "-" {
 		return FILE_C
 	}
@@ -556,6 +568,9 @@ func parseOptX(s string) FileType {
 	}
 	if s == "assembler" {
 		return FILE_ASM
+	}
+	if s == "assembler-with-cpp" {
+		return FILE_PP_ASM
 	}
 	if s == "none" {
 		return FILE_NONE
@@ -589,7 +604,7 @@ func runSubprocess(args []string) {
 	}
 }
 
-func run_cc1(args []string, input string, output string) {
+func run_cc1(args []string, input string, output string, option string) {
 	args = append(args, "-cc1")
 
 	if input != "" {
@@ -600,6 +615,10 @@ func run_cc1(args []string, input string, output string) {
 	if output != "" {
 		args = append(args, "-cc1-output")
 		args = append(args, output)
+	}
+
+	if option != "" {
+		args = append(args, option)
 	}
 
 	runSubprocess(args)
@@ -730,7 +749,7 @@ func cc1() {
 
 	// If -E is given, print out preprocessed C code as a result.
 	if opt_E {
-		printTokens(tok)
+		printTokens(tok, outputFile)
 		return
 	}
 
@@ -764,13 +783,9 @@ func cc1() {
 }
 
 // Print tokens to stdout. Used for -E.
-func printTokens(tok *Token) {
+func printTokens(tok *Token, path string) {
 	var out *os.File
-	if opt_o != "" {
-		out, _ = openFile(opt_o)
-	} else {
-		out, _ = openFile("-")
-	}
+	out, _ = openFile(path)
 
 	line := 1
 	for ; tok != nil && tok.Kind != TK_EOF; tok = tok.Next {
@@ -988,26 +1003,56 @@ func main() {
 			continue
 		}
 
+		// Handle .S
+		if filetype == FILE_PP_ASM {
+			if opt_S || opt_E || opt_M {
+				if opt_o != "" {
+					run_cc1(args, input, opt_o, "-cc1-asm-pp")
+				} else {
+					run_cc1(args, input, "-", "-cc1-asm-pp")
+				}
+				continue
+			}
+
+			if opt_c {
+				tmp := createTmpfile()
+				run_cc1(args, input, tmp, "-cc1-asm-pp")
+				assemble(tmp, output)
+				continue
+			}
+
+			tmp1 := createTmpfile()
+			tmp2 := createTmpfile()
+			run_cc1(args, input, tmp1, "-cc1-asm-pp")
+			assemble(tmp1, tmp2)
+			ldArgs = append(ldArgs, tmp2)
+			continue
+		}
+
 		if filetype != FILE_C {
 			panic("must be .c file")
 		}
 
 		// Just preprocess
 		if opt_E || opt_M {
-			run_cc1(args, input, "")
+			if opt_o != "" {
+				run_cc1(args, input, opt_o, "")
+			} else {
+				run_cc1(args, input, "-", "")
+			}
 			continue
 		}
 
 		// Compile
 		if opt_S {
-			run_cc1(args, input, output)
+			run_cc1(args, input, output, "")
 			continue
 		}
 
 		// Compile and assemble
 		if opt_c {
 			tmp := createTmpfile()
-			run_cc1(args, input, tmp)
+			run_cc1(args, input, tmp, "")
 			assemble(tmp, output)
 			continue
 		}
@@ -1015,7 +1060,7 @@ func main() {
 		// Compile, assemble and link
 		tmp1 := createTmpfile()
 		tmp2 := createTmpfile()
-		run_cc1(args, input, tmp1)
+		run_cc1(args, input, tmp1, "")
 		assemble(tmp1, tmp2)
 		ldArgs = append(ldArgs, tmp2)
 		continue
