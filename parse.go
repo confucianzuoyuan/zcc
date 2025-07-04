@@ -1385,9 +1385,12 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-func attributePacked(tok *Token, ty *CType) {
+func attributePacked(tok *Token, ty *CType, noBAttr bool) {
 	for lst := tok.AttrNext; lst != nil; lst = lst.AttrNext {
 		if lst.isEqual("packed") || lst.isEqual("__packed__") {
+			if noBAttr && lst.Kind == TK_BATTR {
+				continue
+			}
 			ty.IsPacked = true
 			continue
 		}
@@ -1397,7 +1400,7 @@ func attributePacked(tok *Token, ty *CType) {
 // struct-union-decl = attribute? ident? ("{" struct-members)?
 func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 	ty := structType()
-	attributePacked(tok, ty)
+	attributePacked(tok, ty, false)
 
 	// Read a struct tag.
 	var tag *Token = nil
@@ -1424,7 +1427,7 @@ func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 
 	// Construct a struct object.
 	structMembers(&tok, tok, ty)
-	attributePacked(tok, ty)
+	attributePacked(tok, ty, true)
 	*rest = tok
 
 	if tag != nil {

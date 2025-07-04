@@ -239,7 +239,7 @@ func splitParen(rest **Token, tok *Token) *Token {
 	cur := &head
 
 	level := 0
-	for !(level == 0 && consume(rest, tok, ")")) {
+	for !(level == 0 && tok.isEqual(")")) {
 		if tok.isEqual("(") {
 			level++
 		} else if tok.isEqual(")") {
@@ -252,7 +252,8 @@ func splitParen(rest **Token, tok *Token) *Token {
 		cur = cur.Next
 		tok = tok.Next
 	}
-	cur.Next = tok.newEOF()
+	*rest = tok.Next
+	cur.Next = tok.toEOF()
 	return head.Next
 }
 
@@ -596,11 +597,17 @@ func readMacroParams(rest **Token, tok *Token, vaArgsName *string) *MacroParam {
 	return head.Next
 }
 
-func filterAttr(tok *Token, attr *Token, isHidden bool) {
+func filterAttr(tok *Token, attr *Token, isHidden bool, isBracket bool) {
 	first := true
 	for ; tok.Kind != TK_EOF; first = false {
 		if !first {
 			tok = skip(tok, ",")
+		}
+
+		var vendor *Token = nil
+		if isBracket && tok.Kind == TK_IDENT && tok.Next.isEqual(":") {
+			vendor = tok
+			tok = skip(tok.Next.Next, ":")
 		}
 
 		if tok.Kind != TK_IDENT {
@@ -608,8 +615,11 @@ func filterAttr(tok *Token, attr *Token, isHidden bool) {
 		}
 
 		tok.Kind = TK_ATTR
+		if isBracket {
+			tok.Kind = TK_BATTR
+		}
 
-		if tok.isEqual("packed") || tok.isEqual("__packed__") {
+		if (tok.isEqual("packed") || tok.isEqual("__packed__")) && (!isBracket || (vendor != nil && vendor.isEqual("gnu"))) {
 			attr.AttrNext = tok
 			attr = attr.AttrNext
 			tok = tok.Next
@@ -626,6 +636,37 @@ func filterAttr(tok *Token, attr *Token, isHidden bool) {
 	}
 }
 
+func (tok *Token) toEOF() *Token {
+	tok.Kind = TK_EOF
+	tok.Length = 0
+	tok.AtBeginningOfLine = true
+	return tok
+}
+
+func splitBracket(rest **Token, tok *Token) *Token {
+	start := tok
+	head := Token{}
+	cur := &head
+
+	level := 0
+	for !(level == 0 && tok.isEqual("]")) {
+		if tok.isEqual("[") {
+			level++
+		} else if tok.isEqual("]") {
+			level--
+		} else if tok.Kind == TK_EOF {
+			errorTok(start, "unterminated list")
+		}
+
+		cur.Next = tok
+		cur = cur.Next
+		tok = tok.Next
+	}
+	*rest = tok.Next
+	cur.Next = tok.toEOF()
+	return head.Next
+}
+
 func preprocess3(tok *Token) *Token {
 	head := Token{}
 	cur := &head
@@ -639,7 +680,15 @@ func preprocess3(tok *Token) *Token {
 			list := splitParen(&tok, tok)
 			tok = skip(tok, ")")
 
-			filterAttr(list, tok, isHidden)
+			filterAttr(list, tok, isHidden, false)
+			continue
+		}
+
+		if tok.isEqual("[") && consume(&tok, tok.Next, "[") {
+			list := splitBracket(&tok, tok)
+			tok = skip(tok, "]")
+
+			filterAttr(list, tok, false, true)
 			continue
 		}
 

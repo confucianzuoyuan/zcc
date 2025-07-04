@@ -68,6 +68,7 @@ const (
 	TK_PP_NUM                   // Preprocessing numbers
 	TK_PMARK                    // Placermarkers
 	TK_ATTR                     // GNU attribute
+	TK_BATTR                    // C23 attribute
 	TK_EOF                      // End-of-file markers
 )
 
