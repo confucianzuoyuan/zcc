@@ -636,6 +636,18 @@ func hasCAttributeMacro(start *Token) *Token {
 	return tok2
 }
 
+func hasBuiltinMacro(start *Token) *Token {
+	tok := skip(start.Next, "(")
+
+	hasIt := tok.isEqual("__builtin_offsetof") || tok.isEqual("__builtin_types_compatible_p") || tok.isEqual("__builtin_va_start") || tok.isEqual("__builtin_va_copy") || tok.isEqual("__builtin_va_end") || tok.isEqual("__builtin_va_arg")
+
+	tok = skip(tok.Next, ")")
+
+	tok2 := newNumberToken(boolToInt(hasIt), start)
+	tok2.Next = tok
+	return tok2
+}
+
 func filterAttr(tok *Token, lst *Token, isHidden bool, isBracket bool) {
 	first := true
 	for ; tok.Kind != TK_EOF; first = false {
@@ -1561,6 +1573,7 @@ func initMacros() {
 
 	addBuiltin("__has_attribute", hasAttributeMacro)
 	addBuiltin("__has_c_attribute", hasCAttributeMacro)
+	addBuiltin("__has_builtin", hasBuiltinMacro)
 	addBuiltin("__has_include", hasIncludeMacro)
 
 	now := time.Now() // 当前时间，包含本地时区
