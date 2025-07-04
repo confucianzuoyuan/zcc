@@ -1388,6 +1388,19 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
+		if tok.isEqual("pragma") && opt_E {
+			tok = start
+			for {
+				cur.Next = tok
+				cur = cur.Next
+				tok = tok.Next
+				if tok.AtBeginningOfLine {
+					break
+				}
+			}
+			continue
+		}
+
 		if tok.isEqual("pragma") {
 			tok = tok.Next
 			for !tok.AtBeginningOfLine {
@@ -1686,6 +1699,10 @@ func preprocess(tok *Token) *Token {
 	tok = preprocess2(tok)
 	if condIncl != nil {
 		errorTok(condIncl.Tok, "unterminated conditional directive")
+	}
+
+	if opt_E {
+		return tok
 	}
 
 	tok = preprocess3(tok)
