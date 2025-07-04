@@ -1679,20 +1679,17 @@ func genStmt(node *AstNode) {
 	errorTok(node.Tok, "invalid statement")
 }
 
-func getLovalVarAlign(sc *Scope, align int64) int64 {
+func calcStackAlign(sc *Scope, align *int64) {
 	for v := sc.Locals; v != nil; v = v.Next {
 		if v.Offset != 0 {
 			continue
 		}
-		align = int64(math.Max(float64(align), float64(v.Align)))
+		*align = int64(math.Max(float64(*align), float64(v.Align)))
 	}
 
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
-		subMax := getLovalVarAlign(sub, align)
-		align = int64(math.Max(float64(align), float64(subMax)))
+		calcStackAlign(sub, align)
 	}
-
-	return align
 }
 
 // Assign offsets to local variables.
@@ -1724,7 +1721,9 @@ func assignLocalVariableOffsets(prog *Obj) {
 			v.Pointer = "%rbp"
 		}
 
-		fn.StackAlign = getLovalVarAlign(fn.Ty.Scopes, 16)
+		stAlign := int64(16)
+		calcStackAlign(fn.Ty.Scopes, &stAlign)
+		fn.StackAlign = stAlign
 
 		lvarPtr := "%rbp"
 		if fn.StackAlign > 16 {
@@ -1759,11 +1758,11 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int, ptr string) int {
 	maxDepth := bottom
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
 		subDepth := assignLocalVariableOffsets2(sub, bottom, ptr)
-		if !DontReuseStack {
-			maxDepth = int(math.Max(float64(maxDepth), float64(subDepth)))
-		} else {
+		if DontReuseStack {
 			maxDepth = subDepth
-			bottom = maxDepth
+			bottom = subDepth
+		} else {
+			maxDepth = int(math.Max(float64(maxDepth), float64(subDepth)))
 		}
 	}
 
