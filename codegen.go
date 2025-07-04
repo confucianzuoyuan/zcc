@@ -1413,12 +1413,10 @@ func genExpr(node *AstNode) {
 
 	ax := "%eax"
 	di := "%edi"
-	dx := "%edx"
 
 	if node.Lhs.Ty.Size == 8 || node.Lhs.Ty.Base != nil {
 		ax = "%rax"
 		di = "%rdi"
-		dx = "%rdx"
 	}
 
 	switch node.Kind {
@@ -1433,7 +1431,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_DIV, ND_MOD:
 		if node.Ty.IsUnsigned {
-			printlnToFile("  mov $0, %s", dx)
+			printlnToFile("  xor %%edx, %%edx")
 			printlnToFile("  div %s", di)
 		} else {
 			if node.Lhs.Ty.Size == 8 {
