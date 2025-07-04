@@ -755,16 +755,6 @@ func convertPpNumber(tok *Token) {
 	tok.Ty = ty
 }
 
-func convertPpTokens(tok *Token) {
-	for t := tok; t != nil && t.Kind != TK_EOF; t = t.Next {
-		if t.isKeyword() {
-			t.Kind = TK_KEYWORD
-		} else if t.Kind == TK_PP_NUM {
-			convertPpNumber(t)
-		}
-	}
-}
-
 // Initialize line info for all tokens.
 func addLineNumbers(src *[]int8, tok *Token) {
 	p := 0

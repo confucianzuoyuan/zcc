@@ -197,7 +197,7 @@ func readConstExpr(rest **Token, tok *Token) *Token {
 func readLineMarker(rest **Token, tok *Token) {
 	start := tok
 	tok = preprocess2(copyLine(rest, tok))
-	convertPpTokens(tok)
+	convertPpNumber(tok)
 
 	if tok.Kind != TK_NUM || tok.Ty.Kind != TY_INT {
 		errorTok(tok, "invalid line marker")
@@ -355,9 +355,6 @@ func evalConstExpr(rest **Token, tok *Token) int64 {
 			t.Next = next
 		}
 	}
-
-	// Convert pp-numbers to regular numbers
-	convertPpTokens(expr)
 
 	var rest2 *Token
 	val := constExpr(&rest2, expr)
@@ -784,6 +781,10 @@ func preprocess3(tok *Token) *Token {
 
 			filterAttr(list, tok, false, true)
 			continue
+		}
+
+		if tok.Kind == TK_IDENT && tok.isKeyword() {
+			tok.Kind = TK_KEYWORD
 		}
 
 		cur.Next = tok
@@ -1763,7 +1764,6 @@ func preprocess(tok *Token) *Token {
 	}
 
 	tok = preprocess3(tok)
-	convertPpTokens(tok)
 	joinAdjacentStringLiterals(tok)
 
 	return tok
