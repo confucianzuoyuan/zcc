@@ -652,6 +652,48 @@ func hasBuiltinMacro(start *Token) *Token {
 	return tok2
 }
 
+func pragmaMacro(start *Token) *Token {
+	tok := start.Next
+	var str *Token
+	progress := 0
+	for {
+		if tok.Kind == TK_EOF {
+			errorTok(start, "unterminated _Pragma sequence")
+		}
+
+		popMacroLock(tok)
+		if expandMacro(&tok, tok) {
+			continue
+		}
+
+		switch progress {
+		case 0:
+			tok = skip(tok, "(")
+			continue
+		case 1:
+			if tok.Kind != TK_STR || tok.Length < 2 {
+				errorTok(tok, "expected string literal")
+			}
+			str = tok
+			tok = tok.Next
+			continue
+		case 2:
+			tok = skip(tok, ")")
+			tok.AtBeginningOfLine = true
+		}
+		progress++
+		break
+	}
+
+	buf := U82I8([]uint8("#pragma "))
+	buf = append(buf, (*str.File.Contents)[str.Location+1:str.Location+str.Length-1]...)
+	buf = append(buf, 0)
+	var end *Token
+	hash := tokenize(newFile(start.File.Name, start.File.FileNo, &buf), &end)
+	end.Next = tok
+	return hash
+}
+
 func filterAttr(tok *Token, lst *Token, isHidden bool, isBracket bool) {
 	first := true
 	for ; tok.Kind != TK_EOF; first = false {
@@ -1598,6 +1640,8 @@ func initMacros() {
 	addBuiltin("__COUNTER__", counterMacro)
 	addBuiltin("__TIMESTAMP__", timestampMacro)
 	addBuiltin("__BASE_FILE__", baseFileMacro)
+
+	addBuiltin("_Pragma", pragmaMacro)
 
 	addBuiltin("__has_attribute", hasAttributeMacro)
 	addBuiltin("__has_c_attribute", hasCAttributeMacro)
