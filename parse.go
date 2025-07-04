@@ -198,6 +198,11 @@ func leaveScope() {
 	scope = scope.Parent
 }
 
+func enterTmpScope() {
+	enterScope()
+	scope.IsTemporary = true
+}
+
 // Find a variable by name.
 func findVariable(tok *Token) *VarScope {
 	for sc := scope; sc != nil; sc = sc.Parent {
@@ -2948,12 +2953,14 @@ func conditional(rest **Token, tok *Token) *AstNode {
 	if tok.Next.isEqual(":") {
 		// [GNU] Compile `a ?: b` as `tmp = a, tmp ? tmp : b`.
 		cond.addType()
+		enterTmpScope()
 		v := newLocalVar("", cond.Ty)
 		lhs := newBinary(ND_ASSIGN, newVarNode(v, tok), cond, tok)
 		rhs := newNode(ND_COND, tok)
 		rhs.Cond = newVarNode(v, tok)
 		rhs.Then = newVarNode(v, tok)
 		rhs.Else = conditional(rest, tok.Next.Next)
+		leaveScope()
 		return newBinary(ND_COMMA, lhs, rhs, tok)
 	}
 
@@ -3400,8 +3407,8 @@ func unary(rest **Token, tok *Token) *AstNode {
 // Convert A++ to `(ptr = &A, tmp = *ptr, *ptr += 1, tmp)`
 func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
 	node.addType()
+	enterTmpScope()
 	if node.isBitField() {
-		enterScope()
 		tmp := newLocalVar("", node.Ty)
 		ptr := newLocalVar("", pointerTo(node.Lhs.Ty))
 
@@ -3422,7 +3429,6 @@ func newIncDec(node *AstNode, tok *Token, addend int) *AstNode {
 		return expr
 	}
 
-	enterScope()
 	tmp := newLocalVar("", node.Ty)
 	ptr := newLocalVar("", pointerTo(node.Ty))
 
@@ -3513,8 +3519,7 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 	cur := &head
 	var expr *AstNode = nil
 
-	enterScope()
-	scope.IsTemporary = true
+	enterTmpScope()
 
 	for commaList(rest, &tok, ")", cur != &head) {
 		arg := assign(&tok, tok)
@@ -3827,7 +3832,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node.Lhs = apArg
 		tok = skip(tok, ",")
 
-		enterScope()
+		enterTmpScope()
 		node.Variable = newLocalVar("", typeName(&tok, tok))
 		node.Ty = node.Variable.Ty
 		leaveScope()
