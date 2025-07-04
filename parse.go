@@ -2972,6 +2972,18 @@ func conditional(rest **Token, tok *Token) *AstNode {
  */
 func assign(rest **Token, tok *Token) *AstNode {
 	node := conditional(&tok, tok)
+	node.addType()
+
+	// Convert A = B to (tmp = B, atomic_exchange(&A, tmp), tmp)
+	if tok.isEqual("=") && node.Ty.IsAtomic {
+		rhs := assign(rest, tok.Next)
+		rhs.addType()
+		tmp := newLocalVar("", rhs.Ty)
+		expr := newBinary(ND_ASSIGN, newVarNode(tmp, tok), rhs, tok)
+		chainExpr(&expr, newBinary(ND_EXCH, newUnary(ND_ADDR, node, tok), newVarNode(tmp, tok), tok))
+		chainExpr(&expr, newVarNode(tmp, tok))
+		return expr
+	}
 
 	if tok.isEqual("=") {
 		return newBinary(ND_ASSIGN, node, assign(rest, tok.Next), tok)
