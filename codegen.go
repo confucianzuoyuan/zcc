@@ -7,20 +7,33 @@ import (
 
 const FP_MAX = 8
 const GP_MAX = 6
+const GP_SLOTS = 3
+const FP_SLOTS = 6
+
+type SlotKind int
+
+const (
+	SL_GP SlotKind = iota
+	SL_FP
+	SL_ST
+)
+
+type Slot struct {
+	Kind     SlotKind
+	GpDepth  int64
+	FpDepth  int64
+	StDepth  int64
+	StOffset int64
+	Location int64
+}
 
 var cgOutputFile *[]string
-var argreg8 = []string{
-	"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b",
-}
-var argreg16 = []string{
-	"%di", "%si", "%dx", "%cx", "%r8w", "%r9w",
-}
-var argreg32 = []string{
-	"%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d",
-}
-var argreg64 = []string{
-	"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
-}
+var argreg8 = [6]string{"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"}
+var argreg16 = [6]string{"%di", "%si", "%dx", "%cx", "%r8w", "%r9w"}
+var argreg32 = [6]string{"%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"}
+var argreg64 = [6]string{"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"}
+var tmpreg32 = [3]string{"%r9d", "%r10d", "%r11d"}
+var tmpreg64 = [3]string{"%r9", "%r10", "%r11"}
 
 var LabelCount int = 1
 
@@ -49,8 +62,19 @@ func printlnToFile(fmtStr string, args ...any) {
 	*cgOutputFile = append(*cgOutputFile, code)
 }
 
+func reservedLine() int64 {
+	reservedPos := len(*cgOutputFile)
+	printlnToFile("PLACEHOLDER")
+	return int64(reservedPos)
+}
+
+func instructionLine(fmtStr string, reservedPos int, args ...any) {
+	code := fmt.Sprintf(fmtStr, args...)
+	(*cgOutputFile)[reservedPos] = code
+}
+
 type TmpStack struct {
-	Data     []int
+	Data     []Slot
 	Capacity int
 	Depth    int
 	Bottom   int
@@ -58,53 +82,88 @@ type TmpStack struct {
 
 var tmpStack = TmpStack{}
 
-func pushTmpStack() int {
+func saveTmpRegs() {
+	for i := 0; i < tmpStack.Depth; i++ {
+		tmpStack.Data[i].Kind = SL_ST
+	}
+}
+
+func pushTmpStack(kind SlotKind) {
 	if tmpStack.Depth == tmpStack.Capacity {
 		tmpStack.Capacity += 4
 		for range 4 {
-			tmpStack.Data = append(tmpStack.Data, 0)
+			tmpStack.Data = append(tmpStack.Data, Slot{})
 		}
 	}
 
-	var offset int
-	if !DontReuseStack {
-		bottom := currentFn.LocalVarStackSize + (int64(tmpStack.Depth)+1)*8
-		tmpStack.Bottom = int(math.Max(float64(tmpStack.Bottom), float64(bottom)))
-		offset = -int(bottom)
-	} else {
-		tmpStack.Bottom += 8
-		offset = -tmpStack.Bottom
+	loc := reservedLine()
+	sl := Slot{Kind: kind, Location: loc}
+	tmpStack.Data[tmpStack.Depth] = sl
+	tmpStack.Depth++
+}
+
+func popTmpStack() *Slot {
+	tmpStack.Depth--
+	if tmpStack.Depth < 0 {
+		panic("tmpStack.Depth < 0")
 	}
 
-	tmpStack.Data[tmpStack.Depth] = offset
-	tmpStack.Depth++
-	return offset
+	sl := &tmpStack.Data[tmpStack.Depth]
+	if (sl.Kind == SL_GP && sl.GpDepth >= GP_SLOTS) || (sl.Kind == SL_FP && sl.FpDepth >= FP_SLOTS) {
+		sl.Kind = SL_ST
+	}
+
+	if tmpStack.Depth > 0 {
+		sl2 := &tmpStack.Data[tmpStack.Depth-1]
+		sl2.GpDepth = int64(math.Max(float64(sl2.GpDepth), float64(sl.GpDepth+int64(boolToInt(sl.Kind == SL_GP)))))
+		sl2.FpDepth = int64(math.Max(float64(sl2.FpDepth), float64(sl.FpDepth+int64(boolToInt(sl.Kind == SL_FP)))))
+		sl2.StDepth = int64(math.Max(float64(sl2.StDepth), float64(sl.StDepth+int64(boolToInt(sl.Kind == SL_ST)))))
+	}
+
+	if sl.Kind == SL_ST {
+		if DontReuseStack {
+			tmpStack.Bottom += 8
+			sl.StOffset = -int64(tmpStack.Bottom)
+		} else {
+			bottom := currentFn.LocalVarStackSize + (sl.StDepth+1)*8
+			tmpStack.Bottom = int(math.Max(float64(tmpStack.Bottom), float64(bottom)))
+			sl.StOffset = -bottom
+		}
+	}
+
+	return sl
 }
 
-func popTmpStack() int {
-	tmpStack.Depth--
-	return tmpStack.Data[tmpStack.Depth]
-}
-
-func pushTmp() int {
-	offset := pushTmpStack()
-	printlnToFile("  mov %%rax, %d(%s)", offset, LocalVarPointer)
-	return offset
+func pushTmp() {
+	pushTmpStack(SL_GP)
 }
 
 func popTmp(arg string) {
-	offset := popTmpStack()
-	printlnToFile("  mov %d(%s), %s", offset, LocalVarPointer, arg)
+	sl := popTmpStack()
+
+	if sl.Kind == SL_GP {
+		instructionLine("  mov %%rax, %s", int(sl.Location), tmpreg64[sl.GpDepth])
+		printlnToFile("  mov %s, %s", tmpreg64[sl.GpDepth], arg)
+		return
+	}
+	instructionLine("  mov %%rax, %d(%s)", int(sl.Location), sl.StOffset, LocalVarPointer)
+	printlnToFile("  mov %d(%s), %s", sl.StOffset, LocalVarPointer, arg)
 }
 
 func pushTmpF() {
-	offset := pushTmpStack()
-	printlnToFile("  movsd %%xmm0, %d(%s)", offset, LocalVarPointer)
+	pushTmpStack(SL_FP)
 }
 
 func popTmpF(reg int) {
-	offset := popTmpStack()
-	printlnToFile("  movsd %d(%s), %%xmm%d", offset, LocalVarPointer, reg)
+	sl := popTmpStack()
+
+	if sl.Kind == SL_FP {
+		instructionLine("  movsd %%xmm0, %%xmm%d", int(sl.Location), sl.FpDepth+2)
+		printlnToFile("  movsd %%xmm%d, %%xmm%d", sl.FpDepth+2, reg)
+		return
+	}
+	instructionLine("  movsd %%xmm0, %d(%s)", int(sl.Location), sl.StOffset, LocalVarPointer)
+	printlnToFile("  movsd %d(%s), %%xmm%d", sl.StOffset, LocalVarPointer, reg)
 }
 
 // When we load a char or a short value to a register, we always
@@ -1069,7 +1128,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_ASSIGN:
 		genAddr(node.Lhs)
-		tmpOffset := pushTmp()
+		pushTmp()
 		genExpr(node.Rhs)
 		if node.Lhs.isBitField() {
 			// If the lhs is a bitfield, we need to read the current value
@@ -1079,7 +1138,8 @@ func genExpr(node *AstNode) {
 			printlnToFile("  and %%rdi, %%rax")
 			printlnToFile("  mov %%rax, %%r8")
 
-			printlnToFile("  mov %d(%s), %%rax", tmpOffset, LocalVarPointer)
+			popTmp("%rax")
+			pushTmp()
 			load(mem.Ty)
 
 			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
@@ -1189,6 +1249,9 @@ func genExpr(node *AstNode) {
 
 		printlnToFile("  mov %%rsp, %%rax")
 		pushTmp()
+
+		saveTmpRegs()
+
 		// If the return type is a large struct/union, the caller passes
 		// a pointer to a buffer as if it were the first argument.
 		gpStart := node.ReturnBuffer != nil && node.Ty.Size > 16
@@ -1815,8 +1878,8 @@ func emitText(prog *Obj) {
 			printlnToFile("  and $-%d, %%rbx", fn.StackAlign)
 			printlnToFile("  mov %%rbx, %%rsp")
 		}
-		reservedPos := len(*cgOutputFile)
-		printlnToFile("PLACEHOLDER")
+
+		stackAllocLocation := reservedLine()
 		if fn.VlaBase != nil {
 			printlnToFile("  mov %%rsp, %d(%s)", fn.VlaBase.Offset, fn.VlaBase.Pointer)
 		}
@@ -1899,8 +1962,7 @@ func emitText(prog *Obj) {
 			panic("tmp stack depth is not zero")
 		}
 
-		inst := fmt.Sprintf("  sub $%d, %%rsp", alignTo(int64(tmpStack.Bottom), 16))
-		(*cgOutputFile)[reservedPos] = inst
+		instructionLine("  sub $%d, %%rsp", int(stackAllocLocation), alignTo(int64(tmpStack.Bottom), 16))
 
 		// [https://www.sigbus.info/n1570#5.1.2.2.3p1] The C spec defines
 		// a special rule for the main function. Reaching the end of the
