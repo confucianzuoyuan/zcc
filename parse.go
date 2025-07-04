@@ -2480,6 +2480,7 @@ func evalDouble(node *AstNode) float64 {
 			return evalDouble(node.Else)
 		}
 	case ND_COMMA:
+		evalDouble(node.Lhs)
 		return evalDouble(node.Rhs)
 	case ND_CAST:
 		if node.Lhs.Ty.isFloat() {
