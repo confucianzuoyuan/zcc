@@ -597,33 +597,69 @@ func readMacroParams(rest **Token, tok *Token, vaArgsName *string) *MacroParam {
 	return head.Next
 }
 
-func filterAttr(tok *Token, attr *Token, isHidden bool, isBracket bool) {
+func isSupportedAttr(vendor **Token, tok *Token) int {
+	if tok.Kind != TK_IDENT {
+		errorTok(tok, "expected attribute name")
+	}
+
+	vendorGNU := vendor != nil && *vendor != nil && (*vendor).isEqual("gnu")
+
+	if (tok.isEqual("packed") || tok.isEqual("__packed__")) && (vendor == nil || vendorGNU) {
+		return 1
+	}
+	return 0
+}
+
+func hasAttributeMacro(start *Token) *Token {
+	tok := skip(start.Next, "(")
+
+	val := isSupportedAttr(nil, tok)
+	tok = skip(tok.Next, ")")
+
+	tok2 := newNumberToken(val, start)
+	tok2.Next = tok
+	return tok2
+}
+
+func hasCAttributeMacro(start *Token) *Token {
+	tok := skip(start.Next, "(")
+	var vendor *Token = nil
+	if tok.Kind == TK_IDENT && tok.Next.isEqual(":") {
+		vendor = tok
+		tok = skip(tok.Next.Next, ":")
+	}
+	val := isSupportedAttr(&vendor, tok)
+	tok = skip(tok.Next, ")")
+
+	tok2 := newNumberToken(val, start)
+	tok2.Next = tok
+	return tok2
+}
+
+func filterAttr(tok *Token, lst *Token, isHidden bool, isBracket bool) {
 	first := true
 	for ; tok.Kind != TK_EOF; first = false {
 		if !first {
 			tok = skip(tok, ",")
 		}
 
-		var vendor *Token = nil
-		if isBracket && tok.Kind == TK_IDENT && tok.Next.isEqual(":") {
-			vendor = tok
-			tok = skip(tok.Next.Next, ":")
-		}
-
-		if tok.Kind != TK_IDENT {
-			errorTok(tok, "expected attribute name")
-		}
-
-		tok.Kind = TK_ATTR
 		if isBracket {
-			tok.Kind = TK_BATTR
-		}
-
-		if (tok.isEqual("packed") || tok.isEqual("__packed__")) && (!isBracket || (vendor != nil && vendor.isEqual("gnu"))) {
-			attr.AttrNext = tok
-			attr = attr.AttrNext
-			tok = tok.Next
-			continue
+			var vendor *Token = nil
+			if tok.Kind == TK_IDENT && tok.Next.isEqual(":") {
+				vendor = tok
+				tok = skip(tok.Next.Next, ":")
+			}
+			if isSupportedAttr(&vendor, tok) != 0 {
+				tok.Kind = TK_BATTR
+				lst.AttrNext = tok
+				lst = lst.AttrNext
+			}
+		} else {
+			if isSupportedAttr(nil, tok) != 0 {
+				tok.Kind = TK_ATTR
+				lst.AttrNext = tok
+				lst = lst.AttrNext
+			}
 		}
 
 		if consume(&tok, tok.Next, "(") {
@@ -1523,6 +1559,8 @@ func initMacros() {
 	addBuiltin("__TIMESTAMP__", timestampMacro)
 	addBuiltin("__BASE_FILE__", baseFileMacro)
 
+	addBuiltin("__has_attribute", hasAttributeMacro)
+	addBuiltin("__has_c_attribute", hasCAttributeMacro)
 	addBuiltin("__has_include", hasIncludeMacro)
 
 	now := time.Now() // 当前时间，包含本地时区
