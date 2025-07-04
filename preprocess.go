@@ -1025,7 +1025,7 @@ func expandMacro(rest **Token, tok *Token) bool {
 	if tok.isEqual("__attribute__") && !m.IsObjlike && m.Body.Kind == TK_EOF {
 		tok.IsHiddenAttr = true
 		pushMacroLock(m, skipParen(skip(tok.Next, "(")))
-		return false
+		return true
 	}
 
 	// Built-in dynamic macro application such as __LINE__
