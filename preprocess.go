@@ -229,7 +229,31 @@ func (t *Token) newEOF() *Token {
 	newToken := t.copy()
 	newToken.Kind = TK_EOF
 	newToken.Length = 0
+	newToken.AtBeginningOfLine = true
 	return newToken
+}
+
+func splitParen(rest **Token, tok *Token) *Token {
+	start := tok
+	head := Token{}
+	cur := &head
+
+	level := 0
+	for !(level == 0 && consume(rest, tok, ")")) {
+		if tok.isEqual("(") {
+			level++
+		} else if tok.isEqual(")") {
+			level--
+		} else if tok.Kind == TK_EOF {
+			errorTok(start, "unterminated list")
+		}
+
+		cur.Next = tok
+		cur = cur.Next
+		tok = tok.Next
+	}
+	cur.Next = tok.newEOF()
+	return head.Next
 }
 
 func (tok *Token) newPMark() *Token {
@@ -429,7 +453,14 @@ func stringize(hash *Token, arg *Token) *Token {
 }
 
 // Read an #include argument.
-func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
+func readIncludeFilename(tok *Token, isDoubleQuote *bool) string {
+	// Pattern 3: #include FOO
+	// In this case FOO must be macro-expanded to either
+	// a single string token or a sequence of "<" ... ">"
+	if tok.Kind == TK_IDENT {
+		tok = preprocess2(tok)
+	}
+
 	// Pattern 1: #include "foo.h"
 	if tok.Kind == TK_STR {
 		// A double-quoted filename for #include is a special kind of
@@ -438,7 +469,7 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 		// just two non-control characters, backslash and f.
 		// So we don't want to use token->str.
 		*isDoubleQuote = true
-		*rest = skipLine(tok.Next)
+		skipLine(tok.Next)
 		return B2S((*tok.File.Contents)[tok.Location+1 : tok.Location+tok.Length-1])
 	}
 
@@ -450,22 +481,14 @@ func readIncludeFilename(rest **Token, tok *Token, isDoubleQuote *bool) string {
 
 		// Find closing ">".
 		for ; !tok.isEqual(">"); tok = tok.Next {
-			if tok.AtBeginningOfLine || tok.Kind == TK_EOF {
+			if tok.Kind == TK_EOF {
 				errorTok(tok, "expected '>'")
 			}
 		}
 
 		*isDoubleQuote = false
-		*rest = skipLine(tok.Next)
+		skipLine(tok.Next)
 		return B2S(start.Next.joinTokens(tok))
-	}
-
-	// Pattern 3: #include FOO
-	// In this case FOO must be macro-expanded to either
-	// a single string token or a sequence of "<" ... ">".
-	if tok.Kind == TK_IDENT {
-		tok2 := preprocess2(copyLine(rest, tok))
-		return readIncludeFilename(&tok2, tok2, isDoubleQuote)
 	}
 
 	errorTok(tok, "expected a filename")
@@ -987,6 +1010,26 @@ func searchIncludePaths(filename string) string {
 	return ""
 }
 
+func hasIncludeMacro(start *Token) *Token {
+	tok := skip(start.Next, "(")
+
+	isDoubleQuote := false
+	filename := readIncludeFilename(splitParen(&tok, tok), &isDoubleQuote)
+
+	found := false
+	if filename[0] != '/' && isDoubleQuote {
+		path := start.File.Name + "/" + filename
+		found = fileExists(path)
+	}
+	if !found {
+		found = searchIncludePaths(filename) != ""
+	}
+
+	tok2 := newNumberToken(boolToInt(found), start)
+	tok2.Next = tok
+	return tok2
+}
+
 // Visit all tokens in `tok` while evaluating preprocessing
 // macros and directives.
 func preprocess2(tok *Token) *Token {
@@ -1015,7 +1058,7 @@ func preprocess2(tok *Token) *Token {
 
 		if tok.isEqual("include") {
 			isDoubleQuote := false
-			filename := readIncludeFilename(&tok, tok.Next, &isDoubleQuote)
+			filename := readIncludeFilename(splitLine(&tok, tok.Next), &isDoubleQuote)
 
 			// remove '\x00' in the end
 			if len(filename) > 0 && filename[len(filename)-1] == 0 {
@@ -1042,7 +1085,7 @@ func preprocess2(tok *Token) *Token {
 
 		if tok.isEqual("include_next") {
 			ignore := false
-			filename := readIncludeFilename(&tok, tok.Next, &ignore)
+			filename := readIncludeFilename(splitLine(&tok, tok.Next), &ignore)
 			path := searchIncludeNext(filename)
 			if path != "" {
 				tok = includeFile(tok, path, start.Next.Next)
@@ -1368,6 +1411,8 @@ func initMacros() {
 	addBuiltin("__COUNTER__", counterMacro)
 	addBuiltin("__TIMESTAMP__", timestampMacro)
 	addBuiltin("__BASE_FILE__", baseFileMacro)
+
+	addBuiltin("__has_include", hasIncludeMacro)
 
 	now := time.Now() // 当前时间，包含本地时区
 	defineMacro("__DATE__", formatDate(now))
