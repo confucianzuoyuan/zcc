@@ -23,7 +23,7 @@ check -o
 check --help
 
 # -S
-echo 'int main() {}' | ./zcc -S -o- -xc - | grep -q 'main:'
+echo 'int main() {}' | ./zcc -S -o- -xc - | grep -q '"main":'
 check -S
 
 # Default output file
@@ -126,40 +126,40 @@ echo 'int foo(); int main() { foo(); }' > $tmp/inline2.c
 ./zcc -o /dev/null $tmp/inline1.c $tmp/inline2.c
 check inline
 
-echo 'static inline void f1() {}' | ./zcc -o- -S -xc - | grep -v -q f1:
+echo 'static inline void f1() {}' | ./zcc -o- -S -xc - | grep -v -q \"f1\":
 check inline
 
-echo 'static inline void f1() {} void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q f1:
+echo 'static inline void f1() {} void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q \"f1\":
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q f1:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q \"f1\":
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -v -q f2:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -v -q \"f2\":
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q f1:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q \"f1\":
 check inline
 
-echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q f2:
+echo 'static inline void f1() {} static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q \"f2\":
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | ./zcc -o- -S -xc - | grep -v -q f1:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | ./zcc -o- -S -xc - | grep -v -q \"f1\":
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | ./zcc -o- -S -xc - | grep -v -q f2:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() {}' | ./zcc -o- -S -xc - | grep -v -q \"f2\":
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q f1:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q \"f1\":
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q f2:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f1(); }' | ./zcc -o- -S -xc - | grep -q \"f2\":
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q f1:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q \"f1\":
 check inline
 
-echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q f2:
+echo 'static inline void f2(); static inline void f1() { f2(); } static inline void f2() { f1(); } void foo() { f2(); }' | ./zcc -o- -S -xc - | grep -q \"f2\":
 check inline
 
 # -idirafter
@@ -172,14 +172,14 @@ echo "#include \"idirafter\"" | ./zcc -idirafter $tmp/dir1 -I$tmp/dir2 -E -xc - 
 check -idirafter
 
 # -fcommon
-echo 'int foo;' | ./zcc -S -o- -xc - | grep -q '\.comm foo'
+echo 'int foo;' | ./zcc -S -o- -xc - | grep -q '\.comm "foo"'
 check '-fcommon (default)'
 
-echo 'int foo;' | ./zcc -fcommon -S -o- -xc - | grep -q '\.comm foo'
+echo 'int foo;' | ./zcc -fcommon -S -o- -xc - | grep -q '\.comm "foo"'
 check '-fcommon'
 
 # -fno-common
-echo 'int foo;' | ./zcc -fno-common -S -o- -xc - | grep -q '^foo:'
+echo 'int foo;' | ./zcc -fno-common -S -o- -xc - | grep -q '^"foo":'
 check '-fno-common'
 
 # -funsigned-char
@@ -189,17 +189,17 @@ $tmp/out
 check '-funsigned-char'
 
 # -ffunction-sections
-echo 'void f1() {}' | ./zcc -xc - -S -o- -ffunction-sections | grep -q '.text.f1,'
+echo 'void f1() {}' | ./zcc -xc - -S -o- -ffunction-sections | grep -q '.text."f1",'
 check '-ffunction-sections'
 
 # -fdata-sections
-echo 'int var = 1;' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.data.var,'
+echo 'int var = 1;' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.data."var",'
 check '-fdata-sections'
-echo '_Thread_local int var = 1;' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.tdata.var,'
+echo '_Thread_local int var = 1;' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.tdata."var",'
 check '-fdata-sections'
 echo 'void fn(void){static int var;}' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.bss.'
 check '-fdata-sections'
-echo '_Thread_local int var;' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.tbss.var,'
+echo '_Thread_local int var;' | ./zcc -xc - -S -o- -fdata-sections | grep -q '.tbss."var",'
 check '-fdata-sections'
 
 # -include

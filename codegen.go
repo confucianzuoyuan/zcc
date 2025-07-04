@@ -617,7 +617,7 @@ func genAddr(node *AstNode) {
 		if opt_fpic {
 			// Thread-local variable
 			if node.Variable.IsTls {
-				printlnToFile("  data16 lea %s@tlsgd(%%rip), %%rdi", node.Variable.Name)
+				printlnToFile("  data16 lea \"%s\"@tlsgd(%%rip), %%rdi", node.Variable.Name)
 				printlnToFile("  .value 0x6666")
 				printlnToFile("  rex64")
 				printlnToFile("  call __tls_get_addr@PLT")
@@ -625,14 +625,14 @@ func genAddr(node *AstNode) {
 			}
 
 			// Function or global variable
-			printlnToFile("  mov %s@GOTPCREL(%%rip), %%rax", node.Variable.Name)
+			printlnToFile("  mov \"%s\"@GOTPCREL(%%rip), %%rax", node.Variable.Name)
 			return
 		}
 
 		// Thread-local variable
 		if node.Variable.IsTls {
 			printlnToFile("  mov %%fs:0, %%rax")
-			printlnToFile("  add $%s@tpoff, %%rax", node.Variable.Name)
+			printlnToFile("  add $\"%s\"@tpoff, %%rax", node.Variable.Name)
 			return
 		}
 		// Here, we generate an absolute address of a function or a global
@@ -661,15 +661,15 @@ func genAddr(node *AstNode) {
 		// Function
 		if node.Ty.Kind == TY_FUNC {
 			if node.Variable.IsDefinition {
-				printlnToFile("  lea %s(%%rip), %%rax", node.Variable.Name)
+				printlnToFile("  lea \"%s\"(%%rip), %%rax", node.Variable.Name)
 			} else {
-				printlnToFile("  mov %s@GOTPCREL(%%rip), %%rax", node.Variable.Name)
+				printlnToFile("  mov \"%s\"@GOTPCREL(%%rip), %%rax", node.Variable.Name)
 			}
 			return
 		}
 
 		// Global variable
-		printlnToFile("  lea %s(%%rip), %%rax", node.Variable.Name)
+		printlnToFile("  lea \"%s\"(%%rip), %%rax", node.Variable.Name)
 		return
 	case ND_DEREF:
 		genExpr(node.Lhs)
@@ -1643,7 +1643,7 @@ func genStmt(node *AstNode) {
 				}
 			}
 		}
-		printlnToFile("  jmp .L.return.%s", currentFn.Name)
+		printlnToFile("  jmp 9f")
 		return
 	case ND_EXPR_STMT:
 		genExpr(node.Lhs)
@@ -1805,9 +1805,9 @@ func emitData(prog *Obj) {
 		}
 
 		if v.IsStatic {
-			printlnToFile("  .local %s", v.Name)
+			printlnToFile("  .local \"%s\"", v.Name)
 		} else {
-			printlnToFile("  .globl %s", v.Name)
+			printlnToFile("  .globl \"%s\"", v.Name)
 		}
 
 		align := v.Align
@@ -1817,32 +1817,32 @@ func emitData(prog *Obj) {
 
 		// Common symbol
 		if opt_fcommon && v.IsTentative {
-			printlnToFile("  .comm %s, %d, %d", v.Name, v.Ty.Size, align)
+			printlnToFile("  .comm \"%s\", %d, %d", v.Name, v.Ty.Size, align)
 			continue
 		}
 
 		// .data or .tdata
 		if v.InitData != nil {
 			if v.IsTls && opt_data_sections {
-				printlnToFile("  .section .tdata.%s,\"awT\",@progbits", v.Name)
+				printlnToFile("  .section .tdata.\"%s\",\"awT\",@progbits", v.Name)
 			} else if v.IsTls {
 				printlnToFile("  .section .tdata,\"awT\",@progbits")
 			} else if opt_data_sections {
-				printlnToFile("  .section .data.%s,\"aw\",@progbits", v.Name)
+				printlnToFile("  .section .data.\"%s\",\"aw\",@progbits", v.Name)
 			} else {
 				printlnToFile("  .data")
 			}
 
-			printlnToFile("  .type %s, @object", v.Name)
-			printlnToFile("  .size %s, %d", v.Name, v.Ty.Size)
+			printlnToFile("  .type \"%s\", @object", v.Name)
+			printlnToFile("  .size \"%s\", %d", v.Name, v.Ty.Size)
 			printlnToFile("  .align %d", align)
-			printlnToFile("%s:", v.Name)
+			printlnToFile("\"%s\":", v.Name)
 
 			rel := v.Rel
 			pos := 0
 			for pos < int(v.Ty.Size) {
 				if rel != nil && rel.Offset == int64(pos) {
-					printlnToFile("  .quad %s%+d", *rel.Label, rel.Addend)
+					printlnToFile("  .quad \"%s\"%+d", *rel.Label, rel.Addend)
 					rel = rel.Next
 					pos += 8
 				} else {
@@ -1856,17 +1856,17 @@ func emitData(prog *Obj) {
 
 		// .bss or .tbss
 		if v.IsTls && opt_data_sections {
-			printlnToFile("  .section .tbss.%s,\"awT\",@nobits", v.Name)
+			printlnToFile("  .section .tbss.\"%s\",\"awT\",@nobits", v.Name)
 		} else if v.IsTls {
 			printlnToFile("  .section .tbss,\"awT\",@nobits")
 		} else if opt_data_sections {
-			printlnToFile("  .section .bss.%s,\"aw\",@nobits", v.Name)
+			printlnToFile("  .section .bss.\"%s\",\"aw\",@nobits", v.Name)
 		} else {
 			printlnToFile("  .bss")
 		}
 
 		printlnToFile("  .align %d", align)
-		printlnToFile("%s:", v.Name)
+		printlnToFile("\"%s\":", v.Name)
 		printlnToFile("  .zero %d", v.Ty.Size)
 	}
 }
@@ -1884,18 +1884,18 @@ func emitText(prog *Obj) {
 		}
 
 		if fn.IsStatic {
-			printlnToFile("  .local %s", fn.Name)
+			printlnToFile("  .local \"%s\"", fn.Name)
 		} else {
-			printlnToFile("  .globl %s", fn.Name)
+			printlnToFile("  .globl \"%s\"", fn.Name)
 		}
 
 		if opt_func_sections {
-			printlnToFile("  .section .text.%s,\"ax\",@progbits", fn.Name)
+			printlnToFile("  .section .text.\"%s\",\"ax\",@progbits", fn.Name)
 		} else {
 			printlnToFile("  .text")
 		}
-		printlnToFile("  .type %s, @function", fn.Name)
-		printlnToFile("%s:", fn.Name)
+		printlnToFile("  .type \"%s\", @function", fn.Name)
+		printlnToFile("\"%s\":", fn.Name)
 		currentFn = fn
 		tmpStack.Bottom = int(fn.LocalVarStackSize)
 
@@ -2009,7 +2009,7 @@ func emitText(prog *Obj) {
 		}
 
 		// Epilogue
-		printlnToFile(".L.return.%s:", fn.Name)
+		printlnToFile("9:")
 		if useRBX {
 			printlnToFile("  mov -8(%%rbp), %%rbx")
 		}
