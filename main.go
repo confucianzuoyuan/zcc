@@ -831,15 +831,14 @@ func findGccLibPath() string {
 func addDefaultIncludePaths(argv0 string) {
 	// We expect that chibicc-specific include files are installed
 	// to ./include relative to argv[0].
-	includePaths = append(includePaths, filepath.Dir(argv0)+"/include")
+	stdIncludePaths = append(stdIncludePaths, filepath.Dir(argv0)+"/include")
 
 	// Add standard include paths.
-	includePaths = append(includePaths, "/usr/local/include")
-	includePaths = append(includePaths, "/usr/include/x86_64-linux-gnu")
-	includePaths = append(includePaths, "/usr/include")
+	stdIncludePaths = append(stdIncludePaths, "/usr/local/include")
+	stdIncludePaths = append(stdIncludePaths, "/usr/include/x86_64-linux-gnu")
+	stdIncludePaths = append(stdIncludePaths, "/usr/include")
 
-	// Keep a copy of the standard include paths for -MMD option.
-	stdIncludePaths = append(stdIncludePaths, includePaths...)
+	includePaths = append(includePaths, stdIncludePaths...)
 }
 
 func runLinker(inputs []string, output string) {
