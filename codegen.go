@@ -186,16 +186,20 @@ func pushTmpF() {
 	pushTmpStack(SL_FP)
 }
 
-func popTmpF(reg int) {
+func popTmpFKeepReg(isXMM64 bool) int {
 	sl := popTmpStack()
+	mv := "movss"
+	if isXMM64 {
+		mv = "movsd"
+	}
 
 	if sl.Kind == SL_FP {
-		instructionLine("  movsd %%xmm0, %%xmm%d", int(sl.Location), sl.FpDepth+2)
-		printlnToFile("  movsd %%xmm%d, %%xmm%d", sl.FpDepth+2, reg)
-		return
+		instructionLine("  %s %%xmm0, %%xmm%d", int(sl.Location), mv, sl.FpDepth+2)
+		return int(sl.FpDepth) + 2
 	}
-	instructionLine("  movsd %%xmm0, %d(%s)", int(sl.Location), sl.StOffset, LocalVarPointer)
-	printlnToFile("  movsd %d(%s), %%xmm%d", sl.StOffset, LocalVarPointer, reg)
+	instructionLine("  %s %%xmm0, %d(%s)", int(sl.Location), mv, sl.StOffset, LocalVarPointer)
+	printlnToFile("  %s %d(%s), %%xmm1", mv, sl.StOffset, LocalVarPointer)
+	return 1
 }
 
 // When we load a char or a short value to a register, we always
@@ -1357,28 +1361,29 @@ func genExpr(node *AstNode) {
 		genExpr(node.Rhs)
 		pushTmpF()
 		genExpr(node.Lhs)
-		popTmpF(1)
 
-		sz := "sd"
-		if node.Lhs.Ty.Kind == TY_FLOAT {
-			sz = "ss"
+		isXMM64 := node.Lhs.Ty.Kind == TY_DOUBLE
+		reg := popTmpFKeepReg(isXMM64)
+		sz := "ss"
+		if isXMM64 {
+			sz = "sd"
 		}
 
 		switch node.Kind {
 		case ND_ADD:
-			printlnToFile("  add%s %%xmm1, %%xmm0", sz)
+			printlnToFile("  add%s %%xmm%d, %%xmm0", sz, reg)
 			return
 		case ND_SUB:
-			printlnToFile("  sub%s %%xmm1, %%xmm0", sz)
+			printlnToFile("  sub%s %%xmm%d, %%xmm0", sz, reg)
 			return
 		case ND_MUL:
-			printlnToFile("  mul%s %%xmm1, %%xmm0", sz)
+			printlnToFile("  mul%s %%xmm%d, %%xmm0", sz, reg)
 			return
 		case ND_DIV:
-			printlnToFile("  div%s %%xmm1, %%xmm0", sz)
+			printlnToFile("  div%s %%xmm%d, %%xmm0", sz, reg)
 			return
 		case ND_EQ, ND_NE, ND_LT, ND_LE:
-			printlnToFile("  ucomi%s %%xmm0, %%xmm1", sz)
+			printlnToFile("  ucomi%s %%xmm0, %%xmm%d", sz, reg)
 
 			if node.Kind == ND_EQ {
 				printlnToFile("  sete %%al")
