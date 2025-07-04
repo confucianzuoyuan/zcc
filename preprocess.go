@@ -897,7 +897,6 @@ func expandMacro(rest **Token, tok *Token) bool {
 	// Built-in dynamic macro application such as __LINE__
 	if m.Handler != nil {
 		*rest = m.Handler(tok)
-		(*rest).Next = tok.Next
 		alignToken(*rest, tok)
 		return true
 	}
@@ -1227,32 +1226,42 @@ func addBuiltin(name string, fn MacroHandlerFn) *Macro {
 	return m
 }
 
-func fileMacro(tmpl *Token) *Token {
-	for tmpl.Origin != nil {
-		tmpl = tmpl.Origin
+func fileMacro(start *Token) *Token {
+	tok := start
+	for tok.Origin != nil {
+		tok = tok.Origin
 	}
-	return newStringToken(tmpl.File.DisplayFile.Name, tmpl)
+	tok = newStringToken(tok.File.DisplayFile.Name, tok)
+	tok.Next = start.Next
+	return tok
 }
 
 // __TIMESTAMP__ is expanded to a string describing the last
 // modification time of the current file. E.g.
 // "Fri Jul 24 01:32:50 2020"
-func timestampMacro(tmpl *Token) *Token {
-	fi, err := os.Stat(tmpl.File.Name)
+func timestampMacro(start *Token) *Token {
+	var tok *Token
+	fi, err := os.Stat(start.File.Name)
 	if err != nil {
-		return newStringToken("??? ??? ?? ??:??:?? ????", tmpl)
+		tok = newStringToken("??? ??? ?? ??:??:?? ????", start)
+	} else {
+		modTime := fi.ModTime()
+
+		// 格式化成类似 "Fri Jul 24 01:32:50 2020"
+		// Go 的 time.Format 需要用参考时间 Mon Jan 2 15:04:05 MST 2006
+		formatted := modTime.Format("Mon Jan 02 15:04:05 2006")
+
+		tok = newStringToken(formatted, start)
 	}
-	modTime := fi.ModTime()
 
-	// 格式化成类似 "Fri Jul 24 01:32:50 2020"
-	// Go 的 time.Format 需要用参考时间 Mon Jan 2 15:04:05 MST 2006
-	formatted := modTime.Format("Mon Jan 02 15:04:05 2006")
-
-	return newStringToken(formatted, tmpl)
+	tok.Next = start.Next
+	return tok
 }
 
-func baseFileMacro(tmpl *Token) *Token {
-	return newStringToken(baseFile, tmpl)
+func baseFileMacro(start *Token) *Token {
+	tok := newStringToken(baseFile, start)
+	tok.Next = start.Next
+	return tok
 }
 
 // __DATE__ is expanded to the current date, e.g. "May 17 2020".
@@ -1276,19 +1285,24 @@ func formatTime(t time.Time) string {
 	return fmt.Sprintf("\"%02d:%02d:%02d\"", t.Hour(), t.Minute(), t.Second())
 }
 
-func lineMacro(tmpl *Token) *Token {
-	for tmpl.Origin != nil {
-		tmpl = tmpl.Origin
+func lineMacro(start *Token) *Token {
+	tok := start
+	for tok.Origin != nil {
+		tok = tok.Origin
 	}
-	i := tmpl.LineNo + tmpl.File.LineDelta
-	return newNumberToken(i, tmpl)
+	i := tok.LineNo + tok.File.LineDelta
+	tok = newNumberToken(i, tok)
+	tok.Next = start.Next
+	return tok
 }
 
 var counter int = 0
 
-func counterMacro(tmpl *Token) *Token {
+func counterMacro(start *Token) *Token {
 	counter += 1
-	return newNumberToken(counter-1, tmpl)
+	tok := newNumberToken(counter-1, start)
+	tok.Next = start.Next
+	return tok
 }
 
 func initMacros() {
