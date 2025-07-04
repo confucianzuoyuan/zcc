@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -1073,12 +1074,6 @@ func expandMacro(rest **Token, tok *Token) bool {
 		return false
 	}
 
-	if tok.isEqual("__attribute__") && !m.IsObjlike && m.Body.Kind == TK_EOF {
-		tok.IsHiddenAttr = true
-		pushMacroLock(m, skipParen(skip(tok.Next, "(")))
-		return true
-	}
-
 	// Built-in dynamic macro application such as __LINE__
 	if m.Handler != nil {
 		*rest = m.Handler(tok)
@@ -1090,6 +1085,15 @@ func expandMacro(rest **Token, tok *Token) bool {
 	// treat it as a normal identifier.
 	if !m.IsObjlike && !tok.Next.isEqual("(") {
 		return false
+	}
+
+	if !m.IsObjlike && m.Body.Kind == TK_EOF && tok.isEqual("__attribute__") {
+		slash := strings.LastIndex(m.Body.File.Name, "/")
+		if slash != -1 && m.Body.File.Name[slash+1:] == "cdefs.h" {
+			tok.IsHiddenAttr = true
+			pushMacroLock(m, skipParen(skip(tok.Next, "(")))
+			return true
+		}
 	}
 
 	// The token right after the macro. For funclike, after parentheses.
