@@ -2289,35 +2289,6 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 		return node
 	}
 
-	if tok.isEqual("__builtin_va_start") {
-		node := newNode(ND_VA_START, tok)
-		tok = skip(tok.Next, "(")
-		node.Lhs = conditional(&tok, tok)
-		if tok.isEqual(",") {
-			assign(&tok, tok.Next)
-		}
-		*rest = skip(tok, ")")
-		return node
-	}
-
-	if tok.isEqual("__builtin_va_copy") {
-		node := newNode(ND_VA_COPY, tok)
-		tok = skip(tok.Next, "(")
-		node.Lhs = conditional(&tok, tok)
-		tok = skip(tok, ",")
-		node.Rhs = conditional(&tok, tok)
-		*rest = skip(tok, ")")
-		return node
-	}
-
-	if tok.isEqual("__builtin_va_end") {
-		node := newNode(ND_EXPR_STMT, tok)
-		tok = skip(tok.Next, "(")
-		node.Lhs = conditional(&tok, tok)
-		*rest = skip(tok, ")")
-		return node
-	}
-
 	if tok.isEqual("{") {
 		return compoundStmt(rest, tok.Next, ND_BLOCK)
 	}
@@ -3824,6 +3795,34 @@ func primary(rest **Token, tok *Token) *AstNode {
 			return newNum(1, start)
 		}
 		return newNum(0, start)
+	}
+
+	if tok.isEqual("__builtin_va_start") {
+		node := newNode(ND_VA_START, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = conditional(&tok, tok)
+		if tok.isEqual(",") {
+			assign(&tok, tok.Next)
+		}
+		*rest = skip(tok, ")")
+		return node
+	}
+
+	if tok.isEqual("__builtin_va_copy") {
+		node := newNode(ND_VA_COPY, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = conditional(&tok, tok)
+		tok = skip(tok, ",")
+		node.Rhs = conditional(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
+	if tok.isEqual("__builtin_va_end") {
+		tok = skip(tok.Next, "(")
+		node := conditional(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
 	}
 
 	if tok.isEqual("__builtin_va_arg") {

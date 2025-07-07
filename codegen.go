@@ -1035,7 +1035,7 @@ func genExpr(node *AstNode) {
 					printlnToFile("  addq 16(%%rax), %%rdi") // reg_save_area
 					printlnToFile("  addq $16, 4(%%rax)")
 				}
-				for ofs := 0; ofs < (int(ty.Size) - i*8); ofs++ {
+				for ofs := 0; ofs < int(math.Min(float64(int(ty.Size)-i*8), 8)); ofs++ {
 					printlnToFile("  mov %d(%%rdi), %%r8b", ofs)
 					printlnToFile("  mov %%r8b, %d(%s)", ofs+i*8+int(v.Offset), v.Pointer)
 				}
@@ -1068,6 +1068,26 @@ func genExpr(node *AstNode) {
 
 		sz := int(node.Lhs.Ty.Base.Size)
 		printlnToFile("  xchg %s, (%s)", regAX(sz), reg)
+		return
+	case ND_VA_START:
+		genExpr(node.Lhs)
+		fn := currentFn
+		printlnToFile("  movl $%d, (%%rax)", fn.VaGpOffset)
+		printlnToFile("  movl $%d, 4(%%rax)", fn.VaFpOffset)
+		printlnToFile("  lea %d(%%rbp), %%rdx", fn.VaStOffset)
+		printlnToFile("  movq %%rdx, 8(%%rax)")
+		printlnToFile("  lea %d(%s), %%rdx", fn.VaArea.Offset, fn.VaArea.Pointer)
+		printlnToFile("  movq %%rdx, 16(%%rax)")
+		return
+	case ND_VA_COPY:
+		genExpr(node.Lhs)
+		pushTmp()
+		genExpr(node.Rhs)
+		reg := popTmpKeepReg(true)
+		printlnToFile("  movdqu (%%rax), %%xmm0")
+		printlnToFile("  movq 16(%%rax), %%rdx")
+		printlnToFile("  movdqu %%xmm0, (%s)", reg)
+		printlnToFile("  movq %%rdx, 16(%s)", reg)
 		return
 	case ND_CAS:
 		genExpr(node.CasAddr)
@@ -1656,27 +1676,6 @@ func genStmt(node *AstNode) {
 		return
 	case ND_ASM:
 		printlnToFile("  %s", node.AsmStr)
-		return
-	case ND_VA_START:
-		genExpr(node.Lhs)
-		fn := currentFn
-		printlnToFile("  movl $%d, (%%rax)", fn.VaGpOffset)
-		printlnToFile("  movl $%d, 4(%%rax)", fn.VaFpOffset)
-		printlnToFile("  lea %d(%%rbp), %%rdx", fn.VaStOffset)
-		printlnToFile("  movq %%rdx, 8(%%rax)")
-		printlnToFile("  lea %d(%s), %%rdx", fn.VaArea.Offset, fn.VaArea.Pointer)
-		printlnToFile("  movq %%rdx, 16(%%rax)")
-		return
-	case ND_VA_COPY:
-		genExpr(node.Lhs)
-		pushTmp()
-		genExpr(node.Rhs)
-		reg := popTmpKeepReg(true)
-
-		printlnToFile("  movdqu (%%rax), %%xmm0")
-		printlnToFile("  movq 16(%%rax), %%rdx")
-		printlnToFile("  movdqu %%xmm0, (%s)", reg)
-		printlnToFile("  movq %%rdx, 16(%s)", reg)
 		return
 	}
 
