@@ -313,15 +313,8 @@ func placeStackArgs(node *AstNode) {
 		}
 
 		switch v.Ty.Kind {
-		case TY_STRUCT, TY_UNION, TY_LDOUBLE:
-			for i := int64(0); i < v.Ty.Size; i++ {
-				printlnToFile("  mov %d(%s), %%r8b", i+v.Offset, v.Pointer)
-				printlnToFile("  mov %%r8b, %d(%%rsp)", i+v.StackOffset)
-			}
-			continue
-		case TY_FLOAT, TY_DOUBLE:
-			printlnToFile("  movsd %d(%s), %%xmm0", v.Offset, v.Pointer)
-			printlnToFile("  movsd %%xmm0, %d(%%rsp)", v.StackOffset)
+		case TY_STRUCT, TY_UNION, TY_LDOUBLE, TY_FLOAT, TY_DOUBLE:
+			genMemCopy(int(v.Offset), v.Pointer, int(v.StackOffset), "%rsp", int(v.Ty.Size))
 			continue
 		}
 
@@ -539,13 +532,9 @@ func copyStructMem() {
 	ty := currentFn.Ty.ReturnType
 	v := currentFn.Ty.ParamList
 
-	printlnToFile("  mov %d(%s), %%rdi", v.Offset, v.Pointer)
-
-	for i := int64(0); i < ty.Size; i += 1 {
-		printlnToFile("  mov %d(%%rax), %%dl", i)
-		printlnToFile("  mov %%dl, %d(%%rdi)", i)
-	}
-	printlnToFile("  mov %%rdi, %%rax")
+	printlnToFile("  mov %d(%s), %%rcx", v.Offset, v.Pointer)
+	genMemCopy(0, "%rax", 0, "%rcx", int(ty.Size))
+	printlnToFile("  mov %%rcx, %%rax")
 }
 
 func count() int {
@@ -744,10 +733,7 @@ func store(ty *CType) {
 	reg := popTmpKeepReg(true)
 
 	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_ARRAY {
-		for i := int64(0); i < ty.Size; i += 1 {
-			printlnToFile("  mov %d(%%rax), %%r8b", i)
-			printlnToFile("  mov %%r8b, %d(%s)", i, reg)
-		}
+		genMemCopy(0, "%rax", 0, reg, int(ty.Size))
 		return
 	}
 
@@ -991,6 +977,29 @@ func storeGp(r int, sz int64, offset int64, ptr string) {
 	}
 }
 
+func genMemCopy(sofs int, sptr string, dofs int, dptr string, sz int) {
+	for i := 0; i < sz; {
+		rem := sz - i
+		if rem >= 16 {
+			printlnToFile("  movups %d(%s), %%xmm0", i+sofs, sptr)
+			printlnToFile("  movups %%xmm0, %d(%s)", i+dofs, dptr)
+			i += 16
+			continue
+		}
+		p2 := 1
+		if rem >= 8 {
+			p2 = 8
+		} else if rem >= 4 {
+			p2 = 4
+		} else if rem >= 2 {
+			p2 = 2
+		}
+		printlnToFile("  mov %d(%s), %s", i+sofs, sptr, regDX(p2))
+		printlnToFile("  mov %s, %d(%s)", regDX(p2), i+dofs, dptr)
+		i += p2
+	}
+}
+
 // Generate code for a given node.
 func genExpr(node *AstNode) {
 	if opt_g {
@@ -1084,10 +1093,7 @@ func genExpr(node *AstNode) {
 		pushTmp()
 		genExpr(node.Rhs)
 		reg := popTmpKeepReg(true)
-		printlnToFile("  movdqu (%%rax), %%xmm0")
-		printlnToFile("  movq 16(%%rax), %%rdx")
-		printlnToFile("  movdqu %%xmm0, (%s)", reg)
-		printlnToFile("  movq %%rdx, 16(%s)", reg)
+		genMemCopy(0, "%rax", 0, reg, 24)
 		return
 	case ND_CAS:
 		genExpr(node.CasAddr)
@@ -1943,14 +1949,14 @@ func emitText(prog *Obj) {
 			printlnToFile("  movq %%r9, %d(%s)", off+40, ptr)
 			printlnToFile("  test %%al, %%al")
 			printlnToFile("  je 1f")
-			printlnToFile("  movdqu %%xmm0, %d(%s)", off+48, ptr)
-			printlnToFile("  movdqu %%xmm1, %d(%s)", off+64, ptr)
-			printlnToFile("  movdqu %%xmm2, %d(%s)", off+80, ptr)
-			printlnToFile("  movdqu %%xmm3, %d(%s)", off+96, ptr)
-			printlnToFile("  movdqu %%xmm4, %d(%s)", off+112, ptr)
-			printlnToFile("  movdqu %%xmm5, %d(%s)", off+128, ptr)
-			printlnToFile("  movdqu %%xmm6, %d(%s)", off+144, ptr)
-			printlnToFile("  movdqu %%xmm7, %d(%s)", off+160, ptr)
+			printlnToFile("  movups %%xmm0, %d(%s)", off+48, ptr)
+			printlnToFile("  movups %%xmm1, %d(%s)", off+64, ptr)
+			printlnToFile("  movups %%xmm2, %d(%s)", off+80, ptr)
+			printlnToFile("  movups %%xmm3, %d(%s)", off+96, ptr)
+			printlnToFile("  movups %%xmm4, %d(%s)", off+112, ptr)
+			printlnToFile("  movups %%xmm5, %d(%s)", off+128, ptr)
+			printlnToFile("  movups %%xmm6, %d(%s)", off+144, ptr)
+			printlnToFile("  movups %%xmm7, %d(%s)", off+160, ptr)
 			printlnToFile("1:")
 		}
 
