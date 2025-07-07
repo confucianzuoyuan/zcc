@@ -3835,10 +3835,8 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node.Lhs = apArg
 		tok = skip(tok, ",")
 
-		enterTmpScope()
 		node.Variable = newLocalVar("", typeName(&tok, tok))
 		node.Ty = node.Variable.Ty
-		leaveScope()
 		chainExpr(&node, newVarNode(node.Variable, tok))
 		*rest = skip(tok, ")")
 		return node
