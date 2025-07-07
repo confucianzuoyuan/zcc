@@ -675,7 +675,7 @@ func genAddr(node *AstNode) {
 	case ND_DEREF:
 		genExpr(node.Lhs)
 		return
-	case ND_COMMA:
+	case ND_CHAIN, ND_COMMA:
 		genExpr(node.Lhs)
 		genAddr(node.Rhs)
 		return
@@ -1206,7 +1206,7 @@ func genExpr(node *AstNode) {
 		}
 		dealloc_vla(node)
 		return
-	case ND_COMMA:
+	case ND_CHAIN, ND_COMMA:
 		genExpr(node.Lhs)
 		genExpr(node.Rhs)
 		return

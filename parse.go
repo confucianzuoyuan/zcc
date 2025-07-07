@@ -282,7 +282,7 @@ func chainExpr(lhs **AstNode, rhs *AstNode) {
 		if *lhs == nil {
 			*lhs = rhs
 		} else {
-			*lhs = newBinary(ND_COMMA, *lhs, rhs, rhs.Tok)
+			*lhs = newBinary(ND_CHAIN, *lhs, rhs, rhs.Tok)
 		}
 	}
 }
@@ -2463,7 +2463,7 @@ func evalDouble(node *AstNode) float64 {
 		} else {
 			return evalDouble(node.Else)
 		}
-	case ND_COMMA:
+	case ND_CHAIN, ND_COMMA:
 		evalDouble(node.Lhs)
 		return evalDouble(node.Rhs)
 	case ND_CAST:
@@ -2637,7 +2637,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		} else {
 			return eval2(node.Else, ctx)
 		}
-	case ND_COMMA:
+	case ND_CHAIN, ND_COMMA:
 		eval2(node.Lhs, ctx)
 		return eval2(node.Rhs, ctx)
 	case ND_NOT:
@@ -2826,7 +2826,7 @@ func toAssign(binary *AstNode) *AstNode {
 		expr3 := newUnary(ND_MEMBER, newUnary(ND_DEREF, newVarNode(v, tok), tok), tok)
 		expr3.Member = binary.Lhs.Member
 		expr4 := newBinary(ND_ASSIGN, expr2, newBinary(binary.Kind, expr3, binary.Rhs, tok), tok)
-		return newBinary(ND_COMMA, expr1, expr4, tok)
+		return newBinary(ND_CHAIN, expr1, expr4, tok)
 	}
 
 	// If A is an atomic type, Convert `A op= B` to
@@ -2903,7 +2903,7 @@ func toAssign(binary *AstNode) *AstNode {
 
 	expr2 := newBinary(ND_ASSIGN, newUnary(ND_DEREF, newVarNode(variable, tok), tok), newBinary(binary.Kind, newUnary(ND_DEREF, newVarNode(variable, tok), tok), binary.Rhs, tok), tok)
 
-	return newBinary(ND_COMMA, expr1, expr2, tok)
+	return newBinary(ND_CHAIN, expr1, expr2, tok)
 }
 
 // expr = assign ("," expr)?
@@ -2957,7 +2957,7 @@ func conditional(rest **Token, tok *Token) *AstNode {
 		rhs.Then = newVarNode(v, tok)
 		rhs.Else = conditional(rest, tok.Next.Next)
 		leaveScope()
-		return newBinary(ND_COMMA, lhs, rhs, tok)
+		return newBinary(ND_CHAIN, lhs, rhs, tok)
 	}
 
 	node := newNode(ND_COND, tok)
@@ -3705,7 +3705,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 
 		lhs := localVarInitializer(rest, tok, v)
 		rhs := newVarNode(v, tok)
-		return newBinary(ND_COMMA, lhs, rhs, start)
+		return newBinary(ND_CHAIN, lhs, rhs, start)
 	}
 
 	if tok.isEqual("(") && tok.Next.isEqual("{") {

@@ -458,8 +458,11 @@ func (node *AstNode) addType() {
 			node.Ty = node.Then.Ty
 		}
 		return
-	case ND_COMMA:
+	case ND_CHAIN:
 		node.Ty = node.Rhs.Ty
+		return
+	case ND_COMMA:
+		node.Ty = node.Rhs.Ty.arrayToPointer()
 		return
 	case ND_MEMBER:
 		node.Ty = node.Member.Ty
