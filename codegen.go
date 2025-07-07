@@ -1271,10 +1271,11 @@ func genExpr(node *AstNode) {
 		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_SHL, ND_SHR:
-		genExpr(node.Rhs)
-		pushTmp()
 		genExpr(node.Lhs)
-		popTmp("%rcx")
+		pushTmp()
+		genExpr(node.Rhs)
+		printlnToFile("  mov %%eax, %%ecx")
+		popTmp("%rax")
 		if node.Kind == ND_SHL {
 			printlnToFile("  shl %%cl, %s", regOpAX(node.Ty))
 		} else if node.Lhs.Ty.IsUnsigned {
@@ -1359,9 +1360,9 @@ func genExpr(node *AstNode) {
 	}
 
 	if node.Lhs.Ty.Kind == TY_FLOAT || node.Lhs.Ty.Kind == TY_DOUBLE {
-		genExpr(node.Rhs)
-		pushTmpF()
 		genExpr(node.Lhs)
+		pushTmpF()
+		genExpr(node.Rhs)
 
 		isXMM64 := node.Lhs.Ty.Kind == TY_DOUBLE
 		reg := popTmpFKeepReg(isXMM64)
@@ -1375,16 +1376,18 @@ func genExpr(node *AstNode) {
 			printlnToFile("  add%s %%xmm%d, %%xmm0", sz, reg)
 			return
 		case ND_SUB:
-			printlnToFile("  sub%s %%xmm%d, %%xmm0", sz, reg)
+			printlnToFile("  sub%s %%xmm0, %%xmm%d", sz, reg)
+			printlnToFile("  movaps %%xmm%d, %%xmm0", reg)
 			return
 		case ND_MUL:
 			printlnToFile("  mul%s %%xmm%d, %%xmm0", sz, reg)
 			return
 		case ND_DIV:
-			printlnToFile("  div%s %%xmm%d, %%xmm0", sz, reg)
+			printlnToFile("  div%s %%xmm0, %%xmm%d", sz, reg)
+			printlnToFile("  movaps %%xmm%d, %%xmm0", reg)
 			return
 		case ND_EQ, ND_NE, ND_LT, ND_LE:
-			printlnToFile("  ucomi%s %%xmm0, %%xmm%d", sz, reg)
+			printlnToFile("  ucomi%s %%xmm%d, %%xmm0", sz, reg)
 
 			if node.Kind == ND_EQ {
 				printlnToFile("  sete %%al")
@@ -1444,9 +1447,9 @@ func genExpr(node *AstNode) {
 		errorTok(node.Tok, "invalid expression")
 	}
 
-	genExpr(node.Rhs)
-	pushTmp()
 	genExpr(node.Lhs)
+	pushTmp()
+	genExpr(node.Rhs)
 
 	isR64 := node.Lhs.Ty.Size == 8 || node.Lhs.Ty.Base != nil
 	ax := "%eax"
@@ -1460,12 +1463,14 @@ func genExpr(node *AstNode) {
 		printlnToFile("  add %s, %s", op, ax)
 		return
 	case ND_SUB:
-		printlnToFile("  sub %s, %s", op, ax)
+		printlnToFile("  sub %s, %s", ax, op)
+		printlnToFile("  mov %s, %s", op, ax)
 		return
 	case ND_MUL:
 		printlnToFile("  imul %s, %s", op, ax)
 		return
 	case ND_DIV, ND_MOD:
+		printlnToFile("  xchg %s, %s", op, ax)
 		if node.Ty.IsUnsigned {
 			printlnToFile("  xor %%edx, %%edx")
 			printlnToFile("  div %s", op)
@@ -1492,7 +1497,7 @@ func genExpr(node *AstNode) {
 		printlnToFile("  xor %s, %s", op, ax)
 		return
 	case ND_EQ, ND_NE, ND_LT, ND_LE:
-		printlnToFile("  cmp %s, %s", op, ax)
+		printlnToFile("  cmp %s, %s", ax, op)
 
 		if node.Kind == ND_EQ {
 			printlnToFile("  sete %%al")

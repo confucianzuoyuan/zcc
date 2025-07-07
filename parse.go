@@ -2319,7 +2319,7 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 	}
 
 	if tok.isEqual("{") {
-		return compoundStmt(rest, tok.Next)
+		return compoundStmt(rest, tok.Next, ND_BLOCK)
 	}
 
 	return exprStmt(rest, tok)
@@ -2369,8 +2369,8 @@ func resolveGotoLabels() {
 }
 
 // compound-stmt = (typedef | declaration | stmt)* "}"
-func compoundStmt(rest **Token, tok *Token) *AstNode {
-	node := newNode(ND_BLOCK, tok)
+func compoundStmt(rest **Token, tok *Token, kind AstNodeKind) *AstNode {
+	node := newNode(kind, tok)
 	head := AstNode{}
 	cur := &head
 
@@ -2417,6 +2417,20 @@ func compoundStmt(rest **Token, tok *Token) *AstNode {
 	node.TopVLA = CurrentVLA
 	CurrentVLA = node.TargetVLA
 	leaveScope()
+
+	if node.Kind == ND_STMT_EXPR {
+		if cur.Lhs == nil {
+			errorTok(node.Tok, "statement expression returning void is not supported")
+		}
+		cur.Lhs.addType()
+		ty := cur.Lhs.Ty
+		if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
+			v := newLocalVar("", ty)
+			expr := newBinary(ND_ASSIGN, newVarNode(v, tok), cur.Lhs, tok)
+			chainExpr(&expr, newVarNode(v, tok))
+			cur.Lhs = expr
+		}
+	}
 
 	node.Body = head.Next
 	*rest = tok.Next
@@ -3554,6 +3568,8 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 		errorTok(tok, "too few arguments")
 	}
 
+	leaveScope()
+
 	node := newUnary(ND_FUNCALL, fn, tok)
 	node.Ty = ty.ReturnType
 	node.Args = head.ParamNext
@@ -3565,7 +3581,6 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 		node.ReturnBuffer = newLocalVar("", node.Ty)
 	}
 
-	leaveScope()
 	return node
 }
 
@@ -3713,8 +3728,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 			errorTok(tok, "statement expression at file scope")
 		}
 
-		node := compoundStmt(&tok, tok.Next.Next)
-		node.Kind = ND_STMT_EXPR
+		node := compoundStmt(&tok, tok.Next.Next, ND_STMT_EXPR)
 
 		*rest = skip(tok, ")")
 		return node
@@ -4003,7 +4017,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 		fn.VaArea = newLocalVar("", arrayOf(TyPChar, 176))
 	}
 
-	fn.Body = compoundStmt(rest, tok.Next)
+	fn.Body = compoundStmt(rest, tok.Next, ND_BLOCK)
 	if ty.VlaCalc != nil {
 		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
 		calc.Next = fn.Body.Body
