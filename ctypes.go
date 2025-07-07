@@ -234,6 +234,13 @@ func pointerTo(base *CType) *CType {
 	return ty
 }
 
+func (ty *CType) arrayToPointer() *CType {
+	if ty.Base != nil && ty.Kind != TY_PTR {
+		return pointerTo(ty.Base)
+	}
+	return ty
+}
+
 func funcType(returnTy *CType) *CType {
 	// The C spec disallows sizeof(<function type>), but
 	// GCC allows that and the expression is evaluated to 1.
@@ -284,16 +291,16 @@ func getCommonType(lhs **AstNode, rhs **AstNode, handlePtr bool) *CType {
 		}
 
 		if ty1.Base != nil && (*rhs).isNullPointer() {
-			return pointerTo(ty1.Base)
+			return ty1.arrayToPointer()
 		}
 
 		if ty2.Base != nil && (*lhs).isNullPointer() {
-			return pointerTo(ty2.Base)
+			return ty2.arrayToPointer()
 		}
 
 		if ty1.Base != nil && ty2.Base != nil {
 			if ty1.Base.isCompatibleWith(ty2.Base) {
-				return pointerTo(ty1.Base)
+				return ty1.arrayToPointer()
 			}
 			return pointerTo(TyVoid)
 		}
@@ -445,7 +452,7 @@ func (node *AstNode) addType() {
 		if node.Then.Ty.Kind == TY_VOID || node.Else.Ty.Kind == TY_VOID {
 			node.Ty = TyVoid
 		} else if !node.Then.Ty.isNumeric() && node.Then.Ty.isCompatibleWith(node.Else.Ty) {
-			node.Ty = node.Then.Ty
+			node.Ty = node.Then.Ty.arrayToPointer()
 		} else {
 			usualArithConv(&node.Then, &node.Else, true)
 			node.Ty = node.Then.Ty
@@ -476,7 +483,7 @@ func (node *AstNode) addType() {
 				stmt = stmt.Next
 			}
 			if stmt.Kind == ND_EXPR_STMT {
-				node.Ty = stmt.Lhs.Ty
+				node.Ty = stmt.Lhs.Ty.arrayToPointer()
 				return
 			}
 		}

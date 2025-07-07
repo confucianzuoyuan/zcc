@@ -2319,7 +2319,7 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 	}
 
 	if tok.isEqual("{") {
-		return compoundStmt(rest, tok.Next, nil)
+		return compoundStmt(rest, tok.Next)
 	}
 
 	return exprStmt(rest, tok)
@@ -2369,7 +2369,7 @@ func resolveGotoLabels() {
 }
 
 // compound-stmt = (typedef | declaration | stmt)* "}"
-func compoundStmt(rest **Token, tok *Token, last **AstNode) *AstNode {
+func compoundStmt(rest **Token, tok *Token) *AstNode {
 	node := newNode(ND_BLOCK, tok)
 	head := AstNode{}
 	cur := &head
@@ -2412,10 +2412,6 @@ func compoundStmt(rest **Token, tok *Token, last **AstNode) *AstNode {
 
 		cur.Next = stmt(&tok, tok, false)
 		cur = cur.Next
-	}
-
-	if last != nil {
-		*last = cur
 	}
 
 	node.TopVLA = CurrentVLA
@@ -3717,16 +3713,9 @@ func primary(rest **Token, tok *Token) *AstNode {
 			errorTok(tok, "statement expression at file scope")
 		}
 
-		var stmt *AstNode = nil
-		node := compoundStmt(&tok, tok.Next.Next, &stmt)
+		node := compoundStmt(&tok, tok.Next.Next)
 		node.Kind = ND_STMT_EXPR
 
-		if stmt != nil && stmt.Kind == ND_EXPR_STMT {
-			expr := stmt.Lhs
-			if expr.Ty.Kind == TY_ARRAY || expr.Ty.Kind == TY_VLA {
-				stmt.Lhs = newCast(expr, pointerTo(expr.Ty.Base))
-			}
-		}
 		*rest = skip(tok, ")")
 		return node
 	}
@@ -4014,7 +4003,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
 		fn.VaArea = newLocalVar("", arrayOf(TyPChar, 176))
 	}
 
-	fn.Body = compoundStmt(rest, tok.Next, nil)
+	fn.Body = compoundStmt(rest, tok.Next)
 	if ty.VlaCalc != nil {
 		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
 		calc.Next = fn.Body.Body
