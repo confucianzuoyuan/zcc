@@ -320,6 +320,22 @@ func newAlloca(sz *AstNode, v *Obj, top *Obj, align int64) *AstNode {
 	return node
 }
 
+func (node *AstNode) isConstDouble(fval *float64) bool {
+	node.addType()
+	failed := false
+
+	if evalRecover != nil {
+		panic("evalRecover != nil")
+	}
+	evalRecover = &failed
+	v := evalDouble(node)
+	if fval != nil {
+		*fval = v
+	}
+	evalRecover = nil
+	return !failed
+}
+
 func (node *AstNode) isConstExpr(val *int64) bool {
 	node.addType()
 	failed := false
@@ -339,12 +355,35 @@ func (node *AstNode) isConstExpr(val *int64) bool {
 func newCast(expr *AstNode, ty *CType) *AstNode {
 	expr.addType()
 
+	tmpNode := AstNode{
+		Kind: ND_CAST,
+		Tok:  expr.Tok,
+		Lhs:  expr,
+		Ty:   ty,
+	}
+	if opt_optimize {
+		if (ty.isInteger() && tmpNode.isConstExpr(&tmpNode.Value)) || (ty.isFloat() && tmpNode.isConstDouble(&tmpNode.FloatValue)) {
+			expr.Kind = ND_NUM
+			expr.Value = tmpNode.Value
+			expr.FloatValue = tmpNode.FloatValue
+			expr.Ty = ty
+			return expr
+		}
+		if expr.Ty == ty && !expr.isBitField() {
+			return expr
+		}
+	}
 	node := &AstNode{}
-	node.Kind = ND_CAST
-	node.Tok = expr.Tok
-	node.Lhs = expr
-	node.Ty = ty.copy()
+	*node = tmpNode
 	return node
+}
+
+func evalVoid(node *AstNode) {
+	if node.Ty.isFloat() {
+		evalDouble(node)
+		return
+	}
+	eval(node)
 }
 
 func pushScope(name string) *VarScope {
@@ -1656,6 +1695,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 	leaveScope()
 
+	vlaCalc.addType()
 	fnTy.ParamList = head.ParamNext
 	fnTy.VlaCalc = vlaCalc
 	fnTy.IsVariadic = isVariadic
@@ -1927,13 +1967,19 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	init.Expr.addType()
 
 	if ty.Kind == TY_FLOAT {
-		val := Float32ToInt8Slice(float32(evalDouble(init.Expr)))
+		val := Float32ToInt8Slice(float32(evalDouble(newCast(init.Expr, TyFloat))))
 		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
 
-	if ty.Kind == TY_DOUBLE || ty.Kind == TY_LDOUBLE {
-		val := Float64ToInt8Slice(evalDouble(init.Expr))
+	if ty.Kind == TY_DOUBLE {
+		val := Float64ToInt8Slice(evalDouble(newCast(init.Expr, TyDouble)))
+		copy((*buf)[offset:offset+int64(len(val))], val)
+		return cur
+	}
+
+	if ty.Kind == TY_LDOUBLE {
+		val := Float64ToInt8Slice(evalDouble(newCast(init.Expr, TyLDouble)))
 		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
@@ -2408,10 +2454,10 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 
 func evalDouble(node *AstNode) float64 {
 	if node.Ty.isInteger() {
-		if node.Ty.IsUnsigned {
-			return float64(uint64(eval(node)))
-		}
-		return float64(eval(node))
+		panic("node.Ty.isInteger()")
+	}
+	if evalRecover != nil && *evalRecover {
+		return float64(boolToInt(false))
 	}
 
 	switch node.Kind {
@@ -2428,13 +2474,13 @@ func evalDouble(node *AstNode) float64 {
 	case ND_NEG:
 		return -evalDouble(node.Lhs)
 	case ND_COND:
-		if evalDouble(node.Cond) != 0 {
+		if eval(node.Cond) != 0 {
 			return evalDouble(node.Then)
 		} else {
 			return evalDouble(node.Else)
 		}
-	case ND_CHAIN, ND_COMMA:
-		evalDouble(node.Lhs)
+	case ND_COMMA:
+		evalVoid(node.Lhs)
 		return evalDouble(node.Rhs)
 	case ND_CAST:
 		if node.Lhs.Ty.isFloat() {
@@ -2491,6 +2537,12 @@ func staticAssertion(rest **Token, tok *Token) {
 // number. The latter form is accepted only as an initialization
 // expression for a global variable.
 func eval2(node *AstNode, ctx *EvalContext) int64 {
+	if ctx.Kind == EV_CONST && node.Ty.isFloat() {
+		panic("ctx.Kind == EV_CONST && node.Ty.isFloat()")
+	}
+	if evalRecover != nil && *evalRecover {
+		return 0
+	}
 	switch node.Kind {
 	case ND_ADD:
 		return eval2(node.Lhs, ctx) + eval(node.Rhs)
@@ -2605,8 +2657,8 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		} else {
 			return eval2(node.Else, ctx)
 		}
-	case ND_CHAIN, ND_COMMA:
-		eval2(node.Lhs, ctx)
+	case ND_COMMA:
+		evalVoid(node.Lhs)
 		return eval2(node.Rhs, ctx)
 	case ND_NOT:
 		return int64(boolToInt(eval(node.Lhs) == 0))

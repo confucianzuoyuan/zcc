@@ -43,7 +43,7 @@ var opt_std StdVer
 var opt_data_sections bool
 var opt_func_sections bool
 var opt_g bool
-var opt_optimize bool
+var opt_optimize bool = true
 var opt_fpic bool
 var opt_include []string
 var opt_fcommon bool = true

@@ -518,6 +518,8 @@ func (node *AstNode) addType() {
 		}
 		node.Ty = node.Lhs.Ty.Base
 		return
+	case ND_MEMZERO, ND_VA_START, ND_VA_COPY:
+		node.Ty = TyVoid
 	}
 }
 
