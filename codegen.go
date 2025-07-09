@@ -151,11 +151,11 @@ func genMemZero(dofs int, dptr string, sz int) {
 	}
 }
 
-func pushTmp() {
+func push() {
 	pushTmpStack(SL_GP)
 }
 
-func popTmp2(sl *Slot, isR64 bool, arg string) {
+func pop2(sl *Slot, isR64 bool, arg string) {
 	ax := "%eax"
 	if isR64 {
 		ax = "%rax"
@@ -173,12 +173,24 @@ func popTmp2(sl *Slot, isR64 bool, arg string) {
 	printlnToFile("  mov %d(%s), %s", sl.StOffset, LocalVarPointer, arg)
 }
 
-func popTmp(arg string) {
+func pop(arg string) {
 	sl := popTmpStack()
-	popTmp2(sl, true, arg)
+	pop2(sl, true, arg)
 }
 
-func popTmpKeepReg(isR64 bool) string {
+func reqGP(regtbl []string, i int) string {
+	if i+1 > GP_SLOTS {
+		panic("i+1 > GP_SLOTS")
+	}
+
+	if tmpStack.Depth > 0 {
+		sl := &tmpStack.Data[tmpStack.Depth-1]
+		sl.GpDepth = int64(math.Max(float64(sl.GpDepth), float64(i+1)))
+	}
+	return regtbl[i]
+}
+
+func popInReg2(isR64 bool, fallbackReg string) string {
 	sl := popTmpStack()
 
 	if sl.Kind == SL_GP {
@@ -191,19 +203,19 @@ func popTmpKeepReg(isR64 bool) string {
 		instructionLine("  mov %s, %s", int(sl.Location), ax, reg)
 		return reg
 	}
-	reg := "%ecx"
-	if isR64 {
-		reg = "%rcx"
-	}
-	popTmp2(sl, isR64, reg)
-	return reg
+	pop2(sl, isR64, fallbackReg)
+	return fallbackReg
 }
 
-func pushTmpF() {
+func popInReg(fallbackReg string) string {
+	return popInReg2(true, fallbackReg)
+}
+
+func pushF() {
 	pushTmpStack(SL_FP)
 }
 
-func popTmpFKeepReg(isXMM64 bool) int {
+func popFloatInReg(isXMM64 bool) int {
 	sl := popTmpStack()
 	mv := "movss"
 	if isXMM64 {
@@ -774,7 +786,7 @@ func load(ty *CType) {
 
 // Store %rax to an address that the stack top is pointing to.
 func store(ty *CType) {
-	reg := popTmpKeepReg(true)
+	reg := popInReg("%rcx")
 
 	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_ARRAY {
 		genMemCopy(0, "%rax", 0, reg, int(ty.Size))
@@ -1108,9 +1120,9 @@ func genExpr(node *AstNode) {
 		return
 	case ND_EXCH:
 		genExpr(node.Lhs)
-		pushTmp()
+		push()
 		genExpr(node.Rhs)
-		reg := popTmpKeepReg(true)
+		reg := popInReg("%rcx")
 
 		sz := int(node.Lhs.Ty.Base.Size)
 		printlnToFile("  xchg %s, (%s)", regAX(sz), reg)
@@ -1127,28 +1139,30 @@ func genExpr(node *AstNode) {
 		return
 	case ND_VA_COPY:
 		genExpr(node.Lhs)
-		pushTmp()
+		push()
 		genExpr(node.Rhs)
-		reg := popTmpKeepReg(true)
+		reg := popInReg("%rcx")
 		genMemCopy(0, "%rax", 0, reg, 24)
 		return
 	case ND_CAS:
 		genExpr(node.CasAddr)
-		pushTmp()
+		push()
 		genExpr(node.CasOld)
-		pushTmp()
+		push()
 		genExpr(node.CasNew)
 		sz := int(node.CasAddr.Ty.Base.Size)
 		printlnToFile("  mov %s, %s", regAX(sz), regDX(sz))
-		popTmp("%rax") // old
-		popTmp("%rcx") // addr
-		printlnToFile("  mov %%rax, %s", tmpreg64[0])
+		pop("%rax") // old
+		pop("%rcx") // addr
+
+		r0 := reqGP(tmpreg64[:], 0)
+		printlnToFile("  mov %%rax, %s", r0)
 		load(node.CasOld.Ty.Base)
 
 		printlnToFile("  lock cmpxchg %s, (%%rcx)", regDX(sz))
 		printlnToFile("  sete %%cl")
 		printlnToFile("  je 1f")
-		printlnToFile("  mov %s, (%s)", regAX(sz), tmpreg64[0])
+		printlnToFile("  mov %s, (%s)", regAX(sz), r0)
 		printlnToFile("1:")
 		printlnToFile("  movzbl %%cl, %%eax")
 		return
@@ -1231,7 +1245,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_ASSIGN:
 		genAddr(node.Lhs)
-		pushTmp()
+		push()
 		genExpr(node.Rhs)
 		if node.Lhs.isBitField() {
 			// If the lhs is a bitfield, we need to read the current value
@@ -1241,8 +1255,8 @@ func genExpr(node *AstNode) {
 			printlnToFile("  and %%rdx, %%rax")
 			printlnToFile("  mov %%rax, %%rcx")
 
-			popTmp("%rax")
-			pushTmp()
+			pop("%rax")
+			push()
 			load(mem.Ty)
 
 			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
@@ -1332,10 +1346,10 @@ func genExpr(node *AstNode) {
 		return
 	case ND_SHL, ND_SHR:
 		genExpr(node.Lhs)
-		pushTmp()
+		push()
 		genExpr(node.Rhs)
 		printlnToFile("  mov %%eax, %%ecx")
-		popTmp("%rax")
+		pop("%rax")
 		if node.Kind == ND_SHL {
 			printlnToFile("  shl %%cl, %s", regOpAX(node.Ty))
 		} else if node.Lhs.Ty.IsUnsigned {
@@ -1352,16 +1366,16 @@ func genExpr(node *AstNode) {
 		}
 
 		genExpr(node.Lhs)
-		pushTmp()
+		push()
 
 		if node.ArgsExpr != nil {
 			genExpr(node.ArgsExpr)
 		}
 
-		popTmp("%r10")
+		pop("%r10")
 
 		printlnToFile("  mov %%rsp, %%rax")
-		pushTmp()
+		push()
 
 		saveTmpRegs()
 
@@ -1384,7 +1398,7 @@ func genExpr(node *AstNode) {
 		}
 		printlnToFile("  call *%%r10")
 
-		popTmp("%rsp")
+		pop("%rsp")
 
 		// It looks like the most significant 48 or 56 bits in RAX may
 		// contain garbage if a function return type is short or bool/char,
@@ -1421,11 +1435,11 @@ func genExpr(node *AstNode) {
 
 	if node.Lhs.Ty.Kind == TY_FLOAT || node.Lhs.Ty.Kind == TY_DOUBLE {
 		genExpr(node.Lhs)
-		pushTmpF()
+		pushF()
 		genExpr(node.Rhs)
 
 		isXMM64 := node.Lhs.Ty.Kind == TY_DOUBLE
-		reg := popTmpFKeepReg(isXMM64)
+		reg := popFloatInReg(isXMM64)
 		sz := "ss"
 		if isXMM64 {
 			sz = "sd"
@@ -1511,7 +1525,7 @@ func genExpr(node *AstNode) {
 	}
 
 	genExpr(node.Lhs)
-	pushTmp()
+	push()
 	genExpr(node.Rhs)
 
 	isR64 := node.Lhs.Ty.Size == 8 || node.Lhs.Ty.Base != nil
@@ -1519,7 +1533,11 @@ func genExpr(node *AstNode) {
 	if isR64 {
 		ax = "%rax"
 	}
-	op := popTmpKeepReg(isR64)
+	cx := "%ecx"
+	if isR64 {
+		cx = "%rcx"
+	}
+	op := popInReg2(isR64, cx)
 
 	switch node.Kind {
 	case ND_ADD:
