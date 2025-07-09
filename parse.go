@@ -2509,7 +2509,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return -eval(node.Lhs)
 	case ND_MOD:
 		if node.Ty.IsUnsigned {
-			return int64(uint64(eval(node.Lhs) % eval(node.Rhs)))
+			return int64(uint64(eval(node.Lhs)) % uint64(eval(node.Rhs)))
 		}
 		return eval(node.Lhs) % eval(node.Rhs)
 	case ND_BITAND:
@@ -2523,12 +2523,12 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 	case ND_SHR:
 		if node.Ty.IsUnsigned {
 			if node.Ty.Size == 4 {
-				return int64(uint32(eval(node.Lhs)) >> eval(node.Rhs))
+				return int64(uint32(eval(node.Lhs)) >> uint32(eval(node.Rhs)))
 			}
-			return int64(uint64(eval(node.Lhs) >> eval(node.Rhs)))
+			return int64(uint64(eval(node.Lhs)) >> uint64(eval(node.Rhs)))
 		}
 		if node.Ty.Size == 4 {
-			return int64(int32(eval(node.Lhs)) >> eval(node.Rhs))
+			return int64(int32(eval(node.Lhs)) >> int32(eval(node.Rhs)))
 		}
 		return eval(node.Lhs) >> eval(node.Rhs)
 	case ND_EQ:
@@ -2564,14 +2564,10 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 			}
 		}
 		if node.Lhs.Ty.IsUnsigned {
-			if eval(node.Rhs) < 0 {
-				return 0
+			if uint64(eval(node.Lhs)) < uint64(eval(node.Rhs)) {
+				return 1
 			} else {
-				if uint64(eval(node.Lhs)) < uint64(eval(node.Rhs)) {
-					return 1
-				} else {
-					return 0
-				}
+				return 0
 			}
 		}
 		if eval(node.Lhs) < eval(node.Rhs) {
@@ -2587,14 +2583,10 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 			}
 		}
 		if node.Lhs.Ty.IsUnsigned {
-			if eval(node.Rhs) < 0 {
-				return 0
+			if uint64(eval(node.Lhs)) <= uint64(eval(node.Rhs)) {
+				return 1
 			} else {
-				if uint64(eval(node.Lhs)) <= uint64(eval(node.Rhs)) {
-					return 1
-				} else {
-					return 0
-				}
+				return 0
 			}
 		}
 		if eval(node.Lhs) <= eval(node.Rhs) {
@@ -2676,6 +2668,14 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return val
 	case ND_NUM:
 		return node.Value
+	}
+
+	if node.Kind == ND_ADDR && node.Lhs.Kind == ND_DEREF {
+		return eval2(node.Lhs.Lhs, ctx)
+	}
+
+	if node.Kind == ND_DEREF && node.Lhs.Kind == ND_ADDR {
+		return eval2(node.Lhs.Lhs, ctx)
 	}
 
 	if ctx.Kind == EV_LABEL {
