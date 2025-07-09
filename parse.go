@@ -2648,6 +2648,9 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return 0
 	case ND_CAST:
 		if node.Ty.Kind == TY_BOOL {
+			if node.Lhs.Kind == ND_VAR && (node.Lhs.Ty.Kind == TY_ARRAY || node.Lhs.Ty.Kind == TY_VLA) {
+				return 1
+			}
 			if node.Lhs.Ty.isFloat() {
 				if evalDouble(node.Lhs) != 0 {
 					return 1
