@@ -2628,17 +2628,9 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 				return 1
 			}
 			if node.Lhs.Ty.isFloat() {
-				if evalDouble(node.Lhs) != 0 {
-					return 1
-				} else {
-					return 0
-				}
+				return int64(boolToInt(evalDouble(node.Lhs) != 0))
 			}
-			if eval2(node.Lhs, ctx) != 0 {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(eval2(node.Lhs, ctx) != 0))
 		}
 
 		if node.Lhs.Ty.isFloat() {
