@@ -2499,10 +2499,23 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 	case ND_MUL:
 		return eval(node.Lhs) * eval(node.Rhs)
 	case ND_DIV:
-		if node.Ty.IsUnsigned {
-			return int64(uint64(eval(node.Lhs)) / uint64(eval(node.Rhs)))
+		lhs := eval(node.Lhs)
+		rhs := eval(node.Rhs)
+		if rhs == 0 {
+			return evalError(node.Rhs.Tok, "division by zero during constant evaluation")
 		}
-		return eval(node.Lhs) / eval(node.Rhs)
+		if rhs == -1 && !node.Ty.IsUnsigned {
+			if node.Ty.Size == 4 && lhs == math.MinInt32 {
+				return math.MinInt32
+			}
+			if node.Ty.Size == 8 && lhs == math.MinInt64 {
+				return math.MinInt64
+			}
+		}
+		if node.Ty.IsUnsigned {
+			return int64(uint64(lhs) / uint64(rhs))
+		}
+		return lhs / rhs
 	case ND_POS:
 		return eval(node.Lhs)
 	case ND_NEG:
@@ -2514,10 +2527,18 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		}
 		return -eval(node.Lhs)
 	case ND_MOD:
-		if node.Ty.IsUnsigned {
-			return int64(uint64(eval(node.Lhs)) % uint64(eval(node.Rhs)))
+		lhs := eval(node.Lhs)
+		rhs := eval(node.Rhs)
+		if rhs == 0 {
+			return evalError(node.Rhs.Tok, "remainder by zero during constant evaluation")
 		}
-		return eval(node.Lhs) % eval(node.Rhs)
+		if rhs == -1 && !node.Ty.IsUnsigned && node.Ty.Size == 8 && lhs == math.MinInt64 {
+			return 0
+		}
+		if node.Ty.IsUnsigned {
+			return int64(uint64(lhs) % uint64(rhs))
+		}
+		return lhs % rhs
 	case ND_BITAND:
 		return eval(node.Lhs) & eval(node.Rhs)
 	case ND_BITOR:
