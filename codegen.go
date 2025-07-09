@@ -1131,16 +1131,17 @@ func genExpr(node *AstNode) {
 	case ND_CAS:
 		genExpr(node.CasAddr)
 		pushTmp()
-		genExpr(node.CasNew)
-		pushTmp()
 		genExpr(node.CasOld)
+		pushTmp()
+		genExpr(node.CasNew)
+		sz := int(node.CasAddr.Ty.Base.Size)
+		printlnToFile("  mov %s, %s", regAX(sz), regDX(sz))
+		popTmp("%rax") // old
+		popTmp("%rcx") // addr
 		printlnToFile("  mov %%rax, %%r8")
 		load(node.CasOld.Ty.Base)
-		popTmp("%rdx") // new
-		addr := popTmpKeepReg(true)
 
-		sz := int(node.CasAddr.Ty.Base.Size)
-		printlnToFile("  lock cmpxchg %s, (%s)", regDX(sz), addr)
+		printlnToFile("  lock cmpxchg %s, (%%rcx)", regDX(sz))
 		printlnToFile("  sete %%cl")
 		printlnToFile("  je 1f")
 		printlnToFile("  mov %s, (%%r8)", regAX(sz))
