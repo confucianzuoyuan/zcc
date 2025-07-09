@@ -7,7 +7,7 @@ import (
 
 const FP_MAX = 8
 const GP_MAX = 6
-const GP_SLOTS = 3
+const GP_SLOTS = 6
 const FP_SLOTS = 6
 
 type SlotKind int
@@ -32,8 +32,8 @@ var argreg8 = [6]string{"%dil", "%sil", "%dl", "%cl", "%r8b", "%r9b"}
 var argreg16 = [6]string{"%di", "%si", "%dx", "%cx", "%r8w", "%r9w"}
 var argreg32 = [6]string{"%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"}
 var argreg64 = [6]string{"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"}
-var tmpreg32 = [3]string{"%r9d", "%r10d", "%r11d"}
-var tmpreg64 = [3]string{"%r9", "%r10", "%r11"}
+var tmpreg32 = [6]string{"%edi", "%esi", "%r8d", "%r9d", "%r10d", "%r11d"}
+var tmpreg64 = [6]string{"%rdi", "%rsi", "%r8", "%r9", "%r10", "%r11"}
 
 var LabelCount int = 1
 
@@ -497,23 +497,23 @@ func copyStructReg() {
 	gp := 0
 	fp := 0
 
-	printlnToFile("  mov %%rax, %%rdi")
+	printlnToFile("  mov %%rax, %%rcx")
 
 	if ty.hasFloatNumber1() {
 		if !(ty.Size == 4 || 8 <= ty.Size) {
 			panic("")
 		}
 		if ty.Size == 4 {
-			printlnToFile("  movss (%%rdi), %%xmm0")
+			printlnToFile("  movss (%%rcx), %%xmm0")
 		} else {
-			printlnToFile("  movsd (%%rdi), %%xmm0")
+			printlnToFile("  movsd (%%rcx), %%xmm0")
 		}
 		fp += 1
 	} else {
 		printlnToFile("  mov $0, %%rax")
 		for i := int64(math.Min(8, float64(ty.Size))) - 1; i >= 0; i -= 1 {
 			printlnToFile("  shl $8, %%rax")
-			printlnToFile("  mov %d(%%rdi), %%al", i)
+			printlnToFile("  mov %d(%%rcx), %%al", i)
 		}
 		gp += 1
 	}
@@ -525,9 +525,9 @@ func copyStructReg() {
 			}
 
 			if ty.Size == 12 {
-				printlnToFile("  movss 8(%%rdi), %%xmm%d", fp)
+				printlnToFile("  movss 8(%%rcx), %%xmm%d", fp)
 			} else {
-				printlnToFile("  movsd 8(%%rdi), %%xmm%d", fp)
+				printlnToFile("  movsd 8(%%rcx), %%xmm%d", fp)
 			}
 		} else {
 			reg1 := "%al"
@@ -539,7 +539,7 @@ func copyStructReg() {
 			printlnToFile("  mov $0, %s", reg2)
 			for i := int64(math.Min(16, float64(ty.Size))) - 1; i >= 8; i -= 1 {
 				printlnToFile("  shl $8, %s", reg2)
-				printlnToFile("  mov %d(%%rdi), %s", i, reg1)
+				printlnToFile("  mov %d(%%rcx), %s", i, reg1)
 			}
 		}
 	}
@@ -904,11 +904,11 @@ const I64F64 = "cvtsi2sdq %rax, %xmm0"
 const I64F80 = "movq %rax, -8(%rsp); fildll -8(%rsp)"
 
 const U64F32 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2ss %rax,%xmm0; jmp 2f; 
-  1: mov %rax,%rdi; and $1,%eax; pxor %xmm0,%xmm0; shr %rdi; 
-  or %rax,%rdi; cvtsi2ss %rdi,%xmm0; addss %xmm0,%xmm0; 2:`
+  1: mov %rax,%rdx; and $1,%eax; pxor %xmm0,%xmm0; shr %rdx; 
+  or %rax,%rdx; cvtsi2ss %rdx,%xmm0; addss %xmm0,%xmm0; 2:`
 const U64F64 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2sd %rax,%xmm0; jmp 2f; 
-                1: mov %rax,%rdi; and $1,%eax; pxor %xmm0,%xmm0; shr %rdi; 
-                or %rax,%rdi; cvtsi2sd %rdi,%xmm0; addsd %xmm0,%xmm0; 2:`
+                1: mov %rax,%rdx; and $1,%eax; pxor %xmm0,%xmm0; shr %rdx; 
+                or %rax,%rdx; cvtsi2sd %rdx,%xmm0; addsd %xmm0,%xmm0; 2:`
 const U64F80 = `mov %rax, -8(%rsp); fildq -8(%rsp); test %rax, %rax; jns 1f;
                 mov $1602224128, %eax; mov %eax, -4(%rsp); fadds -4(%rsp); 1:`
 
@@ -1138,13 +1138,13 @@ func genExpr(node *AstNode) {
 		printlnToFile("  mov %s, %s", regAX(sz), regDX(sz))
 		popTmp("%rax") // old
 		popTmp("%rcx") // addr
-		printlnToFile("  mov %%rax, %%r8")
+		printlnToFile("  mov %%rax, %s", tmpreg64[0])
 		load(node.CasOld.Ty.Base)
 
 		printlnToFile("  lock cmpxchg %s, (%%rcx)", regDX(sz))
 		printlnToFile("  sete %%cl")
 		printlnToFile("  je 1f")
-		printlnToFile("  mov %s, (%%r8)", regAX(sz))
+		printlnToFile("  mov %s, (%s)", regAX(sz), tmpreg64[0])
 		printlnToFile("1:")
 		printlnToFile("  movzbl %%cl, %%eax")
 		return
@@ -1233,23 +1233,23 @@ func genExpr(node *AstNode) {
 			// If the lhs is a bitfield, we need to read the current value
 			// from memory and merge it with a new value.
 			mem := node.Lhs.Member
-			printlnToFile("  mov $%d, %%rdi", (1<<mem.BitWidth)-1)
-			printlnToFile("  and %%rdi, %%rax")
-			printlnToFile("  mov %%rax, %%r8")
+			printlnToFile("  mov $%d, %%rdx", (1<<mem.BitWidth)-1)
+			printlnToFile("  and %%rdx, %%rax")
+			printlnToFile("  mov %%rax, %%rcx")
 
 			popTmp("%rax")
 			pushTmp()
 			load(mem.Ty)
 
 			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
-			printlnToFile("  mov $%d, %%rdi", ^mask)
-			printlnToFile("  and %%rdi, %%rax")
+			printlnToFile("  mov $%d, %%rdx", ^mask)
+			printlnToFile("  and %%rdx, %%rax")
 
-			printlnToFile("  mov %%r8, %%rdi")
-			printlnToFile("  shl $%d, %%rdi", mem.BitOffset)
-			printlnToFile("  or %%rdi, %%rax")
+			printlnToFile("  mov %%rcx, %%rdx")
+			printlnToFile("  shl $%d, %%rdx", mem.BitOffset)
+			printlnToFile("  or %%rdx, %%rax")
 			store(node.Ty)
-			printlnToFile("  mov %%r8, %%rax")
+			printlnToFile("  mov %%rcx, %%rax")
 
 			if !mem.Ty.IsUnsigned {
 				printlnToFile("  shl $%d, %%rax", 64-mem.BitWidth)
@@ -1810,7 +1810,7 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int, ptr string) int {
 }
 
 func builtin_alloca(node *AstNode) {
-	// Shift the temporary area by %rdi.
+	// Shift the temporary area by %rax.
 	printlnToFile("  sub %%rax, %%rsp")
 	// Align frame pointer
 	align := int64(16)
