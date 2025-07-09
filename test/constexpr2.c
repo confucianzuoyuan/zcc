@@ -67,6 +67,16 @@ int main(void) {
 
   DASSERT(0.1 ? 1 : 0);
 
+  DASSERT((long)-0x1U == 4294967295);
+  DASSERT((long)-0x1  == -1);
+  DASSERT((long)-0xFFFFFFF0U == 16);
+  DASSERT((long)-0xFFFFFFF0  == 16);
+
+  DASSERT((long)~0x1U == 4294967294);
+  DASSERT((long)~0x1  == -2);
+  DASSERT((long)~0xFFFFFFF0U == 15);
+  DASSERT((long)~0xFFFFFFF0  == 15);
+
   printf("OK\n");
   return 0;
 }

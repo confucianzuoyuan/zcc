@@ -2506,6 +2506,12 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 	case ND_POS:
 		return eval(node.Lhs)
 	case ND_NEG:
+		if node.Ty.Size == 4 {
+			if node.Ty.IsUnsigned {
+				return int64(uint32(-eval(node.Lhs)))
+			}
+			return int64(int32(-eval(node.Lhs)))
+		}
 		return -eval(node.Lhs)
 	case ND_MOD:
 		if node.Ty.IsUnsigned {
@@ -2608,6 +2614,12 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		}
 		return 0
 	case ND_BITNOT:
+		if node.Ty.Size == 4 {
+			if node.Ty.IsUnsigned {
+				return int64(uint32(^eval(node.Lhs)))
+			}
+			return int64(int32(^eval(node.Lhs)))
+		}
 		return ^eval(node.Lhs)
 	case ND_LOGAND:
 		if eval(node.Lhs) != 0 && eval(node.Rhs) != 0 {
