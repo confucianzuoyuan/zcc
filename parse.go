@@ -2106,6 +2106,10 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 		node := newNode(ND_SWITCH, tok)
 		tok = skip(tok.Next, "(")
 		node.Cond = expr(&tok, tok)
+		node.Cond.addType()
+		if !node.Cond.Ty.isInteger() {
+			errorTok(tok, "controlling expression not integer")
+		}
 		tok = skip(tok, ")")
 
 		sw := currentSwitch
@@ -2140,8 +2144,6 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 		begin := constExpr(&tok, tok.Next)
 		end := int64(0)
 
-		currentSwitch.Cond.addType()
-
 		// [GNU] Case ranges, e.g. "case 1 ... 5:"
 		if tok.isEqual("...") {
 			end = constExpr(&tok, tok.Next)
@@ -2149,8 +2151,9 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 			end = begin
 		}
 
-		if currentSwitch.Cond.Ty.Size == 4 {
-			if !currentSwitch.Cond.Ty.IsUnsigned {
+		condTy := currentSwitch.Cond.Ty
+		if condTy.Size <= 4 {
+			if !condTy.IsUnsigned {
 				begin = int64(int32(begin))
 				end = int64(int32(end))
 			} else {
@@ -2159,7 +2162,7 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 			}
 		}
 
-		if (!currentSwitch.Cond.Ty.IsUnsigned && (end < begin)) || (currentSwitch.Cond.Ty.IsUnsigned && uint64(end) < uint64(begin)) {
+		if (!condTy.IsUnsigned && (end < begin)) || (condTy.IsUnsigned && uint64(end) < uint64(begin)) {
 			errorTok(tok, "empty case range specified")
 		}
 
@@ -2815,6 +2818,9 @@ func evalConstExprAgg(node *AstNode) []int8 {
 func constExpr(rest **Token, tok *Token) int64 {
 	node := conditional(rest, tok)
 	node.addType()
+	if !node.Ty.isInteger() {
+		errorTok(tok, "constant expression not integer")
+	}
 	return eval(node)
 }
 
