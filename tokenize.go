@@ -55,6 +55,7 @@ var Keywords = map[string]struct{}{
 	"__asm__":       {},
 	"__typeof":      {},
 	"__typeof__":    {},
+	"inline":        {},
 }
 
 type TokenKind int
