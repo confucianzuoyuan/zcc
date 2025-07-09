@@ -134,10 +134,10 @@ int main() {
   ASSERT(5, 0?:5);
   ASSERT(4, ({ int i = 3; ++i?:10; }));
 
-  // EASSERT(3, (long double)3);
-  // EASSERT(5, (long double)3+2);
-  // EASSERT(6, (long double)3*2);
-  // EASSERT(5, (long double)3+2.0);
+  EASSERT(3, (long double)3);
+  EASSERT(5, (long double)3+2);
+  EASSERT(6, (long double)3*2);
+  EASSERT(5, (long double)3+2.0);
 
   printf("OK\n");
   return 0;
