@@ -892,16 +892,16 @@ const I32U16 = "movzwl %ax, %eax"
 const I32F32 = "cvtsi2ssl %eax, %xmm0"
 const I32I64 = "movslq %eax, %rax"
 const I32F64 = "cvtsi2sdl %eax, %xmm0"
-const I32F80 = "mov %eax, -4(%rsp); fildl -4(%rsp)"
+const I32F80 = "push %rax; fildl (%rsp); pop %rax"
 
 const U32F32 = "mov %eax, %eax; cvtsi2ssq %rax, %xmm0"
 const U32I64 = "mov %eax, %eax"
 const U32F64 = "mov %eax, %eax; cvtsi2sdq %rax, %xmm0"
-const U32F80 = "mov %eax, %eax; mov %rax, -8(%rsp); fildll -8(%rsp)"
+const U32F80 = "mov %eax, %eax; push %rax; fildll (%rsp); pop %rax"
 
 const I64F32 = "cvtsi2ssq %rax, %xmm0"
 const I64F64 = "cvtsi2sdq %rax, %xmm0"
-const I64F80 = "movq %rax, -8(%rsp); fildll -8(%rsp)"
+const I64F80 = "push %rax; fildll (%rsp); pop %rax"
 
 const U64F32 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2ss %rax,%xmm0; jmp 2f; 
   1: mov %rax,%rdx; and $1,%eax; pxor %xmm0,%xmm0; shr %rdx; 
@@ -909,8 +909,8 @@ const U64F32 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2ss %rax,%xmm0; jm
 const U64F64 = `test %rax,%rax; js 1f; pxor %xmm0,%xmm0; cvtsi2sd %rax,%xmm0; jmp 2f; 
                 1: mov %rax,%rdx; and $1,%eax; pxor %xmm0,%xmm0; shr %rdx; 
                 or %rax,%rdx; cvtsi2sd %rdx,%xmm0; addsd %xmm0,%xmm0; 2:`
-const U64F80 = `mov %rax, -8(%rsp); fildq -8(%rsp); test %rax, %rax; jns 1f;
-                mov $1602224128, %eax; mov %eax, -4(%rsp); fadds -4(%rsp); 1:`
+const U64F80 = `push %rax; fildq (%rsp); test %rax, %rax; jns 1f;
+                mov $1602224128, %eax; mov %eax, 4(%rsp); fadds 4(%rsp); 1:; pop %rax`
 
 const F32I8 = "cvttss2sil %xmm0, %eax; movsbl %al, %eax"
 const F32U8 = "cvttss2sil %xmm0, %eax; movzbl %al, %eax"
@@ -923,7 +923,7 @@ const F32U64 = `cvttss2siq %xmm0, %rcx; movq %rcx, %rdx; movl $0x5F000000, %eax;
   movd %eax, %xmm1; subss %xmm1, %xmm0; cvttss2siq %xmm0, %rax; 
   sarq $63, %rdx; andq %rdx, %rax; orq %rcx, %rax;`
 const F32F64 = "cvtss2sd %xmm0, %xmm0"
-const F32F80 = "movss %xmm0, -4(%rsp); flds -4(%rsp)"
+const F32F80 = "sub $8, %rsp; movss %xmm0, (%rsp); flds (%rsp); add $8, %rsp"
 
 const F64I8 = "cvttsd2sil %xmm0, %eax; movsbl %al, %eax"
 const F64U8 = "cvttsd2sil %xmm0, %eax; movzbl %al, %eax"
@@ -936,21 +936,25 @@ const F64I64 = "cvttsd2siq %xmm0, %rax"
 const F64U64 = `cvttsd2siq %xmm0, %rcx; movq %rcx, %rdx; mov $0x43e0000000000000, %rax; 
   movq %rax, %xmm1; subsd %xmm1, %xmm0; cvttsd2siq %xmm0, %rax; 
   sarq $63, %rdx; andq %rdx, %rax; orq %rcx, %rax`
-const F64F80 = "movsd %xmm0, -8(%rsp); fldl -8(%rsp)"
+const F64F80 = "sub $8, %rsp; movsd %xmm0, (%rsp); fldl (%rsp); add $8, %rsp"
 
-const FROM_F80_1 = "fnstcw -10(%rsp); movzwl -10(%rsp), %eax; or $12, %ah; " + "mov %ax, -12(%rsp); fldcw -12(%rsp); "
-const FROM_F80_2 = " -24(%rsp); fldcw -10(%rsp); "
+const FROM_F80_1 = `sub $24, %rsp; fnstcw 14(%rsp); movzwl 14(%rsp), %eax; or $12, %ah; mov %ax, 12(%rsp); fldcw 12(%rsp); `
+const FROM_F80_2 = " (%rsp); fldcw 14(%rsp); "
+const FROM_F80_3 = "; add $24, %rsp"
 
-const F80I8 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movsbl -24(%rsp), %eax"
-const F80U8 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movzbl -24(%rsp), %eax"
-const F80I16 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movzbl -24(%rsp), %eax"
-const F80U16 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "movswl -24(%rsp), %eax"
-const F80I32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov -24(%rsp), %eax"
-const F80U32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov -24(%rsp), %eax"
-const F80I64 = FROM_F80_1 + "fistpq" + FROM_F80_2 + "mov -24(%rsp), %rax"
-const F80U64 = `movl $0x5f000000, -4(%rsp); flds -4(%rsp); fucomi %st(1), %st; setbe %al;fldz; fcmovbe %st(1), %st; fstp %st(1); fsubrp %st, %st(1); fnstcw -12(%rsp);movzwl -12(%rsp), %ecx; orl $3072, %ecx; movw %cx, -10(%rsp); fldcw -10(%rsp);fistpll -8(%rsp); fldcw -12(%rsp); shlq $63, %rax; xorq -8(%rsp), %rax;`
-const F80F32 = "fstps -8(%rsp); movss -8(%rsp), %xmm0"
-const F80F64 = "fstpl -8(%rsp); movsd -8(%rsp), %xmm0"
+const F80I8 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movsbl (%rsp), %eax" + FROM_F80_3
+const F80U8 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movzbl (%rsp), %eax" + FROM_F80_3
+const F80I16 = FROM_F80_1 + "fistps" + FROM_F80_2 + "movzbl (%rsp), %eax" + FROM_F80_3
+const F80U16 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "movswl (%rsp), %eax" + FROM_F80_3
+const F80I32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov (%rsp), %eax" + FROM_F80_3
+const F80U32 = FROM_F80_1 + "fistpl" + FROM_F80_2 + "mov (%rsp), %eax" + FROM_F80_3
+const F80I64 = FROM_F80_1 + "fistpq" + FROM_F80_2 + "mov (%rsp), %rax" + FROM_F80_3
+const F80U64 = `sub $16, %rsp; movl $0x5f000000, 12(%rsp); flds 12(%rsp); fucomi %st(1), %st; setbe %al;
+  fldz; fcmovbe %st(1), %st; fstp %st(1); fsubrp %st, %st(1); fnstcw 4(%rsp);
+  movzwl 4(%rsp), %ecx; orl $3072, %ecx; movw %cx, 6(%rsp); fldcw 6(%rsp);
+  fistpll 8(%rsp); fldcw 4(%rsp); shlq $63, %rax; xorq 8(%rsp), %rax; add $16, %rsp`
+const F80F32 = "sub $8, %rsp; fstps (%rsp); movss (%rsp), %xmm0; add $8, %rsp"
+const F80F64 = "sub $8, %rsp; fstpl (%rsp); movsd (%rsp), %xmm0; add $8, %rsp"
 
 var CastTable = [][]string{
 	// i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 f80
