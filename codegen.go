@@ -1632,16 +1632,17 @@ func genStmt(node *AstNode) {
 	case ND_SWITCH:
 		genExpr(node.Cond)
 
-		for n := node.CaseNext; n != nil; n = n.CaseNext {
-			ax := "%eax"
-			di := "%edi"
-			dx := "%edx"
-			if node.Cond.Ty.Size == 8 {
-				ax = "%rax"
-				di = "%rdi"
-				dx = "%rdx"
-			}
+		ax := "%eax"
+		cx := "%ecx"
+		dx := "%edx"
 
+		if node.Cond.Ty.Size == 8 {
+			ax = "%rax"
+			cx = "%rcx"
+			dx = "%rdx"
+		}
+
+		for n := node.CaseNext; n != nil; n = n.CaseNext {
 			if n.Begin == n.End {
 				printlnToFile("  mov $%d, %s", n.Begin, dx)
 				printlnToFile("  cmp %s, %s", dx, ax)
@@ -1650,11 +1651,11 @@ func genStmt(node *AstNode) {
 			}
 
 			// [GNU] Case ranges
-			printlnToFile("  mov %s, %s", ax, di)
+			printlnToFile("  mov %s, %s", ax, cx)
 			printlnToFile("  mov $%d, %s", n.Begin, dx)
-			printlnToFile("  sub %s, %s", dx, di)
+			printlnToFile("  sub %s, %s", dx, cx)
 			printlnToFile("  mov $%d, %s", n.End-n.Begin, dx)
-			printlnToFile("  cmp %s, %s", dx, di)
+			printlnToFile("  cmp %s, %s", dx, cx)
 			printlnToFile("  jbe %s", n.Label)
 		}
 
