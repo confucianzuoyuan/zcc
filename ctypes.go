@@ -227,6 +227,13 @@ func (t *CType) isNumeric() bool {
 	return t.isInteger() || t.isFloat()
 }
 
+func (ty *CType) vaArgNeedCopy() bool {
+	if ty.Size > 8 && ty.Size <= 16 {
+		return ty.hasFloatNumber1() || ty.hasFloatNumber2()
+	}
+	return false
+}
+
 func pointerTo(base *CType) *CType {
 	ty := newType(TY_PTR, 8, 8) // Assuming pointer size is 8 bytes
 	ty.Base = base

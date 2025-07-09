@@ -586,6 +586,33 @@ func alignTo(n int64, align int64) int64 {
 	return (n + align - 1) / align * align
 }
 
+func genVaArgRegCopy(ty *CType, v *Obj) {
+	regClass := []bool{!ty.hasFloatNumber1(), !ty.hasFloatNumber2()}
+
+	gpInc := boolToInt(regClass[0]) + boolToInt(regClass[1])
+	if gpInc > 0 {
+		printlnToFile("  cmpl $%d, (%%rax)", 48-gpInc*8)
+		printlnToFile("  ja 1f")
+	}
+	fpInc := boolToInt(!regClass[0]) + boolToInt(!regClass[1])
+	printlnToFile("  cmpl $%d, 4(%%rax)", 176-fpInc*16)
+	printlnToFile("  ja 1f")
+
+	for i := int64(0); i < 2; i++ {
+		if regClass[i] {
+			printlnToFile("  movl (%%rax), %%ecx")   // gp_offset
+			printlnToFile("  addq 16(%%rax), %%rcx") // reg_save_area
+			printlnToFile("  addq $8, (%%rax)")
+		} else {
+			printlnToFile("  movl 4(%%rax), %%ecx")  // fp_offset
+			printlnToFile("  addq 16(%%rax), %%rcx") // reg_save_area
+			printlnToFile("  addq $16, 4(%%rax)")
+		}
+		genMemCopy(0, "%rcx", int(i*8+v.Offset), v.Pointer, int(math.Min(float64(ty.Size-i*8), 8)))
+	}
+	printlnToFile("  lea %d(%s), %%rdx", v.Offset, v.Pointer)
+}
+
 // Compute the absolute address of a given node.
 // It's an error if a given node does not reside in memory.
 func genAddr(node *AstNode) {
@@ -680,7 +707,7 @@ func genAddr(node *AstNode) {
 				printlnToFile("  add $%d, %%rax", node.Member.Offset)
 				return
 			}
-		case ND_ASSIGN, ND_COND, ND_STMT_EXPR:
+		case ND_ASSIGN, ND_COND, ND_STMT_EXPR, ND_VA_ARG:
 			if node.Lhs.Ty.Kind != TY_STRUCT && node.Lhs.Ty.Kind != TY_UNION {
 				// DO NOTHING
 			} else {
@@ -1014,60 +1041,49 @@ func genExpr(node *AstNode) {
 		return
 	case ND_VA_ARG:
 		genExpr(node.Lhs)
-		ty := node.Ty
-		v := node.Variable
 
+		ty := node.Ty.Base
 		if ty.Size <= 16 {
-			regClass0 := !ty.hasFloatNumber1()
-			regClass1 := false
-			if ty.Size > 8 {
-				regClass1 = !ty.hasFloatNumber2()
-			}
-
-			gpInc := boolToInt(regClass0) + boolToInt(ty.Size > 8 && regClass1)
-			if gpInc != 0 {
+			if ty.vaArgNeedCopy() {
+				// Structs with FP member are split into 8-byte chunks in the
+				// reg save area, we reconstruct the layout with a local copy.
+				genVaArgRegCopy(ty, node.Variable)
+			} else if ty.hasFloatNumber1() {
+				printlnToFile("  cmpl $%d, 4(%%rax)", 160)
+				printlnToFile("  ja 1f")
+				printlnToFile("  movl 4(%%rax), %%edx")  // fp_offset
+				printlnToFile("  addq 16(%%rax), %%rdx") // reg_save_area
+				printlnToFile("  addq $16, 4(%%rax)")
+			} else {
+				gpInc := 1
+				if ty.Size > 8 {
+					gpInc = 2
+				}
 				printlnToFile("  cmpl $%d, (%%rax)", 48-gpInc*8)
 				printlnToFile("  ja 1f")
+				printlnToFile("  movl (%%rax), %%edx")   // gp_offset
+				printlnToFile("  addq 16(%%rax), %%rdx") // reg_save_area
+				printlnToFile("  addq $%d, (%%rax)", gpInc*8)
 			}
-			fpInc := boolToInt(!regClass0) + boolToInt(ty.Size > 8 && !regClass1)
-			if fpInc != 0 {
-				printlnToFile("  cmpl $%d, 4(%%rax)", 176-fpInc*16)
-				printlnToFile("  ja 1f")
-			}
-			for i := 0; i < (int(ty.Size)+7)/8; i++ {
-				if (i == 0 && regClass0) || (i == 1 && regClass1) {
-					printlnToFile("  movl (%%rax), %%edi")   // gp_offset
-					printlnToFile("  addq 16(%%rax), %%rdi") // reg_save_area
-					printlnToFile("  addq $8, (%%rax)")
-				} else {
-					printlnToFile("  movl 4(%%rax), %%edi")  // fp_offset
-					printlnToFile("  addq 16(%%rax), %%rdi") // reg_save_area
-					printlnToFile("  addq $16, 4(%%rax)")
-				}
-				for ofs := 0; ofs < int(math.Min(float64(int(ty.Size)-i*8), 8)); ofs++ {
-					printlnToFile("  mov %d(%%rdi), %%r8b", ofs)
-					printlnToFile("  mov %%r8b, %d(%s)", ofs+i*8+int(v.Offset), v.Pointer)
-				}
-			}
+
 			printlnToFile("  jmp 2f")
 			printlnToFile("1:")
 		}
 
-		printlnToFile("  movq 8(%%rax), %%rdi") // overflow_arg_area
-		if ty.Align > 8 {
-			printlnToFile("  addq $%d, %%rdi", ty.Align-1)
-			printlnToFile("  andq $-%d, %%rdi", ty.Align)
+		printlnToFile("  movq 8(%%rax), %%rdx") // overflow_arg_area
+		if ty.Align <= 8 {
+			printlnToFile("  addq $%d, 8(%%rax)", alignTo(ty.Size, 8))
+		} else {
+			printlnToFile("  addq $%d, %%rdx", ty.Align-1)
+			printlnToFile("  andq $-%d, %%rdx", ty.Align)
+			printlnToFile("  lea %d(%%rdx), %%rcx", alignTo(ty.Size, 8))
+			printlnToFile("  movq %%rcx, 8(%%rax)")
 		}
-		printlnToFile("  movq %%rdi, %%rdx")
-		printlnToFile("  addq $%d, %%rdx", alignTo(ty.Size, 8))
-		printlnToFile("  movq %%rdx, 8(%%rax)")
-		for ofs := int64(0); ofs < ty.Size; ofs++ {
-			printlnToFile("  mov %d(%%rdi), %%r8b", ofs)
-			printlnToFile("  mov %%r8b, %d(%s)", ofs+v.Offset, v.Pointer)
-		}
+
 		if ty.Size <= 16 {
 			printlnToFile("2:")
 		}
+		printlnToFile("  mov %%rdx, %%rax")
 		return
 	case ND_EXCH:
 		genExpr(node.Lhs)

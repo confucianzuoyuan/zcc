@@ -3834,11 +3834,14 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node.Lhs = apArg
 		tok = skip(tok, ",")
 
-		node.Variable = newLocalVar("", typeName(&tok, tok))
-		node.Ty = node.Variable.Ty
-		chainExpr(&node, newVarNode(node.Variable, tok))
+		ty := typeName(&tok, tok)
+		if ty.vaArgNeedCopy() {
+			node.Variable = newLocalVar("", ty)
+		}
+
+		node.Ty = pointerTo(ty)
 		*rest = skip(tok, ")")
-		return node
+		return newUnary(ND_DEREF, node, tok)
 	}
 
 	if tok.isEqual("__builtin_atomic_exchange") {
