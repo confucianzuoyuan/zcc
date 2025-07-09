@@ -2559,47 +2559,22 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return eval(node.Lhs) >> eval(node.Rhs)
 	case ND_EQ:
 		if node.Lhs.Ty.isFloat() {
-			if evalDouble(node.Lhs) == evalDouble(node.Rhs) {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(evalDouble(node.Lhs) == evalDouble(node.Rhs)))
 		}
-		if eval(node.Lhs) == eval(node.Rhs) {
-			return 1
-		}
-		return 0
+		return int64(boolToInt(eval(node.Lhs) == eval(node.Rhs)))
 	case ND_NE:
 		if node.Lhs.Ty.isFloat() {
-			if evalDouble(node.Lhs) != evalDouble(node.Rhs) {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(evalDouble(node.Lhs) != evalDouble(node.Rhs)))
 		}
-		if eval(node.Lhs) != eval(node.Rhs) {
-			return 1
-		}
-		return 0
+		return int64(boolToInt(eval(node.Lhs) != eval(node.Rhs)))
 	case ND_LT:
 		if node.Lhs.Ty.isFloat() {
-			if evalDouble(node.Lhs) < evalDouble(node.Rhs) {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(evalDouble(node.Lhs) < evalDouble(node.Rhs)))
 		}
 		if node.Lhs.Ty.IsUnsigned {
-			if uint64(eval(node.Lhs)) < uint64(eval(node.Rhs)) {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(uint64(eval(node.Lhs)) < uint64(eval(node.Rhs))))
 		}
-		if eval(node.Lhs) < eval(node.Rhs) {
-			return 1
-		}
-		return 0
+		return int64(boolToInt(eval(node.Lhs) < eval(node.Rhs)))
 	case ND_LE:
 		if node.Lhs.Ty.isFloat() {
 			return int64(boolToInt(evalDouble(node.Lhs) <= evalDouble(node.Rhs)))
@@ -2634,10 +2609,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		eval2(node.Lhs, ctx)
 		return eval2(node.Rhs, ctx)
 	case ND_NOT:
-		if eval(node.Lhs) == 0 {
-			return 1
-		}
-		return 0
+		return int64(boolToInt(eval(node.Lhs) == 0))
 	case ND_BITNOT:
 		if node.Ty.Size == 4 {
 			if node.Ty.IsUnsigned {
@@ -2647,15 +2619,9 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		}
 		return ^eval(node.Lhs)
 	case ND_LOGAND:
-		if eval(node.Lhs) != 0 && eval(node.Rhs) != 0 {
-			return 1
-		}
-		return 0
+		return int64(boolToInt(eval(node.Lhs) != 0 && eval(node.Rhs) != 0))
 	case ND_LOGOR:
-		if eval(node.Lhs) != 0 || eval(node.Rhs) != 0 {
-			return 1
-		}
-		return 0
+		return int64(boolToInt(eval(node.Lhs) != 0 || eval(node.Rhs) != 0))
 	case ND_CAST:
 		if node.Ty.Kind == TY_BOOL {
 			if node.Lhs.Kind == ND_VAR && (node.Lhs.Ty.Kind == TY_ARRAY || node.Lhs.Ty.Kind == TY_VLA) {
