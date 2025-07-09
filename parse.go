@@ -1358,8 +1358,9 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		first := true
 		for ; commaList(&tok, &tok, ";", !first); first = false {
 			mem := &Member{}
-			mem.Ty = declarator(&tok, tok, basety)
-			mem.Name = mem.Ty.Name
+			var name *Token = nil
+			mem.Ty = declarator(&tok, tok, basety, &name)
+			mem.Name = name
 			if attr.Align > 0 {
 				mem.Align = attr.Align
 			} else {
@@ -1626,10 +1627,9 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 		}
 
 		ty2 := declspec(&tok, tok, nil)
-		ty2 = declarator(&tok, tok, ty2)
 
-		name := ty2.Name
-
+		var name *Token = nil
+		ty2 = declarator(&tok, tok, ty2, &name)
 		chainExpr(&vlaCalc, computeVlaSize(ty2, tok))
 
 		if ty2.Kind == TY_ARRAY || ty2.Kind == TY_VLA {
@@ -1727,7 +1727,7 @@ func pointers(rest **Token, tok *Token, ty *CType) *CType {
 }
 
 // declarator = pointers ("(" ident ")" | "(" declarator ")" | ident) type-suffix
-func declarator(rest **Token, tok *Token, ty *CType) *CType {
+func declarator(rest **Token, tok *Token, ty *CType, nameToken **Token) *CType {
 	ty = pointers(&tok, tok, ty)
 
 	if consume(&tok, tok, "(") {
@@ -1737,35 +1737,12 @@ func declarator(rest **Token, tok *Token, ty *CType) *CType {
 
 		ty = typeSuffix(rest, skipParen(tok), ty)
 		t := &Token{}
-		return declarator(&t, tok, ty)
+		return declarator(&t, tok, ty, nameToken)
 	}
 
-	var name *Token = nil
-	var namePos *Token = nil
-
-	if tok.Kind == TK_IDENT {
-		name = tok
+	if nameToken != nil && tok.Kind == TK_IDENT {
+		*nameToken = tok
 		tok = tok.Next
-	}
-
-	ty = typeSuffix(rest, tok, ty)
-	ty.Name = name
-	ty.NamePos = namePos
-	return ty
-}
-
-// abstract-declarator = pointers ("(" abstract-declarator ")")? type-suffix
-func abstractDeclarator(rest **Token, tok *Token, ty *CType) *CType {
-	ty = pointers(&tok, tok, ty)
-
-	if consume(&tok, tok, "(") {
-		if tok.isTypename() || tok.isEqual(")") {
-			return funcParams(rest, tok, ty)
-		}
-
-		ty = typeSuffix(rest, skipParen(tok), ty)
-		t := &Token{}
-		return abstractDeclarator(&t, tok, ty)
 	}
 
 	return typeSuffix(rest, tok, ty)
@@ -1778,7 +1755,7 @@ func (tok *Token) isEnd() bool {
 // type-name = declspec abstract-declarator
 func typeName(rest **Token, tok *Token) *CType {
 	ty := declspec(&tok, tok, nil)
-	return abstractDeclarator(rest, tok, ty)
+	return declarator(rest, tok, ty, nil)
 }
 
 // declaration = declspec (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
@@ -1787,16 +1764,20 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 
 	first := true
 	for ; commaList(rest, &tok, ";", !first); first = false {
-		ty := declarator(&tok, tok, basety)
+		var name *Token = nil
+		ty := declarator(&tok, tok, basety, &name)
 		if ty.Kind == TY_FUNC {
-			funcPrototype(ty, attr)
+			if name == nil {
+				errorTok(tok, "function name omitted")
+			}
+			funcPrototype(ty, attr, name)
 			continue
 		}
 		if ty.Kind == TY_VOID {
 			errorTok(tok, "variable declared as void")
 		}
-		if ty.Name == nil {
-			errorTok(ty.NamePos, "variable name omitted")
+		if name == nil {
+			errorTok(tok, "variable name omitted")
 		}
 
 		// Generate code for computing a VLA size. We need to do this
@@ -1811,7 +1792,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 
 			// static local variable
 			variable := newAnonymousGlobalVariable(ty)
-			pushScope(ty.Name.getIdent()).Variable = variable
+			pushScope(name.getIdent()).Variable = variable
 
 			if attr.IsConstExpr {
 				if !tok.isEqual("=") {
@@ -1832,14 +1813,14 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// Variable length arrays (VLAs) are translated to alloca() calls.
 			// For example, `int x[n+2]` is translated to `tmp = n + 2,
 			// x = alloca(tmp)`.
-			v := newLocalVar(ty.Name.getIdent(), ty)
+			v := newLocalVar(name.getIdent(), ty)
 			top := newLocalVar("", ty)
 			align := int64(16)
 			if attr != nil && attr.Align != 0 {
 				align = attr.Align
 			}
-			tok := ty.Name
-			chainExpr(&expr, newAlloca(newVarNode(ty.VlaSize, tok), v, top, align))
+
+			chainExpr(&expr, newAlloca(newVarNode(ty.VlaSize, name), v, top, align))
 
 			top.VlaNext = CurrentVLA
 			CurrentVLA = top
@@ -1847,7 +1828,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			continue
 		}
 
-		variable := newLocalVar(ty.Name.getIdent(), ty)
+		variable := newLocalVar(name.getIdent(), ty)
 		if attr != nil && attr.Align > 0 {
 			variable.Align = attr.Align
 		}
@@ -1867,10 +1848,10 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		}
 
 		if variable.Ty.Size < 0 {
-			errorTok(tok, "variable has incomplete type")
+			errorTok(name, "variable has incomplete type")
 		}
 		if variable.Ty.Kind == TY_VOID {
-			errorTok(tok, "variable declared as void")
+			errorTok(name, "variable declared as void")
 		}
 	}
 
@@ -3955,22 +3936,20 @@ func parseTypeDef(rest **Token, tok *Token, basety *CType) *AstNode {
 	var node *AstNode = nil
 
 	for ; commaList(rest, &tok, ";", !first); first = false {
-		ty := declarator(&tok, tok, basety)
-		if ty.Name == nil {
-			errorTok(ty.NamePos, "typedef name omitted")
+		var name *Token = nil
+		ty := declarator(&tok, tok, basety, &name)
+		if name == nil {
+			errorTok(name, "typedef name omitted")
 		}
-		pushScope(ty.Name.getIdent()).TypeDef = ty
+		pushScope(name.getIdent()).TypeDef = ty
 		chainExpr(&node, computeVlaSize(ty, tok))
 	}
 
 	return node
 }
 
-func funcPrototype(ty *CType, attr *VarAttr) *Obj {
-	if ty.Name == nil {
-		errorTok(ty.NamePos, "function name omitted")
-	}
-	nameString := ty.Name.getIdent()
+func funcPrototype(ty *CType, attr *VarAttr, name *Token) *Obj {
+	nameString := name.getIdent()
 
 	fn := findFunction(nameString)
 	if fn == nil {
@@ -3979,15 +3958,15 @@ func funcPrototype(ty *CType, attr *VarAttr) *Obj {
 		fn.IsStatic = attr.IsStatic || (attr.IsInline && !attr.IsExtern)
 		fn.IsInline = attr.IsInline
 	} else if !fn.IsStatic && attr.IsStatic {
-		errorTok(ty.Name, "static declaration follows a non-static declaration")
+		errorTok(name, "static declaration follows a non-static declaration")
 	}
 
 	fn.IsRoot = !(fn.IsStatic && fn.IsInline)
 	return fn
 }
 
-func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr) {
-	fn := funcPrototype(ty, attr)
+func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr, name *Token) {
+	fn := funcPrototype(ty, attr, name)
 
 	if fn.IsDefinition {
 		errorTok(tok, "redefinition of "+fn.Name)
@@ -4045,24 +4024,25 @@ func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 	first := true
 
 	for ; commaList(&tok, &tok, ";", !first); first = false {
-		ty := declarator(&tok, tok, basety)
+		var name *Token = nil
+		ty := declarator(&tok, tok, basety, &name)
 		if ty.Kind == TY_FUNC {
 			if tok.isEqual("{") {
 				if !first || scope.Parent != nil {
 					errorTok(tok, "function definition is not allowed here")
 				}
-				funcDefinition(&tok, tok, ty, attr)
+				funcDefinition(&tok, tok, ty, attr, name)
 				return tok
 			}
-			funcPrototype(ty, attr)
+			funcPrototype(ty, attr, name)
 			continue
 		}
 
-		if ty.Name == nil {
-			errorTok(ty.NamePos, "variable name omitted")
+		if name == nil {
+			errorTok(tok, "variable name omitted")
 		}
 
-		variable := newGlobalVar(ty.Name.getIdent(), ty)
+		variable := newGlobalVar(name.getIdent(), ty)
 		variable.IsDefinition = !attr.IsExtern
 		variable.IsStatic = attr.IsStatic
 		variable.IsTls = attr.IsTls

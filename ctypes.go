@@ -33,10 +33,6 @@ type CType struct {
 
 	Base *CType
 
-	// Declaration
-	Name    *Token
-	NamePos *Token
-
 	ArrayLength int64
 
 	// Variable-length array
