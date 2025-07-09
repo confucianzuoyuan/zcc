@@ -1463,8 +1463,7 @@ func genExpr(node *AstNode) {
 				printlnToFile("  setae %%al")
 			}
 
-			printlnToFile("  and $1, %%al")
-			printlnToFile("  movzb %%al, %%rax")
+			printlnToFile("  movzbl %%al, %%eax")
 			return
 		}
 
@@ -1487,20 +1486,24 @@ func genExpr(node *AstNode) {
 			printlnToFile("  fdivrp")
 			return
 		case ND_EQ, ND_NE, ND_LT, ND_LE:
-			printlnToFile("  fcomip")
+			printlnToFile("  fucomip")
 			printlnToFile("  fstp %%st(0)")
 
 			if node.Kind == ND_EQ {
 				printlnToFile("  sete %%al")
+				printlnToFile("  setnp %%dl")
+				printlnToFile("  and %%dl, %%al")
 			} else if node.Kind == ND_NE {
 				printlnToFile("  setne %%al")
+				printlnToFile("  setp %%dl")
+				printlnToFile("  or %%dl, %%al")
 			} else if node.Kind == ND_LT {
 				printlnToFile("  seta %%al")
 			} else {
 				printlnToFile("  setae %%al")
 			}
 
-			printlnToFile("  movzb %%al, %%rax")
+			printlnToFile("  movzbl %%al, %%eax")
 			return
 		}
 
