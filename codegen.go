@@ -134,6 +134,23 @@ func popTmpStack() *Slot {
 	return sl
 }
 
+func genMemZero(dofs int, dptr string, sz int) {
+	printlnToFile("  xor %%eax, %%eax")
+	for i := 0; i < sz; {
+		rem := sz - i
+		p2 := 1
+		if rem >= 8 {
+			p2 = 8
+		} else if rem >= 4 {
+			p2 = 4
+		} else if rem >= 2 {
+			p2 = 2
+		}
+		printlnToFile("  mov %s, %d(%s)", regAX(p2), i+dofs, dptr)
+		i += p2
+	}
+}
+
 func pushTmp() {
 	pushTmpStack(SL_GP)
 }
@@ -1257,11 +1274,7 @@ func genExpr(node *AstNode) {
 		cast(node.Lhs.Ty, node.Ty)
 		return
 	case ND_MEMZERO:
-		// `rep stosb` is equivalent to `memset(%rdi, %al, %rcx)`.
-		printlnToFile("  mov $%d, %%rcx", node.Variable.Ty.Size)
-		printlnToFile("  lea %d(%s), %%rdi", node.Variable.Offset, node.Variable.Pointer)
-		printlnToFile("  xor %%al, %%al")
-		printlnToFile("  rep stosb")
+		genMemZero(int(node.Variable.Offset), node.Variable.Pointer, int(node.Variable.Ty.Size))
 		return
 	case ND_COND:
 		c := count()
