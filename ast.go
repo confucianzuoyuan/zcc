@@ -29,6 +29,7 @@ const (
 	ND_BITXOR                       // ^
 	ND_SHL                          // <<
 	ND_SHR                          // >>
+	ND_SAR                          // arithmetic >>
 	ND_LOGAND                       // &&
 	ND_LOGOR                        // ||
 	ND_RETURN                       // "return"

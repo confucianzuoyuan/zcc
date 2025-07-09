@@ -2548,12 +2548,11 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 	case ND_SHL:
 		return eval(node.Lhs) << eval(node.Rhs)
 	case ND_SHR:
-		if node.Ty.IsUnsigned {
-			if node.Ty.Size == 4 {
-				return int64(uint32(eval(node.Lhs)) >> uint32(eval(node.Rhs)))
-			}
-			return int64(uint64(eval(node.Lhs)) >> uint64(eval(node.Rhs)))
+		if node.Ty.Size == 4 {
+			return int64(uint32(eval(node.Lhs)) >> uint32(eval(node.Rhs)))
 		}
+		return int64(uint64(eval(node.Lhs)) >> uint64(eval(node.Rhs)))
+	case ND_SAR:
 		if node.Ty.Size == 4 {
 			return int64(int32(eval(node.Lhs)) >> int32(eval(node.Rhs)))
 		}
@@ -3029,7 +3028,11 @@ func assign(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.isEqual(">>=") {
-		return toAssign(newBinary(ND_SHR, node, assign(rest, tok.Next), tok))
+		if node.Ty.IsUnsigned {
+			return toAssign(newBinary(ND_SHR, node, assign(rest, tok.Next), tok))
+		} else {
+			return toAssign(newBinary(ND_SAR, node, assign(rest, tok.Next), tok))
+		}
 	}
 
 	*rest = tok
@@ -3158,7 +3161,12 @@ func shift(rest **Token, tok *Token) *AstNode {
 		}
 
 		if tok.isEqual(">>") {
-			node = newBinary(ND_SHR, node, add(&tok, tok.Next), start)
+			node.addType()
+			if node.Ty.IsUnsigned {
+				node = newBinary(ND_SHR, node, add(&tok, tok.Next), start)
+			} else {
+				node = newBinary(ND_SAR, node, add(&tok, tok.Next), start)
+			}
 			continue
 		}
 

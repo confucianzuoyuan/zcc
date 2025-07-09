@@ -1344,18 +1344,22 @@ func genExpr(node *AstNode) {
 		printlnToFile("  mov $1, %%rax")
 		printlnToFile(".L.end.%d:", c)
 		return
-	case ND_SHL, ND_SHR:
+	case ND_SHL, ND_SHR, ND_SAR:
 		genExpr(node.Lhs)
 		push()
 		genExpr(node.Rhs)
-		printlnToFile("  mov %%eax, %%ecx")
-		pop("%rax")
-		if node.Kind == ND_SHL {
-			printlnToFile("  shl %%cl, %s", regOpAX(node.Ty))
-		} else if node.Lhs.Ty.IsUnsigned {
-			printlnToFile("  shr %%cl, %s", regOpAX(node.Ty))
-		} else {
-			printlnToFile("  sar %%cl, %s", regOpAX(node.Ty))
+		printlnToFile("  mov %%al, %%cl")
+
+		ax := regOpAX(node.Ty)
+		pop2(popTmpStack(), node.Ty.Size == 8, ax)
+
+		switch node.Kind {
+		case ND_SHL:
+			printlnToFile("  shl %%cl, %s", ax)
+		case ND_SHR:
+			printlnToFile("  shr %%cl, %s", ax)
+		case ND_SAR:
+			printlnToFile("  sar %%cl, %s", ax)
 		}
 		return
 	case ND_FUNCALL:

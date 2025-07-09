@@ -441,7 +441,7 @@ func (node *AstNode) addType() {
 	case ND_NOT, ND_LOGAND, ND_LOGOR:
 		node.Ty = TyInt
 		return
-	case ND_BITNOT, ND_SHL, ND_SHR:
+	case ND_BITNOT, ND_SHL, ND_SHR, ND_SAR:
 		if !node.Lhs.Ty.isInteger() {
 			errorTok(node.Lhs.Tok, "invalid operand")
 		}
