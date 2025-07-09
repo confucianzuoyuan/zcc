@@ -228,6 +228,10 @@ func findTag(tok *Token) *CType {
 	return nil
 }
 
+func (expr *AstNode) toBool() *AstNode {
+	return newCast(expr, TyBool)
+}
+
 func commaList(rest **Token, tokRest **Token, end string, skipComma bool) bool {
 	tok := *tokRest
 	if consume(rest, tok, end) {
@@ -2626,12 +2630,6 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		eval2(node.Lhs, ctx)
 		return eval2(node.Rhs, ctx)
 	case ND_NOT:
-		if node.Lhs.Ty.isFloat() {
-			if evalDouble(node.Lhs) != 0 {
-				return 0
-			}
-			return 1
-		}
 		if eval(node.Lhs) == 0 {
 			return 1
 		}
@@ -2938,7 +2936,7 @@ func conditional(rest **Token, tok *Token) *AstNode {
 		v := newLocalVar("", cond.Ty)
 		lhs := newBinary(ND_ASSIGN, newVarNode(v, tok), cond, tok)
 		rhs := newNode(ND_COND, tok)
-		rhs.Cond = newVarNode(v, tok)
+		rhs.Cond = newVarNode(v, tok).toBool()
 		rhs.Then = newVarNode(v, tok)
 		rhs.Else = conditional(rest, tok.Next.Next)
 		leaveScope()
@@ -2946,7 +2944,7 @@ func conditional(rest **Token, tok *Token) *AstNode {
 	}
 
 	node := newNode(ND_COND, tok)
-	node.Cond = cond
+	node.Cond = cond.toBool()
 	node.Then = expr(&tok, tok.Next)
 	tok = skip(tok, ":")
 	node.Else = conditional(rest, tok)
@@ -3026,7 +3024,7 @@ func logor(rest **Token, tok *Token) *AstNode {
 	node := logand(&tok, tok)
 	for tok.isEqual("||") {
 		start := tok
-		node = newBinary(ND_LOGOR, node, logand(&tok, tok.Next), start)
+		node = newBinary(ND_LOGOR, node.toBool(), logand(&tok, tok.Next).toBool(), start)
 	}
 	*rest = tok
 	return node
@@ -3037,7 +3035,7 @@ func logand(rest **Token, tok *Token) *AstNode {
 	node := bitor(&tok, tok)
 	for tok.isEqual("&&") {
 		start := tok
-		node = newBinary(ND_LOGAND, node, bitor(&tok, tok.Next), start)
+		node = newBinary(ND_LOGAND, node.toBool(), bitor(&tok, tok.Next).toBool(), start)
 	}
 	*rest = tok
 	return node
@@ -3354,7 +3352,7 @@ func unary(rest **Token, tok *Token) *AstNode {
 	}
 
 	if tok.isEqual("!") {
-		return newUnary(ND_NOT, castExpr(rest, tok.Next), tok)
+		return newUnary(ND_NOT, castExpr(rest, tok.Next).toBool(), tok)
 	}
 
 	if tok.isEqual("~") {

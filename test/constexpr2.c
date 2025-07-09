@@ -48,6 +48,8 @@ int main(void) {
     DASSERT(3 == sizeof( (typeof(arr)){0} ));
   }
 
+  DASSERT(0.1 ? 1 : 0);
+
   printf("OK\n");
   return 0;
 }
