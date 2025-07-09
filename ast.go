@@ -15,6 +15,8 @@ const (
 	ND_NE                           // !=
 	ND_LT                           // <
 	ND_LE                           // <=
+	ND_GT                           // >
+	ND_GE                           // >=
 	ND_ASSIGN                       // =
 	ND_COND                         // Ternary conditional (?:)
 	ND_COMMA                        // ,

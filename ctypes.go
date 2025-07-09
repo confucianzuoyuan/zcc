@@ -429,7 +429,7 @@ func (node *AstNode) addType() {
 		}
 		node.Ty = node.Lhs.Ty
 		return
-	case ND_EQ, ND_NE, ND_LT, ND_LE:
+	case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE:
 		usualArithConv(&node.Lhs, &node.Rhs, true)
 		node.Ty = TyInt
 		return

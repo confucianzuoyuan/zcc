@@ -860,6 +860,40 @@ const (
 	F80
 )
 
+func genCmpSetx(kind AstNodeKind, isUnsigned bool) {
+	ins := ""
+	switch kind {
+	case ND_EQ:
+		ins = "sete"
+	case ND_NE:
+		ins = "setne"
+	case ND_LT:
+		ins = "setl"
+		if isUnsigned {
+			ins = "setb"
+		}
+	case ND_LE:
+		ins = "setle"
+		if isUnsigned {
+			ins = "setbe"
+		}
+	case ND_GT:
+		ins = "setg"
+		if isUnsigned {
+			ins = "seta"
+		}
+	case ND_GE:
+		ins = "setge"
+		if isUnsigned {
+			ins = "setae"
+		}
+	default:
+		panic("internal error")
+	}
+	printlnToFile("  %s %%al", ins)
+	printlnToFile("  movzbl %%al, %%eax")
+}
+
 func getTypeId(ty *CType) int {
 	switch ty.Kind {
 	case TY_CHAR, TY_PCHAR:
@@ -990,8 +1024,7 @@ func cast(from *CType, to *CType) {
 
 	if to.Kind == TY_BOOL {
 		cmpZero(from)
-		printlnToFile("  setne %%al")
-		printlnToFile("  movzx %%al, %%eax")
+		genCmpSetx(ND_NE, false)
 		return
 	}
 
@@ -1464,8 +1497,12 @@ func genExpr(node *AstNode) {
 			printlnToFile("  div%s %%xmm0, %%xmm%d", sz, reg)
 			printlnToFile("  movaps %%xmm%d, %%xmm0", reg)
 			return
-		case ND_EQ, ND_NE, ND_LT, ND_LE:
-			printlnToFile("  ucomi%s %%xmm%d, %%xmm0", sz, reg)
+		case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GE, ND_GT:
+			if node.Kind == ND_GT || node.Kind == ND_GE {
+				printlnToFile("  ucomi%s %%xmm0, %%xmm%d", sz, reg)
+			} else {
+				printlnToFile("  ucomi%s %%xmm%d, %%xmm0", sz, reg)
+			}
 
 			if node.Kind == ND_EQ {
 				printlnToFile("  sete %%al")
@@ -1475,9 +1512,9 @@ func genExpr(node *AstNode) {
 				printlnToFile("  setne %%al")
 				printlnToFile("  setp %%dl")
 				printlnToFile("  or %%dl, %%al")
-			} else if node.Kind == ND_LT {
+			} else if node.Kind == ND_LT || node.Kind == ND_GT {
 				printlnToFile("  seta %%al")
-			} else {
+			} else if node.Kind == ND_LE || node.Kind == ND_GE {
 				printlnToFile("  setae %%al")
 			}
 
@@ -1503,7 +1540,11 @@ func genExpr(node *AstNode) {
 		case ND_DIV:
 			printlnToFile("  fdivrp")
 			return
-		case ND_EQ, ND_NE, ND_LT, ND_LE:
+		case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE:
+			if node.Kind == ND_GT || node.Kind == ND_GE {
+				printlnToFile("  fxch %%st(1)")
+			}
+
 			printlnToFile("  fucomip")
 			printlnToFile("  fstp %%st(0)")
 
@@ -1515,9 +1556,9 @@ func genExpr(node *AstNode) {
 				printlnToFile("  setne %%al")
 				printlnToFile("  setp %%dl")
 				printlnToFile("  or %%dl, %%al")
-			} else if node.Kind == ND_LT {
+			} else if node.Kind == ND_LT || node.Kind == ND_GT {
 				printlnToFile("  seta %%al")
-			} else {
+			} else if node.Kind == ND_LE || node.Kind == ND_GE {
 				printlnToFile("  setae %%al")
 			}
 
@@ -1581,28 +1622,10 @@ func genExpr(node *AstNode) {
 	case ND_BITXOR:
 		printlnToFile("  xor %s, %s", op, ax)
 		return
-	case ND_EQ, ND_NE, ND_LT, ND_LE:
+	case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GE, ND_GT:
 		printlnToFile("  cmp %s, %s", ax, op)
 
-		if node.Kind == ND_EQ {
-			printlnToFile("  sete %%al")
-		} else if node.Kind == ND_NE {
-			printlnToFile("  setne %%al")
-		} else if node.Kind == ND_LT {
-			if node.Lhs.Ty.IsUnsigned {
-				printlnToFile("  setb %%al")
-			} else {
-				printlnToFile("  setl %%al")
-			}
-		} else if node.Kind == ND_LE {
-			if node.Lhs.Ty.IsUnsigned {
-				printlnToFile("  setbe %%al")
-			} else {
-				printlnToFile("  setle %%al")
-			}
-		}
-
-		printlnToFile("  movzb %%al, %%rax")
+		genCmpSetx(node.Kind, node.Lhs.Ty.IsUnsigned)
 		return
 	}
 

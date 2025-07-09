@@ -2602,23 +2602,28 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return 0
 	case ND_LE:
 		if node.Lhs.Ty.isFloat() {
-			if evalDouble(node.Lhs) <= evalDouble(node.Rhs) {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(evalDouble(node.Lhs) <= evalDouble(node.Rhs)))
 		}
 		if node.Lhs.Ty.IsUnsigned {
-			if uint64(eval(node.Lhs)) <= uint64(eval(node.Rhs)) {
-				return 1
-			} else {
-				return 0
-			}
+			return int64(boolToInt(uint64(eval(node.Lhs)) <= uint64(eval(node.Rhs))))
 		}
-		if eval(node.Lhs) <= eval(node.Rhs) {
-			return 1
+		return int64(boolToInt(eval(node.Lhs) <= eval(node.Rhs)))
+	case ND_GT:
+		if node.Lhs.Ty.isFloat() {
+			return int64(boolToInt(evalDouble(node.Lhs) > evalDouble(node.Rhs)))
 		}
-		return 0
+		if node.Lhs.Ty.IsUnsigned {
+			return int64(boolToInt(uint64(eval(node.Lhs)) > uint64(eval(node.Rhs))))
+		}
+		return int64(boolToInt(eval(node.Lhs) > eval(node.Rhs)))
+	case ND_GE:
+		if node.Lhs.Ty.isFloat() {
+			return int64(boolToInt(evalDouble(node.Lhs) >= evalDouble(node.Rhs)))
+		}
+		if node.Lhs.Ty.IsUnsigned {
+			return int64(boolToInt(uint64(eval(node.Lhs)) >= uint64(eval(node.Rhs))))
+		}
+		return int64(boolToInt(eval(node.Lhs) >= eval(node.Rhs)))
 	case ND_COND:
 		if eval(node.Cond) != 0 {
 			return eval2(node.Then, ctx)
@@ -3134,12 +3139,12 @@ func relational(rest **Token, tok *Token) *AstNode {
 		}
 
 		if tok.isEqual(">") {
-			node = newBinary(ND_LT, shift(&tok, tok.Next), node, start)
+			node = newBinary(ND_GT, node, shift(&tok, tok.Next), start)
 			continue
 		}
 
 		if tok.isEqual(">=") {
-			node = newBinary(ND_LE, shift(&tok, tok.Next), node, start)
+			node = newBinary(ND_GE, node, shift(&tok, tok.Next), start)
 			continue
 		}
 
