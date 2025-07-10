@@ -2604,6 +2604,12 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 	case ND_BITXOR:
 		return eval(node.Lhs) ^ eval(node.Rhs)
 	case ND_SHL:
+		if node.Ty.Size == 4 {
+			if node.Ty.IsUnsigned {
+				return int64(uint32(eval(node.Lhs)) << uint32(eval(node.Rhs)))
+			}
+			return int64(int32(eval(node.Lhs)) << int32(eval(node.Rhs)))
+		}
 		return eval(node.Lhs) << eval(node.Rhs)
 	case ND_SHR:
 		if node.Ty.Size == 4 {
