@@ -1186,6 +1186,24 @@ func genExprOpt(node *AstNode) bool {
 		return true
 	}
 
+	if kind == ND_DEREF {
+		var loadType *CType = nil
+		if ty.isScalar() {
+			loadType = ty
+		}
+
+		ok, ofs := genDerefOpt(node.Lhs, loadType, 0)
+		if ok {
+			return true
+		}
+		if ty.isScalar() {
+			load2(ty, int(ofs), "%rax")
+			return true
+		}
+		immAdd("%rax", "%rdx", ofs)
+		return true
+	}
+
 	if kind == ND_MEMBER {
 		var loadType *CType = nil
 		if ty.isScalar() && !node.isBitField() {
@@ -1250,8 +1268,46 @@ func genMemberOpt(node *AstNode, loadType *CType, ofs int64) (bool, int64) {
 	return false, ofs
 }
 
+func genDerefOpt(node *AstNode, loadType *CType, ofs int64) (bool, int64) {
+	for ; ; node = node.Lhs {
+		if node.Kind == ND_CAST && node.Ty.Base != nil {
+			continue
+		}
+		if node.Kind == ND_DEREF && node.Ty.Kind == TY_ARRAY {
+			continue
+		}
+		if node.Kind == ND_ADD && node.Rhs.Kind == ND_NUM {
+			ofs += node.Rhs.Value
+			continue
+		}
+		if node.Kind == ND_SUB && node.Rhs.Kind == ND_NUM {
+			ofs -= node.Rhs.Value
+			continue
+		}
+		break
+	}
+
+	if node.isLVar() && node.Variable.Ty.Kind == TY_ARRAY {
+		if loadType != nil {
+			load2(loadType, int(ofs+node.Variable.Offset), node.Variable.Pointer)
+			return true, ofs
+		}
+		printlnToFile("  lea %d(%s), %%rax", ofs+node.Variable.Offset, node.Variable.Pointer)
+		return false, 0
+	}
+
+	genExpr(node)
+	return false, ofs
+}
+
 func genAddrOpt(node *AstNode) bool {
 	kind := node.Kind
+
+	if kind == ND_DEREF {
+		_, ofs := genDerefOpt(node.Lhs, nil, 0)
+		immAdd("%rax", "%rdx", ofs)
+		return true
+	}
 
 	if kind == ND_MEMBER {
 		ofs := int64(0)
