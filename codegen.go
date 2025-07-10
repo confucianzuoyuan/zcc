@@ -1217,6 +1217,45 @@ func (node *AstNode) isLVar() bool {
 	return node.Kind == ND_VAR && node.Variable.IsLocal
 }
 
+func genBitExtract(ty *CType, bitWidth int, bitOffset int) {
+	if bitOffset == 0 && bitWidth == int(ty.Size)*8 {
+		return
+	}
+
+	ax := ""
+	regWidth := 0
+
+	if ty.Size == 8 {
+		ax = "%rax"
+		regWidth = 64
+	} else {
+		ax = "%eax"
+		regWidth = 32
+	}
+
+	if bitOffset == 0 && ty.IsUnsigned {
+		immAnd(ax, "%rdx", (1<<bitWidth)-1)
+		return
+	}
+
+	printlnToFile("  shl $%d, %s", regWidth-bitWidth-bitOffset, ax)
+	if ty.IsUnsigned {
+		printlnToFile("  shr $%d, %s", regWidth-bitWidth, ax)
+	} else {
+		printlnToFile("  sar $%d, %s", regWidth-bitWidth, ax)
+	}
+}
+
+func immAnd(op string, tmp string, val int64) {
+	if val == 0 {
+		printlnToFile("  xor %s, %s", op, op)
+		return
+	} else if val == -1 {
+		return
+	}
+	immArith2(ND_BITAND, op, tmp, val)
+}
+
 func load2(ty *CType, sofs int, sptr string) {
 	switch ty.Kind {
 	case TY_FLOAT:
@@ -1528,12 +1567,7 @@ func genExpr(node *AstNode) {
 
 		mem := node.Member
 		if mem.IsBitfield {
-			printlnToFile("  shl $%d, %%rax", 64-mem.BitWidth-mem.BitOffset)
-			if mem.Ty.IsUnsigned {
-				printlnToFile("  shr $%d, %%rax", 64-mem.BitWidth)
-			} else {
-				printlnToFile("  sar $%d, %%rax", 64-mem.BitWidth)
-			}
+			genBitExtract(mem.Ty, int(mem.BitWidth), int(mem.BitOffset))
 		}
 		return
 	case ND_DEREF:
@@ -1551,27 +1585,38 @@ func genExpr(node *AstNode) {
 			// If the lhs is a bitfield, we need to read the current value
 			// from memory and merge it with a new value.
 			mem := node.Lhs.Member
-			printlnToFile("  mov $%d, %%rdx", (1<<mem.BitWidth)-1)
-			printlnToFile("  and %%rdx, %%rax")
-			printlnToFile("  mov %%rax, %%rcx")
+			if mem.BitOffset == 0 && mem.BitWidth == mem.Ty.Size*8 {
+				store(mem.Ty)
+				return
+			}
 
-			pop("%rax")
-			push()
-			load(mem.Ty)
+			ax := "%eax"
+			dx := "%edx"
+			r0 := reqGP(tmpreg32[:], 0)
+			if mem.Ty.Size == 8 {
+				ax = "%rax"
+				dx = "%rdx"
+				r0 = reqGP(tmpreg64[:], 0)
+			}
 
-			mask := ((1 << mem.BitWidth) - 1) << mem.BitOffset
-			printlnToFile("  mov $%d, %%rdx", ^mask)
-			printlnToFile("  and %%rdx, %%rax")
+			immAnd(ax, dx, (1<<mem.BitWidth)-1)
+			printlnToFile("  mov %s, %s", ax, r0)
 
-			printlnToFile("  mov %%rcx, %%rdx")
-			printlnToFile("  shl $%d, %%rdx", mem.BitOffset)
-			printlnToFile("  or %%rdx, %%rax")
-			store(node.Ty)
-			printlnToFile("  mov %%rcx, %%rax")
+			ptr := popInReg("%rcx")
+			load2(mem.Ty, 0, ptr)
 
+			immAnd(ax, dx, ^(((1 << mem.BitWidth) - 1) << mem.BitOffset))
+
+			printlnToFile("  mov %s, %s", r0, dx)
+			if mem.BitOffset != 0 {
+				printlnToFile("  shl $%d, %s", mem.BitOffset, dx)
+			}
+			printlnToFile("  or %s, %s", dx, ax)
+			store2(mem.Ty, 0, ptr)
+
+			printlnToFile("  mov %s, %s", r0, ax)
 			if !mem.Ty.IsUnsigned {
-				printlnToFile("  shl $%d, %%rax", 64-mem.BitWidth)
-				printlnToFile("  sar $%d, %%rax", 64-mem.BitWidth)
+				genBitExtract(mem.Ty, int(mem.BitWidth), 0)
 			}
 			return
 		}
