@@ -1533,9 +1533,128 @@ func immArith(kind AstNodeKind, ty *CType, expr *AstNode, val int64) bool {
 	ax := regAX(int(ty.Size))
 	dx := regDX(int(ty.Size))
 
+	switch kind {
+	case ND_ADD:
+		genExpr(expr)
+		immAdd(ax, dx, val)
+		return true
+	case ND_SUB:
+		genExpr(expr)
+		immSub(ax, dx, val)
+		return true
+	case ND_BITAND:
+		genExpr(expr)
+		immAnd(ax, dx, val)
+		return true
+	}
+
+	if val == 0 {
+		switch kind {
+		case ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR, ND_SAR:
+			genExpr(expr)
+			return true
+		case ND_MUL:
+			genExpr(expr)
+			printlnToFile("  xor %%eax, %%eax")
+			return true
+		}
+	}
+
+	if val == 1 {
+		switch kind {
+		case ND_MUL, ND_DIV:
+			genExpr(expr)
+			return true
+		case ND_MOD:
+			genExpr(expr)
+			printlnToFile("  xor %%eax, %%eax")
+			return true
+		}
+	}
+
+	if val == -1 {
+		switch kind {
+		case ND_MUL:
+			genExpr(expr)
+			printlnToFile("  neg %s", ax)
+			return true
+		case ND_DIV:
+			genExpr(expr)
+			if ty.IsUnsigned {
+				printlnToFile("  cmp $-1, %s", ax)
+				genCmpSetx(ND_EQ, false)
+				return true
+			}
+			printlnToFile("  neg %s", ax)
+			return true
+		case ND_MOD:
+			genExpr(expr)
+			if ty.IsUnsigned {
+				printlnToFile("  xor %%edx, %%edx")
+				printlnToFile("  cmp $-1, %s", ax)
+				printlnToFile("  cmove %s, %s", dx, ax)
+				return true
+			}
+			printlnToFile("  xor %%eax, %%eax")
+			return true
+		case ND_BITOR:
+			genExpr(expr)
+			printlnToFile("  mov $-1, %s", ax)
+			return true
+		case ND_BITXOR:
+			genExpr(expr)
+			printlnToFile("  not %s", ax)
+			return true
+		}
+	}
+
+	if kind == ND_MUL && isPowOfTwo(uint64(val)) {
+		for i := int64(1); i < ty.Size*8; i++ {
+			if 1<<i == val {
+				genExpr(expr)
+				printlnToFile("  shl $%d, %s", i, ax)
+				return true
+			}
+		}
+	}
+
+	if kind == ND_DIV && isPowOfTwo(uint64(val)) && ty.IsUnsigned {
+		for i := int64(1); i < ty.Size*8; i++ {
+			if 1<<i == val {
+				genExpr(expr)
+				printlnToFile("  shr $%d, %s", i, ax)
+				return true
+			}
+		}
+	}
+
+	if kind == ND_MOD && isPowOfTwo(uint64(val)) && ty.IsUnsigned && val != 0 {
+		genExpr(expr)
+
+		msk := uint64(val - 1)
+		if msk == math.MaxUint32 {
+			printlnToFile("  movl %%eax, %%eax")
+			return true
+		}
+		if msk <= math.MaxInt32 {
+			printlnToFile("  and $%d, %%eax", int(msk))
+			return true
+		}
+		immAnd(ax, dx, int64(msk))
+		return true
+	}
+
+	if kind == ND_DIV || kind == ND_MOD {
+		return false
+	}
+
 	genExpr(expr)
 	immArith2(kind, ax, dx, val)
 	return true
+}
+
+func isPowOfTwo(val uint64) bool {
+	return (val & (val - 1)) == 0
 }
 
 func genGpOpt(node *AstNode) bool {
@@ -1552,7 +1671,7 @@ func genGpOpt(node *AstNode) bool {
 		if rhs.Kind == ND_NUM {
 			return immArith(kind, ty, lhs, rhs.Value)
 		}
-	case ND_SUB, ND_SHL, ND_SHR, ND_SAR:
+	case ND_SUB, ND_SHL, ND_SHR, ND_SAR, ND_DIV, ND_MOD:
 		if rhs.Kind == ND_NUM {
 			return immArith(kind, ty, lhs, rhs.Value)
 		}
