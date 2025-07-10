@@ -756,6 +756,10 @@ func genAddr(node *AstNode) {
 
 // Load a value from where %rax is pointing to.
 func load(ty *CType) {
+	if ty.isScalar() {
+		load2(ty, 0, "%rax")
+		return
+	}
 	if ty.Kind == TY_ARRAY || ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_FUNC || ty.Kind == TY_VLA {
 		// If it is an array, do not attempt to load a value to the
 		// register because in general we can't load an entire array to a
@@ -766,57 +770,37 @@ func load(ty *CType) {
 		return
 	}
 
+	panic("internal error")
+}
+
+func store2(ty *CType, dofs int, dptr string) {
+	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_ARRAY {
+		genMemCopy(0, "%rax", dofs, dptr, int(ty.Size))
+		return
+	}
+
 	if ty.Kind == TY_FLOAT {
-		printlnToFile("  movss (%%rax), %%xmm0")
+		printlnToFile("  movss %%xmm0, %d(%s)", dofs, dptr)
 		return
 	}
 
 	if ty.Kind == TY_DOUBLE {
-		printlnToFile("  movsd (%%rax), %%xmm0")
+		printlnToFile("  movsd %%xmm0, %d(%s)", dofs, dptr)
 		return
 	}
 
 	if ty.Kind == TY_LDOUBLE {
-		printlnToFile("  fldt (%%rax)")
+		printlnToFile("  fstpt %d(%s)", dofs, dptr)
 		return
 	}
 
-	loadExtendInt(ty, 0, "%rax", regOpAX(ty))
+	printlnToFile("  mov %s, %d(%s)", regAX(int(ty.Size)), dofs, dptr)
 }
 
 // Store %rax to an address that the stack top is pointing to.
 func store(ty *CType) {
 	reg := popInReg("%rcx")
-
-	if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION || ty.Kind == TY_ARRAY {
-		genMemCopy(0, "%rax", 0, reg, int(ty.Size))
-		return
-	}
-
-	if ty.Kind == TY_FLOAT {
-		printlnToFile("  movss %%xmm0, (%s)", reg)
-		return
-	}
-
-	if ty.Kind == TY_DOUBLE {
-		printlnToFile("  movsd %%xmm0, (%s)", reg)
-		return
-	}
-
-	if ty.Kind == TY_LDOUBLE {
-		printlnToFile("  fstpt (%s)", reg)
-		return
-	}
-
-	if ty.Size == 1 {
-		printlnToFile("  mov %%al, (%s)", reg)
-	} else if ty.Size == 2 {
-		printlnToFile("  mov %%ax, (%s)", reg)
-	} else if ty.Size == 4 {
-		printlnToFile("  mov %%eax, (%s)", reg)
-	} else {
-		printlnToFile("  mov %%rax, (%s)", reg)
-	}
+	store2(ty, 0, reg)
 }
 
 func cmpZero(ty *CType) {
@@ -1175,6 +1159,19 @@ func loadFloatValue(ty *CType, fval float64) {
 func genExprOpt(node *AstNode) bool {
 	kind := node.Kind
 	ty := node.Ty
+	lhs := node.Lhs
+	rhs := node.Rhs
+
+	if node.isLVar() && ty.isScalar() {
+		load2(ty, int(node.Variable.Offset), node.Variable.Pointer)
+		return true
+	}
+
+	if kind == ND_ASSIGN && lhs.isLVar() {
+		genExpr(rhs)
+		store2(lhs.Variable.Ty, int(lhs.Variable.Offset), lhs.Variable.Pointer)
+		return true
+	}
 
 	if kind != ND_NUM {
 		ival := int64(0)
@@ -1191,6 +1188,26 @@ func genExprOpt(node *AstNode) bool {
 	}
 
 	return false
+}
+
+func (node *AstNode) isLVar() bool {
+	return node.Kind == ND_VAR && node.Variable.IsLocal
+}
+
+func load2(ty *CType, sofs int, sptr string) {
+	switch ty.Kind {
+	case TY_FLOAT:
+		printlnToFile("  movss %d(%s), %%xmm0", sofs, sptr)
+		return
+	case TY_DOUBLE:
+		printlnToFile("  movsd %d(%s), %%xmm0", sofs, sptr)
+		return
+	case TY_LDOUBLE:
+		printlnToFile("  fldt %d(%s)", sofs, sptr)
+		return
+	}
+
+	loadExtendInt(ty, sofs, sptr, regOpAX(ty))
 }
 
 // Generate code for a given node.
