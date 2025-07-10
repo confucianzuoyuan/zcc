@@ -1172,10 +1172,35 @@ func loadFloatValue(ty *CType, fval float64) {
 	}
 }
 
+func genExprOpt(node *AstNode) bool {
+	kind := node.Kind
+	ty := node.Ty
+
+	if kind != ND_NUM {
+		ival := int64(0)
+		if ty.isInteger() && node.isConstExpr(&ival) {
+			loadValue(ty, ival)
+			return true
+		}
+
+		fval := float64(0)
+		if ty.isFloat() && node.isConstDouble(&fval) {
+			loadFloatValue(ty, fval)
+			return true
+		}
+	}
+
+	return false
+}
+
 // Generate code for a given node.
 func genExpr(node *AstNode) {
 	if opt_g {
 		printLoc(node.Tok)
+	}
+
+	if opt_optimize && genExprOpt(node) {
+		return
 	}
 
 	switch node.Kind {
