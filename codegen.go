@@ -1173,6 +1173,10 @@ func genExprOpt(node *AstNode) bool {
 		return true
 	}
 
+	if ty.isGpType() && genGpOpt(node) {
+		return true
+	}
+
 	if kind == ND_COND && node.Cond.Kind == ND_NUM {
 		if node.Cond.Value != 0 {
 			genExpr(node.Then)
@@ -1252,6 +1256,70 @@ func genInvCmp(node *AstNode) bool {
 	}
 	genExpr(node)
 	return true
+}
+
+func immArith2(kind AstNodeKind, op string, tmp string, val int64) {
+	ins := ""
+	switch kind {
+	case ND_ADD:
+		ins = "add"
+	case ND_SUB:
+		ins = "sub"
+	case ND_MUL:
+		ins = "imul"
+	case ND_BITAND:
+		ins = "and"
+	case ND_BITOR:
+		ins = "or"
+	case ND_BITXOR:
+		ins = "xor"
+	case ND_SHL:
+		ins = "shl"
+	case ND_SHR:
+		ins = "shr"
+	case ND_SAR:
+		ins = "sar"
+	default:
+		panic("internel error")
+	}
+
+	if inImmRange(val) {
+		printlnToFile("  %s $%d, %s", ins, val, op)
+		return
+	}
+	printlnToFile("  mov $%d, %s", val, tmp)
+	printlnToFile("  %s %s, %s", ins, tmp, op)
+}
+
+func immArith(kind AstNodeKind, ty *CType, expr *AstNode, val int64) bool {
+	ax := regAX(int(ty.Size))
+	dx := regDX(int(ty.Size))
+
+	genExpr(expr)
+	immArith2(kind, ax, dx, val)
+	return true
+}
+
+func genGpOpt(node *AstNode) bool {
+	kind := node.Kind
+	lhs := node.Lhs
+	rhs := node.Rhs
+	ty := node.Ty
+
+	switch kind {
+	case ND_ADD, ND_MUL, ND_BITAND, ND_BITOR, ND_BITXOR:
+		if lhs.Kind == ND_NUM {
+			return immArith(kind, ty, rhs, lhs.Value)
+		}
+		if rhs.Kind == ND_NUM {
+			return immArith(kind, ty, lhs, rhs.Value)
+		}
+	case ND_SUB, ND_SHL, ND_SHR, ND_SAR:
+		if rhs.Kind == ND_NUM {
+			return immArith(kind, ty, lhs, rhs.Value)
+		}
+	}
+	return false
 }
 
 func genBoolOpt(node *AstNode) bool {
