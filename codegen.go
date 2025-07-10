@@ -1146,6 +1146,29 @@ func loadFloatValue(ty *CType, fval float64) {
 	}
 }
 
+func genCmpOpt(lhs *AstNode, rhs *AstNode) bool {
+	sz := lhs.Ty.Size
+	ins := "cmpq"
+	if sz <= 4 {
+		ins = "cmpl"
+	}
+	if lhs.isLVar() {
+		if rhs.isImmNum() {
+			printlnToFile("  %s $%d, %d(%s)", ins, rhs.Value, lhs.Variable.Offset, lhs.Variable.Pointer)
+			return true
+		}
+		genExpr(rhs)
+		printlnToFile("  %s %s, %d(%s)", ins, regAX(int(sz)), lhs.Variable.Offset, lhs.Variable.Pointer)
+		return true
+	}
+	if rhs.Kind == ND_NUM {
+		genExpr(lhs)
+		immCmp(regAX(int(sz)), regDX(int(sz)), rhs.Value)
+		return true
+	}
+	return false
+}
+
 func genExprOpt(node *AstNode) bool {
 	kind := node.Kind
 	ty := node.Ty
@@ -1532,6 +1555,28 @@ func genGpOpt(node *AstNode) bool {
 	case ND_SUB, ND_SHL, ND_SHR, ND_SAR:
 		if rhs.Kind == ND_NUM {
 			return immArith(kind, ty, lhs, rhs.Value)
+		}
+	case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE:
+		if !lhs.Ty.isGpType() {
+			return false
+		}
+		if genCmpOpt(lhs, rhs) {
+			genCmpSetx(kind, lhs.Ty.IsUnsigned)
+			return true
+		}
+		if genCmpOpt(rhs, lhs) {
+			switch kind {
+			case ND_LT:
+				kind = ND_GT
+			case ND_LE:
+				kind = ND_GE
+			case ND_GT:
+				kind = ND_LT
+			case ND_GE:
+				kind = ND_LE
+			}
+			genCmpSetx(kind, lhs.Ty.IsUnsigned)
+			return true
 		}
 	}
 	return false
