@@ -1093,6 +1093,26 @@ func genMemCopy(sofs int, sptr string, dofs int, dptr string, sz int) {
 	}
 }
 
+func inImmRange(val int64) bool {
+	return val == int64(int32(val))
+}
+
+func loadValue(ty *CType, val int64) {
+	if val == 0 {
+		printlnToFile("  xor %%eax, %%eax")
+		return
+	}
+	if ty.Size <= 4 && inImmRange(val) {
+		printlnToFile("  movl $%d, %%eax", val)
+		return
+	} else if ty.Size > 4 && uint64(val) <= math.MaxUint32 {
+		printlnToFile("  movl $%d, %%eax", val)
+		return
+	} else {
+		printlnToFile("  mov $%d, %%rax", val)
+	}
+}
+
 // Generate code for a given node.
 func genExpr(node *AstNode) {
 	if opt_g {
@@ -1220,7 +1240,7 @@ func genExpr(node *AstNode) {
 			printlnToFile("  fldt -16(%%rsp)")
 			return
 		}
-		printlnToFile("  mov $%d, %%rax", node.Value)
+		loadValue(node.Ty, node.Value)
 		return
 	case ND_POS:
 		genExpr(node.Lhs)
