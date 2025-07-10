@@ -645,6 +645,10 @@ func genVaArgRegCopy(ty *CType, v *Obj) {
 // Compute the absolute address of a given node.
 // It's an error if a given node does not reside in memory.
 func genAddr(node *AstNode) {
+	if opt_optimize && genAddrOpt(node) {
+		return
+	}
+
 	switch node.Kind {
 	case ND_VAR:
 		// Variable-length array, which is always local.
@@ -726,27 +730,13 @@ func genAddr(node *AstNode) {
 		return
 	case ND_MEMBER:
 		switch node.Lhs.Kind {
-		case ND_FUNCALL:
-			if node.Lhs.ReturnBuffer == nil {
-				// DO NOTHING
-			} else if node.Lhs.Ty.Kind != TY_STRUCT && node.Lhs.Ty.Kind != TY_UNION {
-				// DO NOTHING
-			} else {
-				genExpr(node.Lhs)
-				printlnToFile("  add $%d, %%rax", node.Member.Offset)
-				return
-			}
-		case ND_ASSIGN, ND_COND, ND_STMT_EXPR, ND_VA_ARG:
-			if node.Lhs.Ty.Kind != TY_STRUCT && node.Lhs.Ty.Kind != TY_UNION {
-				// DO NOTHING
-			} else {
-				genExpr(node.Lhs)
-				printlnToFile("  add $%d, %%rax", node.Member.Offset)
-				return
-			}
+		case ND_FUNCALL, ND_ASSIGN, ND_COND, ND_STMT_EXPR, ND_VA_ARG:
+			genExpr(node.Lhs)
+			immAdd("%rax", "%rdx", node.Member.Offset)
+			return
 		default:
 			genAddr(node.Lhs)
-			printlnToFile("  add $%d, %%rax", node.Member.Offset)
+			immAdd("%rax", "%rdx", node.Member.Offset)
 			return
 		}
 	}
@@ -1196,6 +1186,29 @@ func genExprOpt(node *AstNode) bool {
 		return true
 	}
 
+	if kind == ND_MEMBER {
+		var loadType *CType = nil
+		if ty.isScalar() && !node.isBitField() {
+			loadType = ty
+		}
+
+		ok, ofs := genMemberOpt(node, loadType, 0)
+		if ok {
+			return true
+		}
+		if ty.isScalar() {
+			load2(ty, int(ofs), "%rax")
+
+			mem := node.Member
+			if mem.IsBitfield {
+				genBitExtract(mem.Ty, int(mem.BitWidth), int(mem.BitOffset))
+			}
+			return true
+		}
+		immAdd("%rax", "%rdx", ofs)
+		return true
+	}
+
 	if kind != ND_NUM {
 		ival := int64(0)
 		if ty.isInteger() && node.isConstExpr(&ival) {
@@ -1208,6 +1221,43 @@ func genExprOpt(node *AstNode) bool {
 			loadFloatValue(ty, fval)
 			return true
 		}
+	}
+
+	return false
+}
+
+func genMemberOpt(node *AstNode, loadType *CType, ofs int64) (bool, int64) {
+	for node.Kind == ND_MEMBER {
+		ofs += node.Member.Offset
+		node = node.Lhs
+	}
+	if node.isLVar() {
+		if loadType != nil {
+			load2(loadType, int(ofs+node.Variable.Offset), node.Variable.Pointer)
+			return true, ofs
+		}
+		printlnToFile("  lea %d(%s), %%rax", ofs+node.Variable.Offset, node.Variable.Pointer)
+		ofs = 0
+		return false, ofs
+	}
+	switch node.Kind {
+	case ND_FUNCALL, ND_ASSIGN, ND_COND, ND_STMT_EXPR, ND_VA_ARG:
+		genExpr(node)
+		return false, ofs
+	}
+
+	genAddr(node)
+	return false, ofs
+}
+
+func genAddrOpt(node *AstNode) bool {
+	kind := node.Kind
+
+	if kind == ND_MEMBER {
+		ofs := int64(0)
+		_, ofs = genMemberOpt(node, nil, ofs)
+		immAdd("%rax", "%rdx", ofs)
+		return true
 	}
 
 	return false
@@ -1254,6 +1304,19 @@ func immAnd(op string, tmp string, val int64) {
 		return
 	}
 	immArith2(ND_BITAND, op, tmp, val)
+}
+
+func immAdd(op string, tmp string, val int64) {
+	if val == 0 {
+		return
+	} else if val == 1 {
+		printlnToFile("  inc %s", op)
+		return
+	} else if val == -1 {
+		printlnToFile("  dec %s", op)
+		return
+	}
+	immArith2(ND_ADD, op, tmp, val)
 }
 
 func immSub(op string, tmp string, val int64) {
