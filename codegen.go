@@ -1256,6 +1256,32 @@ func immAnd(op string, tmp string, val int64) {
 	immArith2(ND_BITAND, op, tmp, val)
 }
 
+func immSub(op string, tmp string, val int64) {
+	if val == 0 {
+		return
+	} else if val == 1 {
+		printlnToFile("  dec %s", op)
+		return
+	} else if val == -1 {
+		printlnToFile("  inc %s", op)
+		return
+	}
+	immArith2(ND_SUB, op, tmp, val)
+}
+
+func immCmp(op string, tmp string, val int64) {
+	if val == 0 {
+		printlnToFile("  test %s, %s", op, op)
+		return
+	}
+	if inImmRange(val) {
+		printlnToFile("  cmp $%d, %s", val, op)
+		return
+	}
+	printlnToFile("  mov $%d, %s", val, tmp)
+	printlnToFile("  cmp %s, %s", tmp, op)
+}
+
 func load2(ty *CType, sofs int, sptr string) {
 	switch ty.Kind {
 	case TY_FLOAT:
@@ -1994,18 +2020,20 @@ func genStmt(node *AstNode) {
 
 		for n := node.CaseNext; n != nil; n = n.CaseNext {
 			if n.Begin == n.End {
-				printlnToFile("  mov $%d, %s", n.Begin, dx)
-				printlnToFile("  cmp %s, %s", dx, ax)
+				immCmp(ax, dx, n.Begin)
 				printlnToFile("  je %s", n.Label)
+				continue
+			}
+			if n.Begin == 0 {
+				immCmp(ax, dx, n.End)
+				printlnToFile("  jbe %s", n.Label)
 				continue
 			}
 
 			// [GNU] Case ranges
 			printlnToFile("  mov %s, %s", ax, cx)
-			printlnToFile("  mov $%d, %s", n.Begin, dx)
-			printlnToFile("  sub %s, %s", dx, cx)
-			printlnToFile("  mov $%d, %s", n.End-n.Begin, dx)
-			printlnToFile("  cmp %s, %s", dx, cx)
+			immSub(cx, dx, n.Begin)
+			immCmp(cx, dx, n.End-n.Begin)
 			printlnToFile("  jbe %s", n.Label)
 		}
 
