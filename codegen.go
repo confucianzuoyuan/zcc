@@ -1227,6 +1227,33 @@ func genExprOpt(node *AstNode) bool {
 		return true
 	}
 
+	if kind == ND_CAST && ty.Size > lhs.Ty.Size {
+		if ty.Base != nil && lhs.isImmNum() && lhs.Value == 0 {
+			printlnToFile("  xor %%eax, %%eax")
+			return true
+		}
+		if lhs.isLVar() && ty.isInteger() && lhs.Ty.isInteger() {
+			if lhs.Ty.IsUnsigned {
+				loadExtendInt(lhs.Ty, int(lhs.Variable.Offset), lhs.Variable.Pointer, "%eax")
+				return true
+			}
+			if !lhs.Ty.IsUnsigned && !ty.IsUnsigned {
+				ax := regOpAX(ty)
+				switch lhs.Ty.Size {
+				case 4:
+					printlnToFile("  movsl %d(%s), %s", lhs.Variable.Offset, lhs.Variable.Pointer, ax)
+				case 2:
+					printlnToFile("  movsw %d(%s), %s", lhs.Variable.Offset, lhs.Variable.Pointer, ax)
+				case 1:
+					printlnToFile("  movsb %d(%s), %s", lhs.Variable.Offset, lhs.Variable.Pointer, ax)
+				default:
+					panic("internal error")
+				}
+				return true
+			}
+		}
+	}
+
 	if kind != ND_NUM {
 		ival := int64(0)
 		if ty.isInteger() && node.isConstExpr(&ival) {
@@ -1321,6 +1348,10 @@ func genAddrOpt(node *AstNode) bool {
 
 func (node *AstNode) isLVar() bool {
 	return node.Kind == ND_VAR && node.Variable.IsLocal
+}
+
+func (node *AstNode) isImmNum() bool {
+	return node.Kind == ND_NUM && node.Ty.isInteger() && inImmRange(node.Value)
 }
 
 func genBitExtract(ty *CType, bitWidth int, bitOffset int) {
