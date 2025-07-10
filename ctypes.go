@@ -227,6 +227,10 @@ func (t *CType) isScalar() bool {
 	return t.isNumeric() || t.Kind == TY_PTR
 }
 
+func (t *CType) isGpType() bool {
+	return t.isInteger() || t.Kind == TY_PTR
+}
+
 func (ty *CType) vaArgNeedCopy() bool {
 	if ty.Size > 8 && ty.Size <= 16 {
 		return ty.hasFloatNumber1() || ty.hasFloatNumber2()

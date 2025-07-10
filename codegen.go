@@ -1182,6 +1182,16 @@ func genExprOpt(node *AstNode) bool {
 		return true
 	}
 
+	if kind == ND_CAST && ty.Kind == TY_BOOL {
+		if genBoolOpt(lhs) {
+			return true
+		}
+	}
+
+	if kind == ND_NOT && genBoolOpt(node) {
+		return true
+	}
+
 	if kind != ND_NUM {
 		ival := int64(0)
 		if ty.isInteger() && node.isConstExpr(&ival) {
@@ -1217,6 +1227,81 @@ func load2(ty *CType, sofs int, sptr string) {
 	}
 
 	loadExtendInt(ty, sofs, sptr, regOpAX(ty))
+}
+
+func genInvCmp(node *AstNode) bool {
+	if !node.Lhs.Ty.isGpType() {
+		return false
+	}
+
+	switch node.Kind {
+	case ND_EQ:
+		node.Kind = ND_NE
+	case ND_NE:
+		node.Kind = ND_EQ
+	case ND_LT:
+		node.Kind = ND_GE
+	case ND_LE:
+		node.Kind = ND_GT
+	case ND_GT:
+		node.Kind = ND_LE
+	case ND_GE:
+		node.Kind = ND_LT
+	default:
+		panic("internal error")
+	}
+	genExpr(node)
+	return true
+}
+
+func genBoolOpt(node *AstNode) bool {
+	var boolExpr *AstNode = nil
+	hasNot := false
+
+	for ; ; node = node.Lhs {
+		switch node.Kind {
+		case ND_NOT:
+			hasNot = !hasNot
+			continue
+		case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE:
+			if hasNot && genInvCmp(node) {
+				return true
+			}
+		case ND_LOGOR, ND_LOGAND:
+			genExpr(node)
+			if hasNot {
+				printlnToFile("  xor $1, %%al")
+			}
+			return true
+		}
+		if node.Ty.Kind == TY_BOOL {
+			boolExpr = node
+		}
+		if node.Kind == ND_CAST && node.Ty.isScalar() {
+			continue
+		}
+		break
+	}
+
+	if boolExpr != nil {
+		if boolExpr.Kind == ND_CAST && boolExpr.Ty.Kind == TY_BOOL {
+			genExpr(boolExpr.Lhs)
+			cmpZero(boolExpr.Lhs.Ty)
+			if hasNot {
+				genCmpSetx(ND_EQ, false)
+			} else {
+				genCmpSetx(ND_NE, false)
+			}
+			return true
+		}
+		genExpr(boolExpr)
+		if hasNot {
+			printlnToFile("  xor $1, %%al")
+		}
+		return true
+	}
+
+	return false
 }
 
 // Generate code for a given node.
