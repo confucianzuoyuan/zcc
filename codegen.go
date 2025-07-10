@@ -824,9 +824,9 @@ func cmpZero(ty *CType) {
 	}
 
 	if ty.isInteger() && ty.Size <= 4 {
-		printlnToFile("  cmp $0, %%eax")
+		printlnToFile("  test %%eax, %%eax")
 	} else {
-		printlnToFile("  cmp $0, %%rax")
+		printlnToFile("  test %%rax, %%rax")
 	}
 }
 
@@ -1445,7 +1445,7 @@ func genExpr(node *AstNode) {
 	case ND_COND:
 		c := count()
 		genExpr(node.Cond)
-		cmpZero(node.Cond.Ty)
+		printlnToFile("  test %%al, %%al")
 		printlnToFile("  je .L.else.%d", c)
 		genExpr(node.Then)
 		printlnToFile("  jmp .L.end.%d", c)
@@ -1455,9 +1455,7 @@ func genExpr(node *AstNode) {
 		return
 	case ND_NOT:
 		genExpr(node.Lhs)
-		cmpZero(node.Lhs.Ty)
-		printlnToFile("  sete %%al")
-		printlnToFile("  movzx %%al, %%rax")
+		printlnToFile("  xor $1, %%al")
 		return
 	case ND_BITNOT:
 		genExpr(node.Lhs)
@@ -1466,30 +1464,18 @@ func genExpr(node *AstNode) {
 	case ND_LOGAND:
 		c := count()
 		genExpr(node.Lhs)
-		cmpZero(node.Lhs.Ty)
+		printlnToFile("  test %%al, %%al")
 		printlnToFile("  je  .L.false.%d", c)
 		genExpr(node.Rhs)
-		cmpZero(node.Rhs.Ty)
-		printlnToFile("  je  .L.false.%d", c)
-		printlnToFile("  mov $1, %%rax")
-		printlnToFile("  jmp .L.end.%d", c)
 		printlnToFile(".L.false.%d:", c)
-		printlnToFile("  mov $0, %%rax")
-		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_LOGOR:
 		c := count()
 		genExpr(node.Lhs)
-		cmpZero(node.Lhs.Ty)
+		printlnToFile("  test %%al, %%al")
 		printlnToFile("  jne .L.true.%d", c)
 		genExpr(node.Rhs)
-		cmpZero(node.Rhs.Ty)
-		printlnToFile("  jne .L.true.%d", c)
-		printlnToFile("  mov $0, %%rax")
-		printlnToFile("  jmp .L.end.%d", c)
 		printlnToFile(".L.true.%d:", c)
-		printlnToFile("  mov $1, %%rax")
-		printlnToFile(".L.end.%d:", c)
 		return
 	case ND_SHL, ND_SHR, ND_SAR:
 		genExpr(node.Lhs)
