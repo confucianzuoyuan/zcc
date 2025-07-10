@@ -1173,6 +1173,15 @@ func genExprOpt(node *AstNode) bool {
 		return true
 	}
 
+	if kind == ND_COND && node.Cond.Kind == ND_NUM {
+		if node.Cond.Value != 0 {
+			genExpr(node.Then)
+		} else {
+			genExpr(node.Else)
+		}
+		return true
+	}
+
 	if kind != ND_NUM {
 		ival := int64(0)
 		if ty.isInteger() && node.isConstExpr(&ival) {
