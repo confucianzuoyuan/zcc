@@ -1113,6 +1113,65 @@ func loadValue(ty *CType, val int64) {
 	}
 }
 
+func loadFloatValue(ty *CType, fval float64) {
+	if ty.Kind == TY_FLOAT {
+		var posZ float32 = +0.0
+		fv := float32(fval)
+		if math.Float32bits(posZ) == math.Float32bits(fv) {
+			printlnToFile("  xorps %%xmm0, %%xmm0")
+			return
+		}
+	}
+	if ty.Kind == TY_DOUBLE {
+		var posZ float64 = +0.0
+		dv := fval
+		if math.Float64bits(posZ) == math.Float64bits(dv) {
+			printlnToFile("  xorps %%xmm0, %%xmm0")
+			return
+		}
+	}
+	if ty.Kind == TY_LDOUBLE {
+		var posZ float64 = +0.0
+		if math.Float64bits(posZ) == math.Float64bits(fval) {
+			printlnToFile("  fldz")
+			return
+		}
+		negZ := float64(-0.0)
+		if math.Float64bits(negZ) == math.Float64bits(fval) {
+			printlnToFile("  fldz")
+			printlnToFile("  fchs")
+			return
+		}
+		if fval == 1 {
+			printlnToFile("  fld1")
+			return
+		}
+		if fval == -1 {
+			printlnToFile("  fld1")
+			printlnToFile("  fchs")
+			return
+		}
+	}
+	switch ty.Kind {
+	case TY_FLOAT:
+		u := math.Float32bits(float32(fval))
+		printlnToFile("  mov $%d, %%eax  # float %f", u, fval)
+		printlnToFile("  movq %%rax, %%xmm0")
+	case TY_DOUBLE:
+		u := math.Float64bits(fval)
+		printlnToFile("  mov $%d, %%rax  # double %f", u, fval)
+		printlnToFile("  movq %%rax, %%xmm0")
+	case TY_LDOUBLE:
+		u := NewFromFloat64(fval)
+		printlnToFile("  mov $%d, %%rax  # long double %f", u.m, fval)
+		printlnToFile("  mov %%rax, -16(%%rsp)")
+		printlnToFile("  mov $%d, %%rax", u.se)
+		printlnToFile("  mov %%rax, -8(%%rsp)")
+		printlnToFile("  fldt -16(%%rsp)")
+		return
+	}
+}
+
 // Generate code for a given node.
 func genExpr(node *AstNode) {
 	if opt_g {
@@ -1220,24 +1279,8 @@ func genExpr(node *AstNode) {
 		printlnToFile("  movzbl %%cl, %%eax")
 		return
 	case ND_NUM:
-		switch node.Ty.Kind {
-		case TY_FLOAT:
-			u := math.Float32bits(float32(node.FloatValue))
-			printlnToFile("  mov $%d, %%eax  # float %f", u, node.FloatValue)
-			printlnToFile("  movq %%rax, %%xmm0")
-			return
-		case TY_DOUBLE:
-			u := math.Float64bits(node.FloatValue)
-			printlnToFile("  mov $%d, %%rax  # double %f", u, node.FloatValue)
-			printlnToFile("  movq %%rax, %%xmm0")
-			return
-		case TY_LDOUBLE:
-			u := NewFromFloat64(node.FloatValue)
-			printlnToFile("  mov $%d, %%rax  # long double %f", u.m, node.FloatValue)
-			printlnToFile("  mov %%rax, -16(%%rsp)")
-			printlnToFile("  mov $%d, %%rax", u.se)
-			printlnToFile("  mov %%rax, -8(%%rsp)")
-			printlnToFile("  fldt -16(%%rsp)")
+		if node.Ty.isFloat() {
+			loadFloatValue(node.Ty, node.FloatValue)
 			return
 		}
 		loadValue(node.Ty, node.Value)
