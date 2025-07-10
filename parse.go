@@ -1714,6 +1714,9 @@ func arrayDimensions(rest **Token, tok *Token, ty *CType) *CType {
 
 	expr := assign(&tok, tok)
 	expr.addType()
+	if !expr.Ty.isInteger() {
+		errorTok(tok, "size of array not integer")
+	}
 	tok = skip(tok, "]")
 	if tok.isEqual("[") {
 		ty = arrayDimensions(&tok, tok.Next, ty)
