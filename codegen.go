@@ -66,7 +66,7 @@ func printlnToFile(fmtStr string, args ...any) {
 
 func reservedLine() int64 {
 	reservedPos := len(*cgOutputFile)
-	printlnToFile("PLACEHOLDER")
+	printlnToFile("                           ")
 	return int64(reservedPos)
 }
 
@@ -2652,9 +2652,8 @@ func emitText(prog *Obj) {
 		printlnToFile("  mov %%rsp, %%rbp")
 		if useRBX {
 			printlnToFile("  push %%rbx")
+			printlnToFile("  and $-%d, %%rsp", fn.StackAlign)
 			printlnToFile("  mov %%rsp, %%rbx")
-			printlnToFile("  and $-%d, %%rbx", fn.StackAlign)
-			printlnToFile("  mov %%rbx, %%rsp")
 		}
 
 		stackAllocLocation := reservedLine()
@@ -2740,14 +2739,16 @@ func emitText(prog *Obj) {
 			panic("tmp stack depth is not zero")
 		}
 
-		instructionLine("  sub $%d, %%rsp", int(stackAllocLocation), alignTo(int64(tmpStack.Bottom), 16))
+		if tmpStack.Bottom != 0 {
+			instructionLine("  sub $%d, %%rsp", int(stackAllocLocation), alignTo(int64(tmpStack.Bottom), 16))
+		}
 
 		// [https://www.sigbus.info/n1570#5.1.2.2.3p1] The C spec defines
 		// a special rule for the main function. Reaching the end of the
 		// main function is equivalent to returning 0, even though the
 		// behavior is undefined for the other functions.
 		if fn.Name == "main" {
-			printlnToFile("  mov $0, %%rax")
+			printlnToFile("  xor %%eax, %%eax")
 		}
 
 		// Epilogue
@@ -2755,8 +2756,7 @@ func emitText(prog *Obj) {
 		if useRBX {
 			printlnToFile("  mov -8(%%rbp), %%rbx")
 		}
-		printlnToFile("  mov %%rbp, %%rsp")
-		printlnToFile("  pop %%rbp")
+		printlnToFile("  leave")
 		printlnToFile("  ret")
 	}
 }
