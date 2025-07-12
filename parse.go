@@ -21,6 +21,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"os"
 	"strings"
 )
@@ -176,12 +177,18 @@ func alignDown(n int64, align int64) int64 {
 	return alignTo(n-align+1, align)
 }
 
-func readDoubleBuf(buf *[]int8, ty *CType) float64 {
+func readDoubleBuf(buf *[]int8, ty *CType) FloatConst {
 	if ty.Kind == TY_FLOAT {
-		return float64(Int8SliceToFloat32((*buf)[0:4]))
+		return FloatConst32{Int8SliceToFloat32((*buf)[0:4])}
 	}
-	if ty.Kind == TY_DOUBLE || ty.Kind == TY_LDOUBLE {
-		return Int8SliceToFloat64((*buf)[0:8])
+	if ty.Kind == TY_DOUBLE {
+		return FloatConst64{Int8SliceToFloat64((*buf)[0:8])}
+	}
+	if ty.Kind == TY_LDOUBLE {
+		var bs []byte = I82U8((*buf)[0:10])
+		var arr [10]byte
+		copy(arr[:], bs) // 将 slice 复制到 arr 中
+		return FloatConst80{longDoubleToBigFloat(arr)}
 	}
 	panic("unreachable")
 }
@@ -320,7 +327,7 @@ func newAlloca(sz *AstNode, v *Obj, top *Obj, align int64) *AstNode {
 	return node
 }
 
-func (node *AstNode) isConstDouble(fval *float64) bool {
+func (node *AstNode) isConstDouble(fval *FloatConst) bool {
 	node.addType()
 	failed := false
 
@@ -1970,19 +1977,19 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	init.Expr.addType()
 
 	if ty.Kind == TY_FLOAT {
-		val := Float32ToInt8Slice(float32(evalDouble(newCast(init.Expr, TyFloat))))
+		val := Float32ToInt8Slice(evalDouble(newCast(init.Expr, TyFloat)).ToFloat32())
 		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
 
 	if ty.Kind == TY_DOUBLE {
-		val := Float64ToInt8Slice(evalDouble(newCast(init.Expr, TyDouble)))
+		val := Float64ToInt8Slice(evalDouble(newCast(init.Expr, TyDouble)).ToFloat64())
 		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
 
 	if ty.Kind == TY_LDOUBLE {
-		val := Float64ToInt8Slice(evalDouble(newCast(init.Expr, TyLDouble)))
+		val := evalDouble(newCast(init.Expr, TyLDouble)).ToInt8Slice()
 		copy((*buf)[offset:offset+int64(len(val))], val)
 		return cur
 	}
@@ -2458,27 +2465,27 @@ func exprStmt(rest **Token, tok *Token) *AstNode {
 	return node
 }
 
-func evalDouble(node *AstNode) float64 {
+func evalDouble(node *AstNode) FloatConst {
 	if node.Ty.isInteger() {
 		panic("node.Ty.isInteger()")
 	}
 	if evalRecover != nil && *evalRecover {
-		return float64(boolToInt(false))
+		return FloatConst64{float64(boolToInt(false))}
 	}
 
 	switch node.Kind {
 	case ND_ADD:
-		return evalDouble(node.Lhs) + evalDouble(node.Rhs)
+		return evalDouble(node.Lhs).Add(evalDouble(node.Rhs))
 	case ND_SUB:
-		return evalDouble(node.Lhs) - evalDouble(node.Rhs)
+		return evalDouble(node.Lhs).Sub(evalDouble(node.Rhs))
 	case ND_MUL:
-		return evalDouble(node.Lhs) * evalDouble(node.Rhs)
+		return evalDouble(node.Lhs).Mul(evalDouble(node.Rhs))
 	case ND_DIV:
-		return evalDouble(node.Lhs) / evalDouble(node.Rhs)
+		return evalDouble(node.Lhs).Div(evalDouble(node.Rhs))
 	case ND_POS:
 		return evalDouble(node.Lhs)
 	case ND_NEG:
-		return -evalDouble(node.Lhs)
+		return evalDouble(node.Lhs).Neg()
 	case ND_COND:
 		if eval(node.Cond) != 0 {
 			return evalDouble(node.Then)
@@ -2491,14 +2498,26 @@ func evalDouble(node *AstNode) float64 {
 	case ND_CAST:
 		if node.Lhs.Ty.isFloat() {
 			if node.Ty.Size == 4 {
-				return float64(float32(evalDouble(node.Lhs)))
+				return FloatConst64{float64(evalDouble(node.Lhs).ToFloat32())}
 			}
 			return evalDouble(node.Lhs)
 		}
+		// bug here
 		if node.Lhs.Ty.Size == 8 && node.Lhs.Ty.IsUnsigned {
-			return float64(uint64(eval(node.Lhs)))
+			if node.Ty == TyLDouble {
+				text := fmt.Sprintf("%d", uint64(eval(node.Lhs)))
+				// 用 big.Float 构造高精度数值
+				f, _, err := new(big.Float).Parse(text, 10)
+				if err != nil {
+					panic(err)
+				}
+				f.SetPrec(256)
+				value := FloatConst80{f}
+				return value
+			}
+			return FloatConst64{float64(uint64(eval(node.Lhs)))}
 		}
-		return float64(eval(node.Lhs))
+		return FloatConst64{float64(eval(node.Lhs))}
 	case ND_NUM:
 		return node.FloatValue
 	}
@@ -2510,12 +2529,12 @@ func evalDouble(node *AstNode) float64 {
 	if node.Kind == ND_MEMBER || node.Kind == ND_DEREF {
 		data := evalConstExprAgg(node)
 		if data == nil {
-			return 0
+			return FloatConst64{0}
 		}
 		return readDoubleBuf(&data, node.Ty)
 	}
 
-	return float64(evalError(node.Tok, "not a compile-time constant"))
+	return FloatConst64{float64(evalError(node.Tok, "not a compile-time constant"))}
 }
 
 func staticAssertion(rest **Token, tok *Token) {
@@ -2623,17 +2642,17 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return eval(node.Lhs) >> eval(node.Rhs)
 	case ND_EQ:
 		if node.Lhs.Ty.isFloat() {
-			return int64(boolToInt(evalDouble(node.Lhs) == evalDouble(node.Rhs)))
+			return int64(boolToInt(evalDouble(node.Lhs).Eq(evalDouble(node.Rhs))))
 		}
 		return int64(boolToInt(eval(node.Lhs) == eval(node.Rhs)))
 	case ND_NE:
 		if node.Lhs.Ty.isFloat() {
-			return int64(boolToInt(evalDouble(node.Lhs) != evalDouble(node.Rhs)))
+			return int64(boolToInt(evalDouble(node.Lhs).Ne(evalDouble(node.Rhs))))
 		}
 		return int64(boolToInt(eval(node.Lhs) != eval(node.Rhs)))
 	case ND_LT:
 		if node.Lhs.Ty.isFloat() {
-			return int64(boolToInt(evalDouble(node.Lhs) < evalDouble(node.Rhs)))
+			return int64(boolToInt(evalDouble(node.Lhs).Lt(evalDouble(node.Rhs))))
 		}
 		if node.Lhs.Ty.IsUnsigned {
 			return int64(boolToInt(uint64(eval(node.Lhs)) < uint64(eval(node.Rhs))))
@@ -2641,7 +2660,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return int64(boolToInt(eval(node.Lhs) < eval(node.Rhs)))
 	case ND_LE:
 		if node.Lhs.Ty.isFloat() {
-			return int64(boolToInt(evalDouble(node.Lhs) <= evalDouble(node.Rhs)))
+			return int64(boolToInt(evalDouble(node.Lhs).Le(evalDouble(node.Rhs))))
 		}
 		if node.Lhs.Ty.IsUnsigned {
 			return int64(boolToInt(uint64(eval(node.Lhs)) <= uint64(eval(node.Rhs))))
@@ -2649,7 +2668,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return int64(boolToInt(eval(node.Lhs) <= eval(node.Rhs)))
 	case ND_GT:
 		if node.Lhs.Ty.isFloat() {
-			return int64(boolToInt(evalDouble(node.Lhs) > evalDouble(node.Rhs)))
+			return int64(boolToInt(evalDouble(node.Lhs).Gt(evalDouble(node.Rhs))))
 		}
 		if node.Lhs.Ty.IsUnsigned {
 			return int64(boolToInt(uint64(eval(node.Lhs)) > uint64(eval(node.Rhs))))
@@ -2657,7 +2676,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		return int64(boolToInt(eval(node.Lhs) > eval(node.Rhs)))
 	case ND_GE:
 		if node.Lhs.Ty.isFloat() {
-			return int64(boolToInt(evalDouble(node.Lhs) >= evalDouble(node.Rhs)))
+			return int64(boolToInt(evalDouble(node.Lhs).Ge(evalDouble(node.Rhs))))
 		}
 		if node.Lhs.Ty.IsUnsigned {
 			return int64(boolToInt(uint64(eval(node.Lhs)) >= uint64(eval(node.Rhs))))
@@ -2692,16 +2711,16 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 				return 1
 			}
 			if node.Lhs.Ty.isFloat() {
-				return int64(boolToInt(evalDouble(node.Lhs) != 0))
+				return int64(boolToInt(!evalDouble(node.Lhs).IsZero()))
 			}
 			return int64(boolToInt(eval2(node.Lhs, ctx) != 0))
 		}
 
 		if node.Lhs.Ty.isFloat() {
 			if node.Ty.Size == 8 && node.Ty.IsUnsigned {
-				return int64(uint64(evalDouble(node.Lhs)))
+				return int64(evalDouble(node.Lhs).ToUInt64())
 			}
-			return int64(evalDouble(node.Lhs))
+			return evalDouble(node.Lhs).ToInt64()
 		}
 
 		val := eval2(node.Lhs, ctx)

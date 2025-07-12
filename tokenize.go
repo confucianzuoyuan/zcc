@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"strconv"
 )
@@ -84,14 +85,14 @@ type File struct {
 }
 
 type Token struct {
-	Kind          TokenKind // Token kind
-	Next          *Token    // Next token
-	Value         int64     // If kind is TK_NUM, its value
-	FloatValue    float64   // If kind is TK_NUM, its value
-	Location      int       // Token location
-	Length        int       // Token length
-	Ty            *CType    // Used if TK_NUM or TK_STR
-	StringLiteral []int8    // String literal contents including terminating '\0'
+	Kind          TokenKind  // Token kind
+	Next          *Token     // Next token
+	Value         int64      // If kind is TK_NUM, its value
+	FloatValue    FloatConst // If kind is TK_NUM, its value
+	Location      int        // Token location
+	Length        int        // Token length
+	Ty            *CType     // Used if TK_NUM or TK_STR
+	StringLiteral []int8     // String literal contents including terminating '\0'
 
 	File              *File // Source location
 	DisplayLineNo     int
@@ -725,15 +726,24 @@ func convertPpNumber(tok *Token) {
 		}
 	}
 
-	var value float64
+	var value FloatConst
 	if (*src)[end-1] == 'f' || (*src)[end-1] == 'F' {
-		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end-1]), 64)
+		v, _ := strconv.ParseFloat(B2S((*src)[tok.Location:end-1]), 32)
+		value = FloatConst32{float32(v)}
 		end -= 1
 	} else if (*src)[end-1] == 'l' || (*src)[end-1] == 'L' {
-		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end-1]), 64)
+		text := B2S((*src)[tok.Location : end-1])
+		// 用 big.Float 构造高精度数值
+		f, _, err := new(big.Float).Parse(text, 10)
+		if err != nil {
+			panic(err)
+		}
+		f.SetPrec(256)
+		value = FloatConst80{f}
 		end -= 1
 	} else {
-		value, _ = strconv.ParseFloat(B2S((*src)[tok.Location:end]), 64)
+		v, _ := strconv.ParseFloat(B2S((*src)[tok.Location:end]), 64)
+		value = FloatConst64{v}
 	}
 
 	var ty *CType

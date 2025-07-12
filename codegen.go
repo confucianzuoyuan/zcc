@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
+	"math/big"
 )
 
 const FP_MAX = 8
@@ -1087,10 +1089,10 @@ func loadValue(ty *CType, val int64) {
 	}
 }
 
-func loadFloatValue(ty *CType, fval float64) {
+func loadFloatValue(ty *CType, fval FloatConst) {
 	if ty.Kind == TY_FLOAT {
 		var posZ float32 = +0.0
-		fv := float32(fval)
+		fv := fval.ToFloat32()
 		if math.Float32bits(posZ) == math.Float32bits(fv) {
 			printlnToFile("  xorps %%xmm0, %%xmm0")
 			return
@@ -1098,29 +1100,35 @@ func loadFloatValue(ty *CType, fval float64) {
 	}
 	if ty.Kind == TY_DOUBLE {
 		var posZ float64 = +0.0
-		dv := fval
+		dv := fval.ToFloat64()
 		if math.Float64bits(posZ) == math.Float64bits(dv) {
 			printlnToFile("  xorps %%xmm0, %%xmm0")
 			return
 		}
 	}
 	if ty.Kind == TY_LDOUBLE {
-		var posZ float64 = +0.0
-		if math.Float64bits(posZ) == math.Float64bits(fval) {
+		posZero := FloatConst80{big.NewFloat(0.0)}
+		negZero := FloatConst80{big.NewFloat(-0.0)}
+		if fval.IsPositive() && equalInt8Slices(posZero.ToInt8Slice(), fval.ToInt8Slice()) {
 			printlnToFile("  fldz")
 			return
 		}
-		negZ := float64(-0.0)
-		if math.Float64bits(negZ) == math.Float64bits(fval) {
+
+		if !fval.IsPositive() && equalInt8Slices(negZero.ToInt8Slice(), fval.ToInt8Slice()) {
 			printlnToFile("  fldz")
 			printlnToFile("  fchs")
 			return
 		}
-		if fval == 1 {
+
+		posOne := FloatConst80{big.NewFloat(1)}
+		if fval.Eq(posOne) {
+			println("fval: ", fval.String())
+			println(posOne.String())
 			printlnToFile("  fld1")
 			return
 		}
-		if fval == -1 {
+
+		if fval.Eq(FloatConst80{big.NewFloat(-1)}) {
 			printlnToFile("  fld1")
 			printlnToFile("  fchs")
 			return
@@ -1128,20 +1136,25 @@ func loadFloatValue(ty *CType, fval float64) {
 	}
 	switch ty.Kind {
 	case TY_FLOAT:
-		u := math.Float32bits(float32(fval))
-		printlnToFile("  mov $%d, %%eax  # float %f", u, fval)
-		printlnToFile("  movq %%rax, %%xmm0")
+		u := math.Float32bits(fval.ToFloat32())
+		printlnToFile("  movl $%d, %%eax", u)
+		printlnToFile("  movd %%eax, %%xmm0")
 	case TY_DOUBLE:
-		u := math.Float64bits(fval)
-		printlnToFile("  mov $%d, %%rax  # double %f", u, fval)
+		u := math.Float64bits(fval.ToFloat64())
+		printlnToFile("  movq $%d, %%rax", u)
 		printlnToFile("  movq %%rax, %%xmm0")
 	case TY_LDOUBLE:
-		u := NewFromFloat64(fval)
-		printlnToFile("  mov $%d, %%rax  # long double %f", u.m, fval)
-		printlnToFile("  mov %%rax, -16(%%rsp)")
-		printlnToFile("  mov $%d, %%rax", u.se)
-		printlnToFile("  mov %%rax, -8(%%rsp)")
-		printlnToFile("  fldt -16(%%rsp)")
+		f_80 := fval.ToFloat80()
+		bytes := bigFloatTo80bit(f_80.Value)
+		// 按小端字节序转换
+		m := binary.LittleEndian.Uint64(bytes[0:8])
+		se := binary.LittleEndian.Uint16(bytes[8:10])
+		printlnToFile("  movq $%d, %%rax", m)
+		printlnToFile("  movw $%d, %%dx", se)
+		printlnToFile("  push %%rdx")
+		printlnToFile("  push %%rax")
+		printlnToFile("  fldt (%%rsp)")
+		printlnToFile("  add $16, %%rsp")
 		return
 	}
 }
@@ -1284,7 +1297,7 @@ func genExprOpt(node *AstNode) bool {
 			return true
 		}
 
-		fval := float64(0)
+		var fval FloatConst = nil
 		if ty.isFloat() && node.isConstDouble(&fval) {
 			loadFloatValue(ty, fval)
 			return true
@@ -1875,16 +1888,14 @@ func genExpr(node *AstNode) {
 		genExpr(node.Lhs)
 
 		if node.Ty.Kind == TY_FLOAT {
-			printlnToFile("  mov $1, %%rax")
-			printlnToFile("  shl $31, %%rax")
-			printlnToFile("  movq %%rax, %%xmm1")
+			printlnToFile("  mov $0x80000000, %%eax")
+			printlnToFile("  movd %%eax, %%xmm1")
 			printlnToFile("  xorps %%xmm1, %%xmm0")
 			return
 		}
 
 		if node.Ty.Kind == TY_DOUBLE {
-			printlnToFile("  mov $1, %%rax")
-			printlnToFile("  shl $63, %%rax")
+			printlnToFile("  mov $0x8000000000000000, %%rax")
 			printlnToFile("  movq %%rax, %%xmm1")
 			printlnToFile("  xorpd %%xmm1, %%xmm0")
 			return
@@ -1895,7 +1906,7 @@ func genExpr(node *AstNode) {
 			return
 		}
 
-		printlnToFile("  neg %%rax")
+		printlnToFile("  neg %s", regOpAX(node.Lhs.Ty))
 		return
 	case ND_VAR:
 		genAddr(node)
@@ -2003,7 +2014,7 @@ func genExpr(node *AstNode) {
 		c := count()
 		genExpr(node.Lhs)
 		printlnToFile("  test %%al, %%al")
-		printlnToFile("  je  .L.false.%d", c)
+		printlnToFile("  je .L.false.%d", c)
 		genExpr(node.Rhs)
 		printlnToFile(".L.false.%d:", c)
 		return

@@ -5,6 +5,34 @@ import (
 	"math"
 )
 
+func U82I8(arr []uint8) []int8 {
+	res := []int8{}
+	for _, b := range arr {
+		res = append(res, int8(b))
+	}
+	return res
+}
+
+func I82U8(arr []int8) []byte {
+	res := []uint8{}
+	for _, b := range arr {
+		res = append(res, uint8(b))
+	}
+	return res
+}
+
+func equalInt8Slices(a, b []int8) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func Float64ToInt8Slice(f float64) []int8 {
 	// 将 float64 转换为 uint64 的二进制表示
 	bits := math.Float64bits(f)

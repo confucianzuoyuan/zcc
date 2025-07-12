@@ -66,9 +66,19 @@ func (t *CType) print() {
 		println("float")
 	case TY_DOUBLE:
 		println("double")
+	case TY_LDOUBLE:
+		println("long double")
+	case TY_LONG:
+		println("long")
+	case TY_LONGLONG:
+		println("long long")
 	case TY_PTR:
 		print("ptr to ")
 		t.Base.print()
+	case TY_INT:
+		println("int")
+	default:
+		println("unknown type", t.Kind)
 	}
 }
 

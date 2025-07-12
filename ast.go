@@ -120,7 +120,7 @@ type AstNode struct {
 
 	// Numeric literal
 	Value      int64
-	FloatValue float64
+	FloatValue FloatConst
 }
 
 func (node *AstNode) String() string {

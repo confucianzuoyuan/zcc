@@ -134,14 +134,6 @@ var LockedMacros *Macro
 var condIncl *CondIncl
 var macros = make(map[string]*Macro)
 
-func U82I8(arr []uint8) []int8 {
-	res := []int8{}
-	for _, b := range arr {
-		res = append(res, int8(b))
-	}
-	return res
-}
-
 func newNumberToken(val int, tmpl *Token) *Token {
 	buf := []uint8(fmt.Sprintf("%d\n", val))
 	buf = append(buf, 0)

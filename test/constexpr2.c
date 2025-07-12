@@ -47,8 +47,8 @@ int main(void) {
   DASSERT(13835058055282163712ULL == (unsigned long long) 13835058055282163712.0);
 
   // golang does not support `long double`
-  // ASSERT(1, 13835058055282163711ULL  == (unsigned long long) 13835058055282163711.0L);
-  // ASSERT(1, 13835058055282163711.0L  == (long double) 13835058055282163711ULL);
+  ASSERT(1, 13835058055282163711ULL  == (unsigned long long) 13835058055282163711.0L);
+  ASSERT(1, 13835058055282163711.0L  == (long double) 13835058055282163711ULL);
 
   DASSERT( 16777217.0 != (float)16777217.0 );
   // DASSERT( 9007199254740993.0L != (double)9007199254740993.0L || sizeof(double) == sizeof(long double) );
