@@ -601,7 +601,6 @@ func build80bitFloat(sign int, exponent uint16, mantissa uint64) [10]byte {
 	return data
 }
 
-// 80-bit extended precision字节数组 转 big.Float
 func longDoubleToBigFloat(data [10]byte) *big.Float {
 	mantissa := binary.LittleEndian.Uint64(data[0:8])
 	high := binary.LittleEndian.Uint16(data[8:10])
@@ -609,21 +608,22 @@ func longDoubleToBigFloat(data [10]byte) *big.Float {
 	sign := (high >> 15) & 1
 	exponent := high & 0x7FFF
 
-	// 处理特殊情况：0 或 非规格化数（这里简化为0）
 	if exponent == 0 {
 		return big.NewFloat(0)
+	}
+	if exponent == 0x7FFF {
+		return new(big.Float).SetInf(true)
 	}
 
 	exp := int(exponent) - 16383
 
-	// 构造尾数 big.Float
-	one := new(big.Float).SetUint64(1 << 63)
+	one := new(big.Float).SetUint64(1)
 	fracPart := new(big.Float).SetUint64(mantissa & ((1 << 63) - 1))
+	denom := new(big.Float).SetUint64(1 << 63)
+	frac := new(big.Float).Quo(fracPart, denom)
 
-	fMantissa := new(big.Float).Add(one, new(big.Float).Quo(fracPart, new(big.Float).SetFloat64(float64(uint64(1)<<63))))
+	fMantissa := new(big.Float).Add(one, frac)
 
-	// 计算最终值 = mantissa * 2^exp
-	// two := big.NewFloat(2)
 	expFactor := new(big.Float).SetPrec(256).SetInt(new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(exp)), nil))
 
 	result := new(big.Float).SetPrec(256).Mul(fMantissa, expFactor)

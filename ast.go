@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type AstNodeKind uint8
 
 // AST Type
@@ -60,6 +62,123 @@ const (
 	ND_VA_ARG                       // "va_arg"
 	ND_CHAIN                        // ND_COMMA without array-to-pointer conversion
 )
+
+func (k AstNodeKind) String() string {
+	switch k {
+	case ND_NULL_EXPR:
+		return "ND_NULL_EXPR"
+	case ND_ADD:
+		return "ND_ADD"
+	case ND_SUB:
+		return "ND_SUB"
+	case ND_MUL:
+		return "ND_MUL"
+	case ND_DIV:
+		return "ND_DIV"
+	case ND_POS:
+		return "ND_POS"
+	case ND_NEG:
+		return "ND_NEG"
+	case ND_EQ:
+		return "ND_EQ"
+	case ND_NE:
+		return "ND_NE"
+	case ND_LT:
+		return "ND_LT"
+	case ND_LE:
+		return "ND_LE"
+	case ND_GT:
+		return "ND_GT"
+	case ND_GE:
+		return "ND_GE"
+	case ND_ASSIGN:
+		return "ND_ASSIGN"
+	case ND_COND:
+		return "ND_COND"
+	case ND_COMMA:
+		return "ND_COMMA"
+	case ND_MEMBER:
+		return "ND_MEMBER"
+	case ND_ADDR:
+		return "ND_ADDR"
+	case ND_DEREF:
+		return "ND_DEREF"
+	case ND_NOT:
+		return "ND_NOT"
+	case ND_BITNOT:
+		return "ND_BITNOT"
+	case ND_MOD:
+		return "ND_MOD"
+	case ND_BITAND:
+		return "ND_BITAND"
+	case ND_BITOR:
+		return "ND_BITOR"
+	case ND_BITXOR:
+		return "ND_BITXOR"
+	case ND_SHL:
+		return "ND_SHL"
+	case ND_SHR:
+		return "ND_SHR"
+	case ND_SAR:
+		return "ND_SAR"
+	case ND_LOGAND:
+		return "ND_LOGAND"
+	case ND_LOGOR:
+		return "ND_LOGOR"
+	case ND_RETURN:
+		return "ND_RETURN"
+	case ND_IF:
+		return "ND_IF"
+	case ND_FOR:
+		return "ND_FOR"
+	case ND_DO:
+		return "ND_DO"
+	case ND_SWITCH:
+		return "ND_SWITCH"
+	case ND_CASE:
+		return "ND_CASE"
+	case ND_BLOCK:
+		return "ND_BLOCK"
+	case ND_GOTO:
+		return "ND_GOTO"
+	case ND_GOTO_EXPR:
+		return "ND_GOTO_EXPR"
+	case ND_LABEL:
+		return "ND_LABEL"
+	case ND_LABEL_VAL:
+		return "ND_LABEL_VAL"
+	case ND_FUNCALL:
+		return "ND_FUNCALL"
+	case ND_EXPR_STMT:
+		return "ND_EXPR_STMT"
+	case ND_STMT_EXPR:
+		return "ND_STMT_EXPR"
+	case ND_VAR:
+		return "ND_VAR"
+	case ND_NUM:
+		return "ND_NUM"
+	case ND_CAST:
+		return "ND_CAST"
+	case ND_MEMZERO:
+		return "ND_MEMZERO"
+	case ND_ASM:
+		return "ND_ASM"
+	case ND_CAS:
+		return "ND_CAS"
+	case ND_EXCH:
+		return "ND_EXCH"
+	case ND_VA_START:
+		return "ND_VA_START"
+	case ND_VA_COPY:
+		return "ND_VA_COPY"
+	case ND_VA_ARG:
+		return "ND_VA_ARG"
+	case ND_CHAIN:
+		return "ND_CHAIN"
+	default:
+		return "AstNodeKind(" + fmt.Sprint(uint8(k)) + ")"
+	}
+}
 
 type AstNode struct {
 	Kind AstNodeKind // Node Kind

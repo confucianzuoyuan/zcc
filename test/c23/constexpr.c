@@ -28,7 +28,7 @@ void local_adr(int recur, const int *local_p, const int *static_p) {
 }
 
 int main() {
-  // DASSERT(ld == f * 2);
+  DASSERT(ld == f * 2);
   DASSERT(sizeof(arr0) == len * sizeof(typeof(arr0[0])));
 
   local_adr(0,NULL,NULL);
@@ -56,7 +56,7 @@ int main() {
   DASSERT(s.a.f == 22);
   DASSERT(s.w == 33);
   // DASSERT(s.x == -44);
-  // DASSERT(s.d == 55);
+  DASSERT(s.d == 55);
 
   printf("OK\n");
   return 0;

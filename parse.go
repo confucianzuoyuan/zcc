@@ -336,6 +336,7 @@ func (node *AstNode) isConstDouble(fval *FloatConst) bool {
 	}
 	evalRecover = &failed
 	v := evalDouble(node)
+	// println(node.Kind.String(), ": ", "cast from ", node.Lhs.Ty.String(), " to ", node.Ty.String(), "; ", v.String())
 	if fval != nil {
 		*fval = v
 	}
@@ -370,6 +371,19 @@ func newCast(expr *AstNode, ty *CType) *AstNode {
 	}
 	if opt_optimize {
 		if (ty.isInteger() && tmpNode.isConstExpr(&tmpNode.Value)) || (ty.isFloat() && tmpNode.isConstDouble(&tmpNode.FloatValue)) {
+			// s := ""
+			// if expr.FloatValue != nil {
+			// 	s += expr.FloatValue.String()
+			// } else {
+			// 	s += fmt.Sprintf("%d", expr.Value)
+			// }
+			// s += " to "
+			// if tmpNode.FloatValue != nil {
+			// 	s += tmpNode.FloatValue.String()
+			// } else {
+			// 	s += fmt.Sprintf("%d", tmpNode.Value)
+			// }
+			// println("cast from `" + expr.Ty.String() + "` to `" + ty.String() + "`; " + s)
 			expr.Kind = ND_NUM
 			expr.Value = tmpNode.Value
 			expr.FloatValue = tmpNode.FloatValue
@@ -1989,12 +2003,9 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 	}
 
 	if ty.Kind == TY_LDOUBLE {
-		val := evalDouble(newCast(init.Expr, TyLDouble)).ToInt8Slice()
-		copy((*buf)[offset:offset+int64(len(val))], val)
-		return cur
-	}
-
-	if ty.Kind == TY_DOUBLE {
+		val := evalDouble(newCast(init.Expr, TyLDouble))
+		val = val.ToFloat80()
+		copy((*buf)[offset:offset+int64(len(val.ToInt8Slice()))], val.ToInt8Slice())
 		return cur
 	}
 
@@ -2500,6 +2511,9 @@ func evalDouble(node *AstNode) FloatConst {
 			if node.Ty.Size == 4 {
 				return FloatConst64{float64(evalDouble(node.Lhs).ToFloat32())}
 			}
+			if node.Lhs.Ty.Kind == TY_LDOUBLE && node.Ty.Kind == TY_DOUBLE {
+				return FloatConst64{evalDouble(node.Lhs).ToFloat64()}
+			}
 			return evalDouble(node.Lhs)
 		}
 		// bug here
@@ -2523,6 +2537,10 @@ func evalDouble(node *AstNode) FloatConst {
 	}
 
 	if node.Kind == ND_VAR && node.Variable.ConstExprData != nil {
+		// for i := 0; i < len(node.Variable.ConstExprData); i++ {
+		// 	print(node.Variable.ConstExprData[i], " ")
+		// }
+		// println()
 		return readDoubleBuf(&node.Variable.ConstExprData, node.Variable.Ty)
 	}
 

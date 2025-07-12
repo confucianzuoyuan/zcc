@@ -52,33 +52,32 @@ type CType struct {
 	IsVariadic bool
 }
 
-func (t *CType) print() {
+func (t *CType) String() string {
 	switch t.Kind {
 	case TY_VOID:
-		println("void")
+		return "void"
 	case TY_ARRAY:
-		println("array")
+		return "array"
 	case TY_BOOL:
-		println("bool")
+		return "bool"
 	case TY_CHAR:
-		println("char")
+		return "char"
 	case TY_FLOAT:
-		println("float")
+		return "float"
 	case TY_DOUBLE:
-		println("double")
+		return "double"
 	case TY_LDOUBLE:
-		println("long double")
+		return "long double"
 	case TY_LONG:
-		println("long")
+		return "long"
 	case TY_LONGLONG:
-		println("long long")
+		return "long long"
 	case TY_PTR:
-		print("ptr to ")
-		t.Base.print()
+		return "ptr to " + t.Base.String()
 	case TY_INT:
-		println("int")
+		return "int"
 	default:
-		println("unknown type", t.Kind)
+		return "unknown type"
 	}
 }
 
