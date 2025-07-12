@@ -55,7 +55,7 @@ int main() {
   DASSERT(s.c == 11);
   DASSERT(s.a.f == 22);
   DASSERT(s.w == 33);
-  // DASSERT(s.x == -44);
+  DASSERT(s.x == -44);
   DASSERT(s.d == 55);
 
   printf("OK\n");

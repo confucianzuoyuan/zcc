@@ -2831,7 +2831,7 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 				if node.Ty.IsUnsigned {
 					return int64(uint64(val) >> (64 - node.Member.BitWidth))
 				}
-				return int64(val >> (64 - node.Member.BitWidth))
+				return int64(val) >> (64 - node.Member.BitWidth)
 			}
 
 			return int64(val)
