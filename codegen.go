@@ -7,6 +7,18 @@ import (
 	"math/big"
 )
 
+type CodeGenneratorContext struct {
+	CurrentFunction      *Obj
+	LocalVariablePointer string
+	VaGpStart            int64
+	VaFpStart            int64
+	VaStStart            int64
+	VlaBaseOffset        int64
+	ReturnPointerOffset  int64
+}
+
+var cgCtx = CodeGenneratorContext{}
+
 const FP_MAX = 8
 const GP_MAX = 6
 const GP_SLOTS = 6
@@ -39,14 +51,10 @@ var tmpreg64 = [6]string{"%rdi", "%rsi", "%r8", "%r9", "%r10", "%r11"}
 
 var LabelCount int = 1
 
-var currentFn *Obj
-
 var DontReuseStack bool
 
 var FileNoInCg int
 var LineNoInCg int
-
-var LocalVarPointer string
 
 func printLoc(tok *Token) {
 	if FileNoInCg == tok.DisplayFileNo && LineNoInCg == tok.DisplayLineNo {
@@ -80,6 +88,7 @@ type TmpStack struct {
 	Capacity int
 	Depth    int
 	Bottom   int
+	Base     int
 }
 
 var tmpStack = TmpStack{}
@@ -127,7 +136,7 @@ func popTmpStack() *Slot {
 			tmpStack.Bottom += 8
 			sl.StOffset = -int64(tmpStack.Bottom)
 		} else {
-			bottom := currentFn.LocalVarStackSize + (sl.StDepth+1)*8
+			bottom := int64(tmpStack.Base) + (sl.StDepth+1)*8
 			tmpStack.Bottom = int(math.Max(float64(tmpStack.Bottom), float64(bottom)))
 			sl.StOffset = -bottom
 		}
@@ -182,8 +191,8 @@ func pop2(sl *Slot, isR64 bool, arg string) {
 		printlnToFile("  mov %s, %s", reg, arg)
 		return
 	}
-	instructionLine("  mov %s, %d(%s)", int(sl.Location), ax, sl.StOffset, LocalVarPointer)
-	printlnToFile("  mov %d(%s), %s", sl.StOffset, LocalVarPointer, arg)
+	instructionLine("  mov %s, %d(%s)", int(sl.Location), ax, sl.StOffset, cgCtx.LocalVariablePointer)
+	printlnToFile("  mov %d(%s), %s", sl.StOffset, cgCtx.LocalVariablePointer, arg)
 }
 
 func pop(arg string) {
@@ -239,8 +248,8 @@ func popFloatInReg(isXMM64 bool) int {
 		instructionLine("  %s %%xmm0, %%xmm%d", int(sl.Location), mv, sl.FpDepth+2)
 		return int(sl.FpDepth) + 2
 	}
-	instructionLine("  %s %%xmm0, %d(%s)", int(sl.Location), mv, sl.StOffset, LocalVarPointer)
-	printlnToFile("  %s %d(%s), %%xmm1", mv, sl.StOffset, LocalVarPointer)
+	instructionLine("  %s %%xmm0, %d(%s)", int(sl.Location), mv, sl.StOffset, cgCtx.LocalVariablePointer)
+	printlnToFile("  %s %d(%s), %%xmm1", mv, sl.StOffset, cgCtx.LocalVariablePointer)
 	return 1
 }
 
@@ -494,7 +503,7 @@ func (v *Obj) copyReturnBuffer() {
 }
 
 func copyStructReg() {
-	ty := currentFn.Ty.ReturnType
+	ty := cgCtx.CurrentFunction.Ty.ReturnType
 	gp := 0
 	fp := 0
 	sptr := "%rax"
@@ -533,10 +542,9 @@ func copyStructReg() {
 }
 
 func copyStructMem() {
-	ty := currentFn.Ty.ReturnType
-	v := currentFn.Ty.ParamList
+	ty := cgCtx.CurrentFunction.Ty.ReturnType
 
-	printlnToFile("  mov %d(%s), %%rcx", v.Offset, v.Pointer)
+	printlnToFile("  mov -%d(%s), %%rcx", cgCtx.ReturnPointerOffset, cgCtx.LocalVariablePointer)
 	genMemCopy(0, "%rax", 0, "%rcx", int(ty.Size))
 	printlnToFile("  mov %%rcx, %%rax")
 }
@@ -1815,12 +1823,11 @@ func genExpr(node *AstNode) {
 		return
 	case ND_VA_START:
 		genExpr(node.Lhs)
-		fn := currentFn
-		printlnToFile("  movl $%d, (%%rax)", fn.VaGpOffset)
-		printlnToFile("  movl $%d, 4(%%rax)", fn.VaFpOffset)
-		printlnToFile("  lea %d(%%rbp), %%rdx", fn.VaStOffset)
+		printlnToFile("  movl $%d, (%%rax)", cgCtx.VaGpStart)
+		printlnToFile("  movl $%d, 4(%%rax)", cgCtx.VaFpStart)
+		printlnToFile("  lea %d(%%rbp), %%rdx", cgCtx.VaStStart)
 		printlnToFile("  movq %%rdx, 8(%%rax)")
-		printlnToFile("  lea %d(%s), %%rdx", fn.VaArea.Offset, fn.VaArea.Pointer)
+		printlnToFile("  lea -176(%s), %%rdx", cgCtx.LocalVariablePointer)
 		printlnToFile("  movq %%rdx, 16(%%rax)")
 		return
 	case ND_VA_COPY:
@@ -2414,64 +2421,26 @@ func genStmt(node *AstNode) {
 	errorTok(node.Tok, "invalid statement")
 }
 
-func calcStackAlign(sc *Scope, align *int64) {
+func getLocalVariableAlign(sc *Scope, align int64) int64 {
 	for v := sc.Locals; v != nil; v = v.Next {
-		if v.Offset != 0 {
+		if v.PassByStack {
 			continue
 		}
-		*align = int64(math.Max(float64(*align), float64(v.Align)))
+		align = int64(math.Max(float64(align), float64(v.Align)))
 	}
 
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
-		calcStackAlign(sub, align)
+		align = int64(math.Max(float64(align), float64(getLocalVariableAlign(sub, align))))
 	}
+
+	return align
 }
 
-// Assign offsets to local variables.
-func assignLocalVariableOffsets(prog *Obj) {
-	for fn := prog; fn != nil; fn = fn.Next {
-		if !fn.IsFunction || !fn.IsDefinition {
-			continue
-		}
-
-		if fn.LargeRtn != nil {
-			fn.LargeRtn.ParamNext = fn.Ty.ParamList
-			fn.Ty.ParamList = fn.LargeRtn
-		}
-
-		// If a function has many parameters, some parameters are
-		// inevitably passed by stack rather than by register.
-		// The first passed-by-stack parameter resides at RBP+16.
-		var top int64 = 16
-
-		callingConvention(fn.Ty.ParamList, 0, nil, nil, nil)
-
-		// Assign offsets to pass-by-stack parameters.
-		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
-			if !v.PassByStack {
-				continue
-			}
-
-			v.Offset = v.StackOffset + top
-			v.Pointer = "%rbp"
-		}
-
-		stAlign := int64(16)
-		calcStackAlign(fn.Ty.Scopes, &stAlign)
-		fn.StackAlign = stAlign
-
-		lvarPtr := "%rbp"
-		if fn.StackAlign > 16 {
-			lvarPtr = "%rbx"
-		}
-
-		fn.LocalVarStackSize = int64(assignLocalVariableOffsets2(fn.Ty.Scopes, 0, lvarPtr))
-	}
-}
-
-func assignLocalVariableOffsets2(sc *Scope, bottom int, ptr string) int {
+func assignLocalVariableOffsets(sc *Scope, bottom int) int {
 	for v := sc.Locals; v != nil; v = v.Next {
-		if v.Offset != 0 {
+		if v.PassByStack {
+			v.Offset = v.StackOffset + 16
+			v.Pointer = "%rbp"
 			continue
 		}
 
@@ -2487,12 +2456,12 @@ func assignLocalVariableOffsets2(sc *Scope, bottom int, ptr string) int {
 		bottom += int(v.Ty.Size)
 		bottom = int(alignTo(int64(bottom), align))
 		v.Offset = -int64(bottom)
-		v.Pointer = ptr
+		v.Pointer = cgCtx.LocalVariablePointer
 	}
 
 	maxDepth := bottom
 	for sub := sc.Children; sub != nil; sub = sub.SiblingNext {
-		subDepth := assignLocalVariableOffsets2(sub, bottom, ptr)
+		subDepth := assignLocalVariableOffsets(sub, bottom)
 		if DontReuseStack {
 			maxDepth = subDepth
 			bottom = subDepth
@@ -2521,15 +2490,14 @@ func builtin_alloca(node *AstNode) {
 }
 
 func dealloc_vla(node *AstNode) {
-	if currentFn.VlaBase == nil || node.TopVLA == node.TargetVLA {
+	if !cgCtx.CurrentFunction.DeallocVLA || node.TopVLA == node.TargetVLA {
 		return
 	}
-
-	vla := currentFn.VlaBase
 	if node.TargetVLA != nil {
-		vla = node.TargetVLA
+		printlnToFile("  mov %d(%s), %%rsp", node.TargetVLA.Offset, node.TargetVLA.Pointer)
+	} else {
+		printlnToFile("  mov -%d(%s), %%rsp", cgCtx.VlaBaseOffset, cgCtx.LocalVariablePointer)
 	}
-	printlnToFile("  mov %d(%s), %%rsp", vla.Offset, vla.Pointer)
 }
 
 func emitData(prog *Obj) {
@@ -2630,63 +2598,108 @@ func emitText(prog *Obj) {
 		}
 		printlnToFile("  .type \"%s\", @function", fn.Name)
 		printlnToFile("\"%s\":", fn.Name)
-		currentFn = fn
-		tmpStack.Bottom = int(fn.LocalVarStackSize)
 
-		useRBX := fn.StackAlign > 16
-		LocalVarPointer = "%rbp"
-		if useRBX {
-			LocalVarPointer = "%rbx"
+		largeReturn := fn.Ty.ReturnType.Size > 16
+		gpCount := 0
+		fpCount := 0
+		argsSize := callingConvention(fn.Ty.ParamList, int64(boolToInt(largeReturn)), &gpCount, &fpCount, nil)
+
+		localVariableAlign := getLocalVariableAlign(fn.Ty.Scopes, 16)
+		cgCtx.LocalVariablePointer = "%rbp"
+		if localVariableAlign > 16 {
+			cgCtx.LocalVariablePointer = "%rbx"
 		}
+		cgCtx.CurrentFunction = fn
 
 		// Prologue
 		printlnToFile("  push %%rbp")
 		printlnToFile("  mov %%rsp, %%rbp")
-		if useRBX {
+		if localVariableAlign > 16 {
 			printlnToFile("  push %%rbx")
-			printlnToFile("  and $-%d, %%rsp", fn.StackAlign)
+			printlnToFile("  and $-%d, %%rsp", localVariableAlign)
 			printlnToFile("  mov %%rsp, %%rbx")
 		}
 
 		stackAllocLocation := reservedLine()
-		if fn.VlaBase != nil {
-			printlnToFile("  mov %%rsp, %d(%s)", fn.VlaBase.Offset, fn.VlaBase.Pointer)
-		}
+
+		localVariableStack := 0
 
 		// Save arg registers if function is variadic
-		if fn.VaArea != nil {
-			gp := 0
-			fp := 0
-			stack := callingConvention(fn.Ty.ParamList, 0, &gp, &fp, nil)
-			fn.VaGpOffset = int64(gp) * 8
-			fn.VaFpOffset = int64(fp)*16 + 48
-			fn.VaStOffset = int64(stack) + 16
+		if fn.Ty.IsVariadic {
+			cgCtx.VaGpStart = int64(gpCount) * 8
+			cgCtx.VaFpStart = int64(fpCount)*16 + 48
+			cgCtx.VaStStart = argsSize + 16
+			localVariableStack = 176
 
-			off := fn.VaArea.Offset
-			ptr := LocalVarPointer
+			switch gpCount {
+			case 0:
+				printlnToFile("  movq %%rdi, -176(%s)", cgCtx.LocalVariablePointer)
+				fallthrough
+			case 1:
+				printlnToFile("  movq %%rsi, -168(%s)", cgCtx.LocalVariablePointer)
+				fallthrough
+			case 2:
+				printlnToFile("  movq %%rdx, -160(%s)", cgCtx.LocalVariablePointer)
+				fallthrough
+			case 3:
+				printlnToFile("  movq %%rcx, -152(%s)", cgCtx.LocalVariablePointer)
+				fallthrough
+			case 4:
+				printlnToFile("  movq %%r8, -144(%s)", cgCtx.LocalVariablePointer)
+				fallthrough
+			case 5:
+				printlnToFile("  movq %%r9, -136(%s)", cgCtx.LocalVariablePointer)
+			}
 
-			//__reg_save_area__
-			printlnToFile("  movq %%rdi, %d(%s)", off, ptr)
-			printlnToFile("  movq %%rsi, %d(%s)", off+8, ptr)
-			printlnToFile("  movq %%rdx, %d(%s)", off+16, ptr)
-			printlnToFile("  movq %%rcx, %d(%s)", off+24, ptr)
-			printlnToFile("  movq %%r8, %d(%s)", off+32, ptr)
-			printlnToFile("  movq %%r9, %d(%s)", off+40, ptr)
-			printlnToFile("  test %%al, %%al")
-			printlnToFile("  je 1f")
-			printlnToFile("  movups %%xmm0, %d(%s)", off+48, ptr)
-			printlnToFile("  movups %%xmm1, %d(%s)", off+64, ptr)
-			printlnToFile("  movups %%xmm2, %d(%s)", off+80, ptr)
-			printlnToFile("  movups %%xmm3, %d(%s)", off+96, ptr)
-			printlnToFile("  movups %%xmm4, %d(%s)", off+112, ptr)
-			printlnToFile("  movups %%xmm5, %d(%s)", off+128, ptr)
-			printlnToFile("  movups %%xmm6, %d(%s)", off+144, ptr)
-			printlnToFile("  movups %%xmm7, %d(%s)", off+160, ptr)
-			printlnToFile("1:")
+			if fpCount < 8 {
+				printlnToFile("  test %%al, %%al")
+				printlnToFile("  je 1f")
+				switch fpCount {
+				case 0:
+					printlnToFile("  movaps %%xmm0, -128(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 1:
+					printlnToFile("  movaps %%xmm1, -112(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 2:
+					printlnToFile("  movaps %%xmm2, -96(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 3:
+					printlnToFile("  movaps %%xmm3, -80(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 4:
+					printlnToFile("  movaps %%xmm4, -64(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 5:
+					printlnToFile("  movaps %%xmm5, -48(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 6:
+					printlnToFile("  movaps %%xmm6, -32(%s)", cgCtx.LocalVariablePointer)
+					fallthrough
+				case 7:
+					printlnToFile("  movaps %%xmm7, -16(%s)", cgCtx.LocalVariablePointer)
+				}
+				printlnToFile("1:")
+			}
 		}
 
+		if fn.DeallocVLA {
+			localVariableStack += 8
+			cgCtx.VlaBaseOffset = int64(localVariableStack)
+			printlnToFile("  mov %%rsp, -%d(%s)", cgCtx.VlaBaseOffset, cgCtx.LocalVariablePointer)
+		}
+
+		if largeReturn {
+			localVariableStack += 8
+			cgCtx.ReturnPointerOffset = int64(localVariableStack)
+			printlnToFile("  mov %s, -%d(%s)", argreg64[0], cgCtx.ReturnPointerOffset, cgCtx.LocalVariablePointer)
+		}
+
+		tmpStack.Bottom = assignLocalVariableOffsets(fn.Ty.Scopes, localVariableStack)
+		tmpStack.Base = tmpStack.Bottom
+
 		// Save passed-by-register arguments to the stack
-		gp := 0
+		gp := boolToInt(largeReturn)
 		fp := 0
 		for v := fn.Ty.ParamList; v != nil; v = v.ParamNext {
 			if v.PassByStack {
@@ -2745,7 +2758,7 @@ func emitText(prog *Obj) {
 
 		// Epilogue
 		printlnToFile("9:")
-		if useRBX {
+		if localVariableAlign > 16 {
 			printlnToFile("  mov -8(%%rbp), %%rbx")
 		}
 		printlnToFile("  leave")
@@ -2763,7 +2776,6 @@ func codegen(prog *Obj, out *[]string) {
 		}
 	}
 
-	assignLocalVariableOffsets(prog)
 	emitData(prog)
 	emitText(prog)
 	printlnToFile("  .section  .note.GNU-stack,\"\",@progbits")

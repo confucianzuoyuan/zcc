@@ -31,16 +31,9 @@ type Obj struct {
 	ConstExprData []int8
 
 	// Function
-	IsInline          bool
-	LargeRtn          *Obj
-	Body              *AstNode
-	VaArea            *Obj // Variable argument area
-	VaGpOffset        int64
-	VaFpOffset        int64
-	VaStOffset        int64
-	VlaBase           *Obj
-	StackAlign        int64
-	LocalVarStackSize int64
+	IsInline   bool
+	DeallocVLA bool
+	Body       *AstNode
 
 	// Static inline function
 	IsLive bool

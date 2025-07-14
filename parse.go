@@ -1666,6 +1666,10 @@ func structRef(node *AstNode, tok *Token) *AstNode {
 // func-params = ("void" | param ("," param)* ("," "...")?)? ")"
 // param       = declspec declarator
 func funcParams(rest **Token, tok *Token, ty *CType) *CType {
+	if ty.Base != nil && ty.Kind != TY_PTR {
+		errorTok(tok, "function return type cannot be array")
+	}
+
 	if tok.isEqual("void") && consume(rest, tok.Next, ")") {
 		return funcType(ty)
 	}
@@ -4094,17 +4098,6 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr, name *To
 		ty.Scopes = scope
 	}
 
-	// A buffer for a struct/union return value is passed
-	// as the hidden first parameter.
-	rty := ty.ReturnType
-	if (rty.Kind == TY_STRUCT || rty.Kind == TY_UNION) && rty.Size > 16 {
-		fn.LargeRtn = newLocalVar("", pointerTo(rty))
-	}
-
-	if ty.IsVariadic {
-		fn.VaArea = newLocalVar("", arrayOf(TyPChar, 176))
-	}
-
 	fn.Body = compoundStmt(rest, tok.Next, ND_BLOCK)
 	if ty.VlaCalc != nil {
 		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
@@ -4113,7 +4106,7 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr, name *To
 	}
 
 	if FnUseVLA && !DontDeallocVLA && !DontReuseStack {
-		fn.VlaBase = newLocalVar("", pointerTo(TyChar))
+		fn.DeallocVLA = true
 	}
 
 	leaveScope()
