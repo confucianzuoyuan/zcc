@@ -1455,10 +1455,10 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-func attributePacked(tok *Token, ty *CType, noBAttr bool) {
+func attributePacked(tok *Token, ty *CType, AllowBAttr bool) {
 	for lst := tok.AttrNext; lst != nil; lst = lst.AttrNext {
 		if lst.isEqual("packed") || lst.isEqual("__packed__") {
-			if noBAttr && lst.Kind == TK_BATTR {
+			if !AllowBAttr && lst.Kind == TK_BATTR {
 				continue
 			}
 			ty.IsPacked = true
@@ -1470,7 +1470,7 @@ func attributePacked(tok *Token, ty *CType, noBAttr bool) {
 // struct-union-decl = attribute? ident? ("{" struct-members)?
 func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 	ty := structType()
-	attributePacked(tok, ty, false)
+	attributePacked(tok, ty, true)
 
 	// Read a struct tag.
 	var tag *Token = nil
@@ -1497,7 +1497,7 @@ func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 
 	// Construct a struct object.
 	structMembers(&tok, tok, ty)
-	attributePacked(tok, ty, true)
+	attributePacked(tok, ty, false)
 	*rest = tok
 
 	if tag != nil {
@@ -1530,21 +1530,25 @@ func structDecl(rest **Token, tok *Token) *CType {
 	cur := &head
 
 	for mem := ty.Members; mem != nil; mem = mem.Next {
-		sz := mem.Ty.Size
 		if mem.IsBitfield && mem.BitWidth == 0 {
 			// Zero-width anonymous bitfield has a special meaning.
 			// It affects only alignment.
 			bits = alignTo(bits, mem.Ty.Size*8)
 		} else if mem.IsBitfield {
-			if bits/(sz*8) != (bits+mem.BitWidth-1)/(sz*8) {
-				bits = alignTo(bits, sz*8)
+			sz := mem.Ty.Size
+			if !ty.IsPacked {
+				if bits/(sz*8) != (bits+mem.BitWidth-1)/(sz*8) {
+					bits = alignTo(bits, sz*8)
+				}
 			}
 
 			mem.Offset = alignDown(bits/8, sz)
 			mem.BitOffset = bits % (sz * 8)
 			bits += mem.BitWidth
 		} else {
-			if !ty.IsPacked {
+			if ty.IsPacked {
+				bits = alignTo(bits, 8)
+			} else {
 				bits = alignTo(bits, mem.Align*8)
 			}
 			mem.Offset = bits / 8
@@ -1555,8 +1559,8 @@ func structDecl(rest **Token, tok *Token) *CType {
 			continue
 		}
 
-		if !ty.IsPacked && ty.Align < mem.Align {
-			ty.Align = mem.Align
+		if !ty.IsPacked {
+			ty.Align = int64(math.Max(float64(ty.Align), float64(mem.Align)))
 		}
 
 		cur.Next = mem
@@ -1565,7 +1569,11 @@ func structDecl(rest **Token, tok *Token) *CType {
 
 	cur.Next = nil
 	ty.Members = head.Next
-	ty.Size = alignTo(bits, ty.Align*8) / 8
+	if ty.IsPacked {
+		ty.Size = alignTo(bits, 8) / 8
+	} else {
+		ty.Size = alignTo(bits, ty.Align*8) / 8
+	}
 	return ty
 }
 
@@ -1596,8 +1604,8 @@ func unionDecl(rest **Token, tok *Token) *CType {
 			continue
 		}
 
-		if ty.Align < mem.Ty.Align {
-			ty.Align = mem.Align
+		if !ty.IsPacked {
+			ty.Align = int64(math.Max(float64(ty.Align), float64(mem.Align)))
 		}
 
 		cur.Next = mem
