@@ -462,47 +462,23 @@ func (v *Obj) copyReturnBuffer() {
 	gp := 0
 	fp := 0
 
-	if ty.hasFloatNumber1() {
-		if !(ty.Size == 4 || 8 <= ty.Size) {
-			panic("")
-		}
-		if ty.Size == 4 {
-			printlnToFile("  movss %%xmm0, %d(%s)", v.Offset, v.Pointer)
-		} else {
-			printlnToFile("  movsd %%xmm0, %d(%s)", v.Offset, v.Pointer)
-		}
-		fp += 1
-	} else {
-		for i := int64(0); i < int64(math.Min(8, float64(ty.Size))); i += 1 {
-			printlnToFile("  mov %%al, %d(%s)", v.Offset+i, v.Pointer)
-			printlnToFile("  shr $8, %%rax")
-		}
-		gp += 1
-	}
-
-	if ty.Size > 8 {
-		if ty.hasFloatNumber2() {
-			if !(ty.Size == 12 || ty.Size == 16) {
-				panic("")
-			}
-
-			if ty.Size == 12 {
-				printlnToFile("  movss %%xmm%d, %d(%s)", fp, v.Offset+8, v.Pointer)
+	for ofs := int64(0); ofs < ty.Size; ofs += 8 {
+		chunkSize := math.Min(float64(8), float64(ty.Size-ofs))
+		if (ofs == 0 && ty.hasFloatNumber1()) || (ofs != 0 && ty.hasFloatNumber2()) {
+			if chunkSize == 4 {
+				printlnToFile("  movss %%xmm%d, %d(%s)", fp, ofs+v.Offset, v.Pointer)
 			} else {
-				printlnToFile("  movsd %%xmm%d, %d(%s)", fp, v.Offset+8, v.Pointer)
+				printlnToFile("  movsd %%xmm%d, %d(%s)", fp, ofs+v.Offset, v.Pointer)
 			}
-		} else {
-			reg1 := "%al"
-			reg2 := "%rax"
-			if gp != 0 {
-				reg1 = "%dl"
-				reg2 = "%rdx"
-			}
-			for i := int64(8); i < int64(math.Min(16, float64(ty.Size))); i += 1 {
-				printlnToFile("  mov %s, %d(%s)", reg1, v.Offset+i, v.Pointer)
-				printlnToFile("  shr $8, %s", reg2)
-			}
+			fp++
+			continue
 		}
+		if gp == 0 {
+			storeGp2([]string{regAX(1), regAX(2), regAX(4), regAX(8)}, int64(chunkSize), ofs+v.Offset, v.Pointer)
+		} else {
+			storeGp2([]string{regDX(1), regDX(2), regDX(4), regDX(8)}, int64(chunkSize), ofs+v.Offset, v.Pointer)
+		}
+		gp++
 	}
 }
 
@@ -510,52 +486,38 @@ func copyStructReg() {
 	ty := currentFn.Ty.ReturnType
 	gp := 0
 	fp := 0
+	sptr := "%rax"
 
-	printlnToFile("  mov %%rax, %%rcx")
+	for ofs := int64(0); ofs < ty.Size; ofs += 8 {
+		chunkSize := math.Min(float64(8), float64(ty.Size-ofs))
 
-	if ty.hasFloatNumber1() {
-		if !(ty.Size == 4 || 8 <= ty.Size) {
-			panic("")
-		}
-		if ty.Size == 4 {
-			printlnToFile("  movss (%%rcx), %%xmm0")
-		} else {
-			printlnToFile("  movsd (%%rcx), %%xmm0")
-		}
-		fp += 1
-	} else {
-		printlnToFile("  mov $0, %%rax")
-		for i := int64(math.Min(8, float64(ty.Size))) - 1; i >= 0; i -= 1 {
-			printlnToFile("  shl $8, %%rax")
-			printlnToFile("  mov %d(%%rcx), %%al", i)
-		}
-		gp += 1
-	}
-
-	if ty.Size > 8 {
-		if ty.hasFloatNumber2() {
-			if !(ty.Size == 12 || ty.Size == 16) {
-				panic("type size must be 12 or 16")
-			}
-
-			if ty.Size == 12 {
-				printlnToFile("  movss 8(%%rcx), %%xmm%d", fp)
+		if (ofs == 0 && ty.hasFloatNumber1()) || (ofs != 0 && ty.hasFloatNumber2()) {
+			if chunkSize == 4 {
+				printlnToFile("  movss %d(%s), %%xmm%d", ofs, sptr, fp)
 			} else {
-				printlnToFile("  movsd 8(%%rcx), %%xmm%d", fp)
+				printlnToFile("  movsd %d(%s), %%xmm%d", ofs, sptr, fp)
 			}
-		} else {
-			reg1 := "%al"
-			reg2 := "%rax"
-			if gp != 0 {
-				reg1 = "%dl"
-				reg2 = "%rdx"
-			}
-			printlnToFile("  mov $0, %s", reg2)
-			for i := int64(math.Min(16, float64(ty.Size))) - 1; i >= 8; i -= 1 {
-				printlnToFile("  shl $8, %s", reg2)
-				printlnToFile("  mov %d(%%rcx), %s", i, reg1)
-			}
+			fp++
+			continue
 		}
+		if gp == 0 {
+			printlnToFile("  mov %%rax, %%rcx")
+			sptr = "%rcx"
+		}
+		regsz := 1
+		if chunkSize > 4 {
+			regsz = 8
+		} else if chunkSize > 2 {
+			regsz = 4
+		} else if chunkSize > 1 {
+			regsz = 2
+		}
+		if gp == 0 {
+			printlnToFile("  mov %d(%%rcx), %s", ofs, regAX(regsz))
+		} else {
+			printlnToFile("  mov %d(%%rcx), %s", ofs, regDX(regsz))
+		}
+		gp++
 	}
 }
 
@@ -618,28 +580,26 @@ func alignTo(n int64, align int64) int64 {
 }
 
 func genVaArgRegCopy(ty *CType, v *Obj) {
-	regClass := []bool{!ty.hasFloatNumber1(), !ty.hasFloatNumber2()}
-
-	gpInc := boolToInt(regClass[0]) + boolToInt(regClass[1])
+	gpInc := boolToInt(!ty.hasFloatNumber1()) + boolToInt(!ty.hasFloatNumber2())
 	if gpInc > 0 {
 		printlnToFile("  cmpl $%d, (%%rax)", 48-gpInc*8)
 		printlnToFile("  ja 1f")
 	}
-	fpInc := boolToInt(!regClass[0]) + boolToInt(!regClass[1])
+	fpInc := boolToInt(ty.hasFloatNumber1()) + boolToInt(ty.hasFloatNumber2())
 	printlnToFile("  cmpl $%d, 4(%%rax)", 176-fpInc*16)
 	printlnToFile("  ja 1f")
 
-	for i := int64(0); i < 2; i++ {
-		if regClass[i] {
-			printlnToFile("  movl (%%rax), %%ecx")   // gp_offset
-			printlnToFile("  addq 16(%%rax), %%rcx") // reg_save_area
-			printlnToFile("  addq $8, (%%rax)")
-		} else {
+	for ofs := int64(0); ofs < ty.Size; ofs += 8 {
+		if (ofs == 0 && ty.hasFloatNumber1()) || (ofs != 0 && ty.hasFloatNumber2()) {
 			printlnToFile("  movl 4(%%rax), %%ecx")  // fp_offset
 			printlnToFile("  addq 16(%%rax), %%rcx") // reg_save_area
 			printlnToFile("  addq $16, 4(%%rax)")
+		} else {
+			printlnToFile("  movl (%%rax), %%ecx")   // gp_offset
+			printlnToFile("  addq 16(%%rax), %%rcx") // reg_save_area
+			printlnToFile("  addq $8, (%%rax)")
 		}
-		genMemCopy(0, "%rcx", int(i*8+v.Offset), v.Pointer, int(math.Min(float64(ty.Size-i*8), 8)))
+		genMemCopy(0, "%rcx", int(ofs+v.Offset), v.Pointer, int(math.Min(float64(8), float64(ty.Size-ofs))))
 	}
 	printlnToFile("  lea %d(%s), %%rdx", v.Offset, v.Pointer)
 }
@@ -1023,27 +983,34 @@ func storeFp(r int, sz int64, offset int64, ptr string) {
 	panic("unreachable")
 }
 
-func storeGp(r int, sz int64, offset int64, ptr string) {
-	switch sz {
-	case 1:
-		printlnToFile("  mov %s, %d(%s)", argreg8[r], offset, ptr)
-		return
-	case 2:
-		printlnToFile("  mov %s, %d(%s)", argreg16[r], offset, ptr)
-		return
-	case 4:
-		printlnToFile("  mov %s, %d(%s)", argreg32[r], offset, ptr)
-		return
-	case 8:
-		printlnToFile("  mov %s, %d(%s)", argreg64[r], offset, ptr)
-		return
-	default:
-		for i := int64(0); i < sz; i += 1 {
-			printlnToFile("  mov %s, %d(%s)", argreg8[r], offset+i, ptr)
-			printlnToFile("  shr $8, %s", argreg64[r])
+func storeGp2(reg []string, sz int64, dofs int64, dptr string) {
+	for ofs := int64(0); ; {
+		rem := sz - ofs
+		p2 := int64(0)
+		if rem >= 8 {
+			p2 = 8
+			printlnToFile("  mov %s, %d(%s)", reg[3], ofs+dofs, dptr)
+		} else if rem >= 4 {
+			p2 = 4
+			printlnToFile("  mov %s, %d(%s)", reg[2], ofs+dofs, dptr)
+		} else if rem >= 2 {
+			p2 = 2
+			printlnToFile("  mov %s, %d(%s)", reg[1], ofs+dofs, dptr)
+		} else {
+			p2 = 1
+			printlnToFile("  mov %s, %d(%s)", reg[0], ofs+dofs, dptr)
 		}
-		return
+
+		ofs += p2
+		if ofs >= sz {
+			return
+		}
+		printlnToFile("  shr $%d, %s", p2*8, reg[3])
 	}
+}
+
+func storeGp(r int, sz int64, offset int64, ptr string) {
+	storeGp2([]string{argreg8[r], argreg16[r], argreg32[r], argreg64[r]}, sz, offset, ptr)
 }
 
 func genMemCopy(sofs int, sptr string, dofs int, dptr string, sz int) {
