@@ -97,11 +97,10 @@ type Token struct {
 	File              *File // Source location
 	DisplayLineNo     int
 	DisplayFileNo     int
-	LineNo            int  // Line number
-	AtBeginningOfLine bool // True if this token is at beginning of line
-	HasSpace          bool // True if this token follows a space character
-	DontExpand        bool // True if a macro token is encountered during the macro's expansion
-	IsHiddenAttr      bool
+	LineNo            int    // Line number
+	AtBeginningOfLine bool   // True if this token is at beginning of line
+	HasSpace          bool   // True if this token follows a space character
+	DontExpand        bool   // True if a macro token is encountered during the macro's expansion
 	Origin            *Token // If this is expanded from a macro, the original token
 	GuardFile         string // The path of a potentially include-guarded file
 	AttrNext          *Token

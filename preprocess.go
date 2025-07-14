@@ -683,7 +683,7 @@ func pragmaMacro(start *Token) *Token {
 	return hash
 }
 
-func filterAttr(tok *Token, lst *Token, isHidden bool, isBracket bool) {
+func filterAttr(tok *Token, lst **Token, isBracket bool) {
 	first := true
 	for ; tok.Kind != TK_EOF; first = false {
 		if !first {
@@ -698,14 +698,14 @@ func filterAttr(tok *Token, lst *Token, isHidden bool, isBracket bool) {
 			}
 			if isSupportedAttr(&vendor, tok) != 0 {
 				tok.Kind = TK_BATTR
-				lst.AttrNext = tok
-				lst = lst.AttrNext
+				(*lst).AttrNext = tok
+				*lst = (*lst).AttrNext
 			}
 		} else {
 			if isSupportedAttr(nil, tok) != 0 {
 				tok.Kind = TK_ATTR
-				lst.AttrNext = tok
-				lst = lst.AttrNext
+				(*lst).AttrNext = tok
+				*lst = (*lst).AttrNext
 			}
 		}
 
@@ -754,16 +754,17 @@ func preprocess3(tok *Token) *Token {
 	head := Token{}
 	cur := &head
 
-	for tok.Kind != TK_EOF {
-		if tok.isEqual("__attribute__") {
-			isHidden := tok.IsHiddenAttr
+	attrHead := Token{}
+	attrCur := &attrHead
 
+	for tok.Kind != TK_EOF {
+		if tok.isEqual("__attribute__") || tok.isEqual("__attribute") {
 			tok = skip(tok.Next, "(")
 			tok = skip(tok, "(")
 			list := splitParen(&tok, tok)
 			tok = skip(tok, ")")
 
-			filterAttr(list, tok, isHidden, false)
+			filterAttr(list, &attrCur, false)
 			continue
 		}
 
@@ -771,7 +772,7 @@ func preprocess3(tok *Token) *Token {
 			list := splitBracket(&tok, tok)
 			tok = skip(tok, "]")
 
-			filterAttr(list, tok, false, true)
+			filterAttr(list, &attrCur, true)
 			continue
 		}
 
@@ -782,6 +783,10 @@ func preprocess3(tok *Token) *Token {
 		if tok.Kind == TK_STR && tok.Next.Kind == TK_STR {
 			joinAdjacentStringLiterals(tok)
 		}
+
+		tok.AttrNext = attrHead.AttrNext
+		attrHead.AttrNext = nil
+		attrCur = &attrHead
 
 		cur.Next = tok
 		cur = cur.Next
@@ -1135,7 +1140,6 @@ func expandMacro(rest **Token, tok *Token) bool {
 	if !m.IsObjlike && m.Body.Kind == TK_EOF && tok.isEqual("__attribute__") {
 		slash := strings.LastIndex(m.Body.File.Name, "/")
 		if slash != -1 && m.Body.File.Name[slash+1:] == "cdefs.h" {
-			tok.IsHiddenAttr = true
 			pushMacroLock(m, skipParen(skip(tok.Next, "(")))
 			return true
 		}
