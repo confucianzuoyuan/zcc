@@ -137,6 +137,17 @@ func popTmpStack() *Slot {
 }
 
 func genMemZero(dofs int, dptr string, sz int) {
+	if sz >= 16 {
+		printlnToFile("  xorps %%xmm0, %%xmm0")
+		for i := 0; i < sz; {
+			if sz < i+16 {
+				i = sz - 16
+			}
+			printlnToFile("  movups %%xmm0, %d(%s)", i+dofs, dptr)
+			i += 16
+		}
+		return
+	}
 	printlnToFile("  xor %%eax, %%eax")
 	for i := 0; i < sz; {
 		rem := sz - i
