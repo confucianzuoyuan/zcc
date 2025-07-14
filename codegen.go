@@ -2018,19 +2018,19 @@ func genExpr(node *AstNode) {
 			return
 		}
 
-		genExpr(node.Lhs)
-		push()
+		fnPtr := !(node.Lhs.Kind == ND_VAR && node.Lhs.Variable.Ty.Kind == TY_FUNC)
+		if fnPtr {
+			genExpr(node.Lhs)
+			push()
+		}
 
 		if node.ArgsExpr != nil {
 			genExpr(node.ArgsExpr)
 		}
 
-		pop("%r10")
-
-		printlnToFile("  mov %%rsp, %%rax")
-		push()
-
-		saveTmpRegs()
+		if fnPtr {
+			pop("%r10")
+		}
 
 		// If the return type is a large struct/union, the caller passes
 		// a pointer to a buffer as if it were the first argument.
@@ -2039,41 +2039,55 @@ func genExpr(node *AstNode) {
 		fpCount := 0
 		stackAlign := 0
 		argsSize := callingConvention(node.Args, int64(boolToInt(gpStart)), nil, &fpCount, &stackAlign)
+		if argsSize != 0 {
+			if stackAlign > 16 {
+				printlnToFile("  mov %%rsp, %%rax")
+				push()
+				printlnToFile("  sub $%d, %%rsp", argsSize)
+				printlnToFile("  and $-%d, %%rsp", stackAlign)
+			} else {
+				printlnToFile("  sub $%d, %%rsp", alignTo(argsSize, 16))
+			}
+		}
 
-		printlnToFile("  sub $%d, %%rsp", argsSize)
-		printlnToFile("  and $-%d, %%rsp", stackAlign)
+		saveTmpRegs()
 
 		placeStackArgs(node)
 		placeRegArgs(node, gpStart)
 
 		if node.Lhs.Ty.IsVariadic {
-			printlnToFile("  mov $%d, %%eax", fpCount)
+			if fpCount != 0 {
+				printlnToFile("  movb $%d, %%al", fpCount)
+			} else {
+				printlnToFile("  xor %%al, %%al")
+			}
 		}
-		printlnToFile("  call *%%r10")
-
-		pop("%rsp")
+		if fnPtr {
+			printlnToFile("  call *%%r10")
+		} else {
+			if opt_fpic {
+				printlnToFile("  call \"%s\"%s", node.Lhs.Variable.Name, "@PLT")
+			} else {
+				printlnToFile("  call \"%s\"", node.Lhs.Variable.Name)
+			}
+		}
+		if argsSize != 0 {
+			if stackAlign > 16 {
+				pop("%rsp")
+			} else {
+				printlnToFile("  add $%d, %%rsp", alignTo(argsSize, 16))
+			}
+		}
 
 		// It looks like the most significant 48 or 56 bits in RAX may
 		// contain garbage if a function return type is short or bool/char,
 		// respectively. We clear the upper bits here.
-		switch node.Ty.Kind {
-		case TY_BOOL:
-			printlnToFile("  movzx %%al, %%eax")
-			return
-		case TY_CHAR, TY_PCHAR:
-			if node.Ty.IsUnsigned {
-				printlnToFile("  movzbl %%al, %%eax")
+		if node.Ty.isInteger() && node.Ty.Size < 4 {
+			if node.Ty.Kind == TY_BOOL {
+				cast(TyInt, TyUChar)
 			} else {
-				printlnToFile("  movsbl %%al, %%eax")
+				cast(TyInt, node.Ty)
 			}
-			return
-		case TY_SHORT:
-			if node.Ty.IsUnsigned {
-				printlnToFile("  movzwl %%ax, %%eax")
-			} else {
-				printlnToFile("  movswl %%ax, %%eax")
-			}
-			return
 		}
 
 		// If the return type is a small struct, a value is returned
