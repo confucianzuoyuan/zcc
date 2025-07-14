@@ -212,9 +212,8 @@ func errorAt(loc int, msg string) {
 func errorTok(tok *Token, msg string) {
 	verrorAt(tok.File.Name, tok.File.Contents, tok.LineNo, tok.Location, msg)
 
-	for tok.Origin != nil {
+	if tok.Origin != nil {
 		warnTok(tok.Origin, "in expansion of macro")
-		tok = tok.Origin
 	}
 	os.Exit(1)
 }

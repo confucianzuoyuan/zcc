@@ -210,7 +210,7 @@ func readLineMarker(rest **Token, tok *Token) {
 
 func (tok *Token) addLocInfo() {
 	tmpl := tok
-	for tmpl.Origin != nil {
+	if tmpl.Origin != nil {
 		tmpl = tmpl.Origin
 	}
 
@@ -1057,6 +1057,9 @@ func subst(tok *Token, args *MacroArg) *Token {
 func insertObjlike(tok *Token, tok2 *Token, orig *Token) *Token {
 	head := Token{}
 	cur := &head
+	if orig.Origin != nil {
+		orig = orig.Origin
+	}
 
 	for ; tok.Kind != TK_EOF; tok = tok.Next {
 		if tok.isEqual("##") {
@@ -1081,6 +1084,9 @@ func insertObjlike(tok *Token, tok2 *Token, orig *Token) *Token {
 func insertFunclike(tok *Token, tok2 *Token, orig *Token) *Token {
 	head := Token{}
 	cur := &head
+	if orig.Origin != nil {
+		orig = orig.Origin
+	}
 
 	for ; tok.Kind != TK_EOF; tok = tok.Next {
 		if tok.Kind == TK_PMARK {
@@ -1510,7 +1516,7 @@ func addBuiltin(name string, fn MacroHandlerFn) *Macro {
 
 func fileMacro(start *Token) *Token {
 	tok := start
-	for tok.Origin != nil {
+	if tok.Origin != nil {
 		tok = tok.Origin
 	}
 	tok = newStringToken(tok.File.DisplayFile.Name, tok)
@@ -1569,7 +1575,7 @@ func formatTime(t time.Time) string {
 
 func lineMacro(start *Token) *Token {
 	tok := start
-	for tok.Origin != nil {
+	if tok.Origin != nil {
 		tok = tok.Origin
 	}
 	i := tok.LineNo + tok.File.LineDelta
