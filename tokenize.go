@@ -815,6 +815,21 @@ func tokenize(file *File, end **Token) *Token {
 	hasSpace = false
 
 	for (*src)[p] != 0 {
+		// Skip newline.
+		if (*src)[p] == '\n' {
+			p += 1
+			atBeginningOfLine = true
+			hasSpace = false
+			continue
+		}
+
+		// Skip whitespace characters.
+		if (*src)[p] == ' ' || (*src)[p] == '\t' || (*src)[p] == '\v' || (*src)[p] == '\f' || (*src)[p] == '\n' || (*src)[p] == '\r' {
+			p += 1
+			hasSpace = true
+			continue
+		}
+
 		// Skip line comments.
 		if (*src)[p] == '/' && (*src)[p+1] == '/' {
 			p += 2
@@ -880,21 +895,6 @@ func tokenize(file *File, end **Token) *Token {
 				panic("unclosed block comment")
 			}
 			p = q + 2
-			hasSpace = true
-			continue
-		}
-
-		// Skip newline.
-		if (*src)[p] == '\n' {
-			p += 1
-			atBeginningOfLine = true
-			hasSpace = false
-			continue
-		}
-
-		// Skip whitespace characters.
-		if (*src)[p] == ' ' || (*src)[p] == '\t' || (*src)[p] == '\v' || (*src)[p] == '\f' || (*src)[p] == '\n' || (*src)[p] == '\r' {
-			p += 1
 			hasSpace = true
 			continue
 		}
