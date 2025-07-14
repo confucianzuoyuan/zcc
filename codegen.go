@@ -1260,14 +1260,24 @@ func genExprOpt(node *AstNode) bool {
 				return true
 			}
 			if !lhs.Ty.IsUnsigned && !ty.IsUnsigned {
-				ax := regOpAX(ty)
+				if ty.Size == 8 {
+					switch lhs.Ty.Size {
+					case 4:
+						printlnToFile("  movslq %d(%s), %%rax", lhs.Variable.Offset, lhs.Variable.Pointer)
+					case 2:
+						printlnToFile("  movswq %d(%s), %%rax", lhs.Variable.Offset, lhs.Variable.Pointer)
+					case 1:
+						printlnToFile("  movsbq %d(%s), %%rax", lhs.Variable.Offset, lhs.Variable.Pointer)
+					default:
+						panic("internal error")
+					}
+					return true
+				}
 				switch lhs.Ty.Size {
-				case 4:
-					printlnToFile("  movsl %d(%s), %s", lhs.Variable.Offset, lhs.Variable.Pointer, ax)
 				case 2:
-					printlnToFile("  movsw %d(%s), %s", lhs.Variable.Offset, lhs.Variable.Pointer, ax)
+					printlnToFile("  movswl %d(%s), %%eax", lhs.Variable.Offset, lhs.Variable.Pointer)
 				case 1:
-					printlnToFile("  movsb %d(%s), %s", lhs.Variable.Offset, lhs.Variable.Pointer, ax)
+					printlnToFile("  movsbl %d(%s), %%eax", lhs.Variable.Offset, lhs.Variable.Pointer)
 				default:
 					panic("internal error")
 				}
