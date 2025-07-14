@@ -2448,10 +2448,7 @@ func compoundStmt(rest **Token, tok *Token, kind AstNodeKind) *AstNode {
 	CurrentVLA = node.TargetVLA
 	leaveScope()
 
-	if node.Kind == ND_STMT_EXPR {
-		if cur.Lhs == nil {
-			errorTok(node.Tok, "statement expression returning void is not supported")
-		}
+	if kind == ND_STMT_EXPR && cur.Kind == ND_EXPR_STMT {
 		cur.Lhs.addType()
 		ty := cur.Lhs.Ty
 		if ty.Kind == TY_STRUCT || ty.Kind == TY_UNION {
