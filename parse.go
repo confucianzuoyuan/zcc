@@ -3851,6 +3851,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 		ty := typeName(&tok, tok)
 		tok = skip(tok, ",")
 
+		var node *AstNode = nil
 		offset := 0
 
 		for {
@@ -3864,10 +3865,19 @@ func primary(rest **Token, tok *Token) *AstNode {
 				}
 			}
 
-			for ty.Base != nil && consume(&tok, tok, "[") {
-				offset += int(ty.Base.Size) * int(constExpr(&tok, tok))
+			for ; ty.Base != nil && consume(&tok, tok, "["); tok = skip(tok, "]") {
 				ty = ty.Base
-				tok = skip(tok, "]")
+				expr := conditional(&tok, tok)
+				val := int64(0)
+				if expr.isConstExpr(&val) {
+					offset += int(ty.Size * val)
+					continue
+				}
+				if node == nil {
+					node = newBinary(ND_MUL, expr, newLong(ty.Size, tok), tok)
+				} else {
+					node = newBinary(ND_ADD, node, newBinary(ND_MUL, expr, newLong(ty.Size, tok), tok), tok)
+				}
 			}
 
 			if !consume(&tok, tok, ".") {
@@ -3876,7 +3886,10 @@ func primary(rest **Token, tok *Token) *AstNode {
 		}
 
 		*rest = skip(tok, ")")
-		return newULong(int64(offset), tok)
+		if node == nil {
+			return newULong(int64(offset), tok)
+		}
+		return newBinary(ND_ADD, node, newULong(int64(offset), tok), tok)
 	}
 
 	if tok.isEqual("__builtin_types_compatible_p") {
