@@ -614,9 +614,9 @@ func (t *CType) IntRank() int {
 
 func intPromotion(node **AstNode) {
 	ty := (*node).Ty
-	bitWidth := int64(0)
+	isBitField, bitWidth := (*node).isBitField2()
 
-	if (*node).isBitField2(&bitWidth) {
+	if isBitField {
 		intWidth := TyInt.Size * 8
 
 		if bitWidth == intWidth && ty.IsUnsigned {
@@ -646,30 +646,26 @@ func intPromotion(node **AstNode) {
 	}
 }
 
-func (node *AstNode) isBitField2(width *int64) bool {
-	if node.Kind == ND_MEMBER {
-		if !node.Member.IsBitfield {
-			return false
-		}
-
-		*width = node.Member.BitWidth
-		return true
-	}
-	if node.Kind == ND_COMMA {
-		return node.Rhs.isBitField2(width)
-	}
-	if node.Kind == ND_ASSIGN {
-		return node.Lhs.isBitField2(width)
-	}
-	if node.Kind == ND_STMT_EXPR && node.Body != nil {
+func (node *AstNode) isBitField2() (bool, int64) {
+	switch node.Kind {
+	case ND_ASSIGN:
+		return node.Lhs.isBitField2()
+	case ND_CHAIN, ND_COMMA:
+		return node.Rhs.isBitField2()
+	case ND_STMT_EXPR:
 		stmt := node.Body
 		for stmt.Next != nil {
 			stmt = stmt.Next
 		}
 		if stmt.Kind == ND_EXPR_STMT {
-			return stmt.Lhs.isBitField2(width)
+			return stmt.Lhs.isBitField2()
 		}
+	case ND_MEMBER:
+		if !node.Member.IsBitfield {
+			return false, 0
+		}
+		return true, node.Member.BitWidth
 	}
 
-	return false
+	return false, 0
 }
