@@ -57,6 +57,7 @@ var Keywords = map[string]struct{}{
 	"__typeof":      {},
 	"__typeof__":    {},
 	"inline":        {},
+	"__auto_type":   {},
 }
 
 type TokenKind int

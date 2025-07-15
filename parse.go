@@ -58,6 +58,7 @@ var TypeNames = map[string]struct{}{
 	"_Atomic":       {},
 	"__typeof":      {},
 	"__typeof__":    {},
+	"__auto_type":   {},
 }
 
 // Scope for local, global variables or typedefs
@@ -1170,9 +1171,10 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		UNSIGNED = 1 << 18
 	)
 
-	ty := TyInt
+	var ty *CType = nil
 	counter := 0
 	isAtomic := false
+	isAuto := false
 	for {
 		if attr != nil {
 			attrAligned(tok, &attr.Align)
@@ -1210,7 +1212,15 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		}
 
 		// These keywords are recognized but ignored.
-		if consume(&tok, tok, "const") || consume(&tok, tok, "volatile") || consume(&tok, tok, "auto") || consume(&tok, tok, "register") || consume(&tok, tok, "restrict") || consume(&tok, tok, "__restrict") || consume(&tok, tok, "__restrict__") || consume(&tok, tok, "_Noreturn") {
+		if consume(&tok, tok, "const") || consume(&tok, tok, "volatile") || consume(&tok, tok, "register") || consume(&tok, tok, "restrict") || consume(&tok, tok, "__restrict") || consume(&tok, tok, "__restrict__") || consume(&tok, tok, "_Noreturn") {
+			continue
+		}
+
+		if tok.isEqual("__auto_type") || tok.isEqual("auto") {
+			if tok.isEqual("__auto_type") || opt_std >= STD_C23 {
+				isAuto = true
+			}
+			tok = tok.Next
 			continue
 		}
 
@@ -1243,7 +1253,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 
 		ty2 := findTypeDef(tok)
 		if ty2 != nil {
-			if counter != 0 {
+			if counter != 0 || isAuto {
 				break
 			}
 			ty = ty2
@@ -1335,12 +1345,29 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		tok = tok.Next
 	}
 
+	*rest = tok
+
+	if ty == nil && isAuto {
+		if tok.Kind != TK_IDENT || !tok.Next.isEqual("=") {
+			errorTok(tok, "unsupported form for type inference")
+		}
+		enterScope()
+		dummy := &Token{}
+		node := assign(&dummy, tok.Next.Next)
+		node.addType()
+		leaveScope()
+		ty = node.Ty.arrayToPointer()
+	}
+
+	if ty == nil {
+		ty = TyInt
+	}
+
 	if isAtomic {
 		ty = ty.copy()
 		ty.IsAtomic = true
 	}
 
-	*rest = tok
 	return ty
 }
 
