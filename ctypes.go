@@ -25,11 +25,15 @@ const (
 
 type CType struct {
 	Kind       CTypeKind
-	Size       int64  // sizeof() value
-	Align      int64  // alignment
-	IsUnsigned bool   // unsigned or signed
-	IsAtomic   bool   // true if _Atomic
+	Size       int64 // sizeof() value
+	Align      int64 // alignment
+	IsUnsigned bool  // unsigned or signed
+	IsAtomic   bool  // true if _Atomic
+	IsConst    bool
+	IsVolatile bool
+	IsRestrict bool
 	Origin     *CType // for type compatibility check
+	DeclNext   *CType // forward declarations
 
 	Base *CType
 
@@ -91,10 +95,25 @@ func (t *CType) String() string {
 	}
 }
 
+func (t *CType) unqual() *CType {
+	if t.Origin != nil {
+		t = t.Origin
+	}
+
+	if t.IsAtomic || t.IsConst || t.IsVolatile || t.IsRestrict {
+		t = t.copy()
+		t.IsAtomic = false
+		t.IsConst = false
+		t.IsVolatile = false
+		t.IsRestrict = false
+	}
+
+	return t
+}
+
 func (ty *CType) copy() *CType {
 	ret := &CType{}
 	*ret = *ty
-	ret.Origin = ty
 	return ret
 }
 
@@ -262,7 +281,7 @@ func funcType(returnTy *CType) *CType {
 	// The C spec disallows sizeof(<function type>), but
 	// GCC allows that and the expression is evaluated to 1.
 	ty := newType(TY_FUNC, 1, 1)
-	ty.ReturnType = returnTy
+	ty.ReturnType = returnTy.unqual()
 	return ty
 }
 
@@ -533,6 +552,22 @@ func (node *AstNode) addType() {
 	}
 }
 
+func (t1 *CType) isCompatibleWith2(t2 *CType) bool {
+	if t1.IsAtomic != t2.IsAtomic {
+		return false
+	}
+	if t1.IsRestrict != t2.IsRestrict {
+		return false
+	}
+	if t1.IsVolatile != t2.IsVolatile {
+		return false
+	}
+	if t1.IsConst != t2.IsConst {
+		return false
+	}
+	return t1.isCompatibleWith(t2)
+}
+
 func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 	if t1 == t2 {
 		return true
@@ -556,7 +591,7 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 	case TY_FLOAT, TY_DOUBLE, TY_LDOUBLE:
 		return true
 	case TY_PTR:
-		return t1.Base.isCompatibleWith(t2.Base)
+		return t1.Base.isCompatibleWith2(t2.Base)
 	case TY_FUNC:
 		if !t1.ReturnType.isCompatibleWith(t2.ReturnType) {
 			return false
@@ -578,7 +613,7 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 
 		return p1 == nil && p2 == nil
 	case TY_ARRAY:
-		if !t1.Base.isCompatibleWith(t2.Base) {
+		if !t1.Base.isCompatibleWith2(t2.Base) {
 			return false
 		}
 		return t1.ArrayLength < 0 && t2.ArrayLength < 0 && t1.ArrayLength == t2.ArrayLength

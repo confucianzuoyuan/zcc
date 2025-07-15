@@ -1130,6 +1130,23 @@ func typeofSpecifier(rest **Token, tok *Token) *CType {
 	return ty
 }
 
+func pointerQualifiers(rest **Token, tok *Token, ty *CType) {
+	for ; ; tok = tok.Next {
+		if tok.isEqual("_Atomic") {
+			ty.IsAtomic = true
+		} else if tok.isEqual("const") {
+			ty.IsConst = true
+		} else if tok.isEqual("volatile") {
+			ty.IsVolatile = true
+		} else if tok.isEqual("restrict") || tok.isEqual("__restrict") || tok.isEqual("__restrict__") {
+			ty.IsRestrict = true
+		} else {
+			break
+		}
+	}
+	*rest = tok
+}
+
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef" | "static" | "extern" | "inline"
@@ -1175,6 +1192,9 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	counter := 0
 	isAtomic := false
 	isAuto := false
+	isConst := false
+	isRestrict := false
+	isVolatile := false
 	for {
 		if attr != nil {
 			attrAligned(tok, &attr.Align)
@@ -1212,7 +1232,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		}
 
 		// These keywords are recognized but ignored.
-		if consume(&tok, tok, "const") || consume(&tok, tok, "volatile") || consume(&tok, tok, "register") || consume(&tok, tok, "restrict") || consume(&tok, tok, "__restrict") || consume(&tok, tok, "__restrict__") || consume(&tok, tok, "_Noreturn") {
+		if consume(&tok, tok, "register") || consume(&tok, tok, "_Noreturn") {
 			continue
 		}
 
@@ -1224,13 +1244,28 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			continue
 		}
 
-		if tok.isEqual("_Atomic") {
-			tok = tok.Next
-			if tok.isEqual("(") {
-				ty = typeName(&tok, tok.Next)
+		if consume(&tok, tok, "_Atomic") {
+			if consume(&tok, tok, "(") {
+				ty = typeName(&tok, tok)
 				tok = skip(tok, ")")
 			}
 			isAtomic = true
+			continue
+		}
+
+		if consume(&tok, tok, "const") {
+			isConst = true
+			continue
+		}
+
+		if consume(&tok, tok, "volatile") {
+			isVolatile = true
+			continue
+		}
+
+		if consume(&tok, tok, "restrict") || consume(&tok, tok, "__restrict") ||
+			consume(&tok, tok, "__restrict__") {
+			isRestrict = true
 			continue
 		}
 
@@ -1356,19 +1391,39 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 		node := assign(&dummy, tok.Next.Next)
 		node.addType()
 		leaveScope()
-		ty = node.Ty.arrayToPointer()
+		ty = node.Ty.arrayToPointer().unqual()
 	}
 
 	if ty == nil {
 		ty = TyInt
 	}
 
-	if isAtomic {
-		ty = ty.copy()
-		ty.IsAtomic = true
+	if isAtomic || isConst || isVolatile || isRestrict {
+		ty2 := newQualifiedType(ty)
+		ty2.IsAtomic = isAtomic
+		ty2.IsConst = isConst
+		ty2.IsVolatile = isVolatile
+		ty2.IsRestrict = isRestrict
+		return ty2
 	}
 
 	return ty
+}
+
+func newQualifiedType(ty *CType) *CType {
+	if ty.Origin != nil {
+		ty = ty.Origin
+	}
+
+	ret := &CType{}
+	*ret = *ty
+	ret.Origin = ty
+
+	if ty.Size < 0 {
+		ret.DeclNext = ty.DeclNext
+		ty.DeclNext = ret
+	}
+	return ret
 }
 
 /*
@@ -1529,17 +1584,25 @@ func structUnionDecl(rest **Token, tok *Token, kind CTypeKind) *CType {
 		ty = unionDecl(ty, altAlign)
 	}
 
-	if tag != nil {
-		// If this is a redefinition, overwrite a previous type.
-		// Otherwise, register the struct type.
-		name := B2S((*tag.File.Contents)[tag.Location : tag.Location+tag.Length])
-		ty2 := scope.Tags[name]
-		if ty2 != nil {
-			*ty2 = *ty
-			return ty2
-		}
-		pushTagScope(tag, ty)
+	if tag == nil {
+		return ty
 	}
+
+	name := B2S((*tag.File.Contents)[tag.Location : tag.Location+tag.Length])
+	ty2, ok := scope.Tags[name]
+	if ok {
+		for t := ty2; t != nil; t = t.DeclNext {
+			t.Size = ty.Size
+			t.Align = int64(math.Max(float64(t.Align), float64(ty.Align)))
+			t.Members = ty.Members
+			t.IsFlexible = ty.IsFlexible
+			t.IsPacked = ty.IsPacked
+			t.Origin = ty
+		}
+		return ty2
+	}
+
+	pushTagScope(tag, ty)
 	return ty
 }
 
@@ -1767,7 +1830,12 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 		if ty2.Kind == TY_ARRAY || ty2.Kind == TY_VLA {
 			// "array of T" is converted to "pointer to T" only in the parameter
 			// context. For example, *argv[] is converted to **argv by this.
-			ty2 = pointerTo(ty2.Base)
+			ty3 := pointerTo(ty2.Base)
+			ty3.IsAtomic = ty2.IsAtomic
+			ty3.IsConst = ty2.IsConst
+			ty3.IsVolatile = ty2.IsVolatile
+			ty3.IsRestrict = ty2.IsRestrict
+			ty2 = ty3
 		} else if ty2.Kind == TY_FUNC {
 			// Likewise, a function is converted to a pointer to a function
 			// only in the parameter context.
@@ -1838,8 +1906,14 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 	}
 
 	if consume(&tok, tok, "[") {
-		for tok.isEqual("static") || tok.isEqual("const") || tok.isEqual("volatile") || tok.isEqual("restrict") || tok.isEqual("__restrict") || tok.isEqual("__restrict__") {
-			tok = tok.Next
+		if tok.Kind == TK_KEYWORD {
+			start := tok
+			pointerQualifiers(&tok, tok, &CType{})
+			consume(&tok, tok, "static")
+			ty2 := arrayDimensions(rest, tok, ty)
+			dummy := &Token{}
+			pointerQualifiers(&dummy, start, ty2)
+			return ty2
 		}
 		return arrayDimensions(rest, tok, ty)
 	}
@@ -1852,10 +1926,7 @@ func typeSuffix(rest **Token, tok *Token, ty *CType) *CType {
 func pointers(rest **Token, tok *Token, ty *CType) *CType {
 	for consume(&tok, tok, "*") {
 		ty = pointerTo(ty)
-
-		for tok.isEqual("const") || tok.isEqual("volatile") || tok.isEqual("restrict") || tok.isEqual("__restrict") || tok.isEqual("__restrict__") {
-			tok = tok.Next
-		}
+		pointerQualifiers(&tok, tok, ty)
 	}
 
 	*rest = tok
@@ -4136,7 +4207,7 @@ func parseTypeDef(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNo
 			errorTok(name, "typedef name omitted")
 		}
 		if altAlign != 0 {
-			ty = ty.copy()
+			ty = newQualifiedType(ty)
 			ty.Align = altAlign
 		}
 		pushScope(name.getIdent()).TypeDef = ty
