@@ -1845,6 +1845,10 @@ func genExpr(node *AstNode) {
 		sz := int(node.Lhs.Ty.Base.Size)
 		printlnToFile("  xchg %s, (%s)", regAX(sz), reg)
 		return
+	case ND_ALLOCA:
+		genExpr(node.Lhs)
+		builtin_alloca(node)
+		return
 	case ND_VA_START:
 		genExpr(node.Lhs)
 		printlnToFile("  movl $%d, (%%rax)", cgCtx.VaGpStart)
@@ -2510,9 +2514,9 @@ func builtin_alloca(node *AstNode) {
 	printlnToFile("  and $-%d, %%rsp", align)
 	if node.Variable != nil {
 		printlnToFile("  mov %%rsp, %d(%s)", node.Variable.Offset, node.Variable.Pointer)
-		printlnToFile("  mov %%rsp, %d(%s)", node.TopVLA.Offset, node.Variable.Pointer)
+	} else {
+		printlnToFile("  mov %%rsp, %%rax")
 	}
-	printlnToFile("  mov %%rsp, %%rax")
 }
 
 func dealloc_vla(node *AstNode) {

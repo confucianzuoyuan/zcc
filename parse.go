@@ -128,8 +128,6 @@ var BreakVLA *Obj
 var FnUseVLA bool
 var DontDeallocVLA bool
 
-var builtinAlloca *Obj = nil
-
 var evalRecover *bool = nil
 
 var uniqueNameId int = 0
@@ -308,12 +306,10 @@ func loopBody(rest **Token, tok *Token, node *AstNode) {
 	BreakVLA = vla
 }
 
-func newAlloca(sz *AstNode, v *Obj, top *Obj, align int64) *AstNode {
-	node := newUnary(ND_FUNCALL, newVarNode(builtinAlloca, sz.Tok), sz.Tok)
-	node.Ty = builtinAlloca.Ty.ReturnType
-	node.ArgsExpr = sz
+func newVLA(sz *AstNode, v *Obj, align int64) *AstNode {
+	node := newUnary(ND_ALLOCA, sz, sz.Tok)
+	node.Ty = pointerTo(TyVoid)
 	node.Variable = v
-	node.TopVLA = top
 	node.Value = align
 	sz.addType()
 	return node
@@ -2029,12 +2025,11 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// For example, `int x[n+2]` is translated to `tmp = n + 2,
 			// x = alloca(tmp)`.
 			v := newLocalVar(name.getIdent(), ty)
-			top := newLocalVar("", ty)
 
-			chainExpr(&expr, newAlloca(newVarNode(ty.VlaSize, name), v, top, int64(math.Max(float64(altAlign), 16))))
+			chainExpr(&expr, newVLA(newVarNode(ty.VlaSize, name), v, int64(math.Max(float64(altAlign), 16))))
 
-			top.VlaNext = CurrentVLA
-			CurrentVLA = top
+			v.VlaNext = CurrentVLA
+			CurrentVLA = v
 			FnUseVLA = true
 			continue
 		}
@@ -4266,13 +4261,6 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr, name *To
 	currentFunction = nil
 }
 
-func declareBuiltinFunctions() {
-	ty := funcType(pointerTo(TyVoid))
-	ty.ParamList = newVar("", TyInt)
-	builtinAlloca = newGlobalVar("alloca", ty)
-	builtinAlloca.IsStatic = true
-}
-
 func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 	first := true
 
@@ -4357,7 +4345,6 @@ func scanGlobals() {
 
 // program = (function-definition | global-variable)*
 func parse(tok *Token) *Obj {
-	declareBuiltinFunctions()
 	globals = nil
 
 	for tok.Kind != TK_EOF {

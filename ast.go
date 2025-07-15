@@ -61,6 +61,7 @@ const (
 	ND_VA_COPY                      // "va_copy"
 	ND_VA_ARG                       // "va_arg"
 	ND_CHAIN                        // ND_COMMA without array-to-pointer conversion
+	ND_ALLOCA
 )
 
 func (k AstNodeKind) String() string {
