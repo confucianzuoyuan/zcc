@@ -327,35 +327,59 @@ func (f1 FloatConst64) Ne(f2 FloatConst) bool {
 }
 
 func (f1 FloatConst64) Gt(f2 FloatConst) bool {
-	f2_64, ok := f2.(FloatConst64)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Value > v.ToFloat64()
+	case FloatConst64:
+		return f1.ToFloat64() > v.Value
+	case FloatConst80:
+		f := FloatConst80{big.NewFloat(float64(f1.Value))}
+		return f.Value.Cmp(v.Value) == 1
+	default:
+		panic("")
 	}
-	return f1.Value > f2_64.Value
 }
 
 func (f1 FloatConst64) Ge(f2 FloatConst) bool {
-	f2_64, ok := f2.(FloatConst64)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Value >= v.ToFloat64()
+	case FloatConst64:
+		return f1.ToFloat64() >= v.Value
+	case FloatConst80:
+		f := FloatConst80{big.NewFloat(float64(f1.Value))}
+		return f.Value.Cmp(v.Value) >= 0
+	default:
+		panic("")
 	}
-	return f1.Value >= f2_64.Value
 }
 
 func (f1 FloatConst64) Lt(f2 FloatConst) bool {
-	f2_64, ok := f2.(FloatConst64)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Value < v.ToFloat64()
+	case FloatConst64:
+		return f1.ToFloat64() < v.Value
+	case FloatConst80:
+		f := FloatConst80{big.NewFloat(float64(f1.Value))}
+		return f.Value.Cmp(v.Value) == -1
+	default:
+		panic("")
 	}
-	return f1.Value < f2_64.Value
 }
 
 func (f1 FloatConst64) Le(f2 FloatConst) bool {
-	f2_64, ok := f2.(FloatConst64)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Value <= v.ToFloat64()
+	case FloatConst64:
+		return f1.ToFloat64() <= v.Value
+	case FloatConst80:
+		f := FloatConst80{big.NewFloat(float64(f1.Value))}
+		return f.Value.Cmp(v.Value) <= 0
+	default:
+		panic("")
 	}
-	return f1.Value <= f2_64.Value
 }
 
 type FloatConst80 struct {
@@ -409,39 +433,59 @@ func (f FloatConst80) IsPositive() bool {
 }
 
 func (f1 FloatConst80) Add(f2 FloatConst) FloatConst {
-	f2_80, ok := f2.(FloatConst80)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Add(v.ToFloat80())
+	case FloatConst64:
+		return f1.Add(v.ToFloat80())
+	case FloatConst80:
+		return FloatConst80{new(big.Float).Add(f1.Value, v.Value)}
+	default:
+		panic("")
 	}
-	return FloatConst80{new(big.Float).Add(f1.Value, f2_80.Value)}
 }
 
 func (f1 FloatConst80) Sub(f2 FloatConst) FloatConst {
-	f2_80, ok := f2.(FloatConst80)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Sub(v.ToFloat80())
+	case FloatConst64:
+		return f1.Sub(v.ToFloat80())
+	case FloatConst80:
+		return FloatConst80{new(big.Float).Sub(f1.Value, v.Value)}
+	default:
+		panic("")
 	}
-	return FloatConst80{new(big.Float).Sub(f1.Value, f2_80.Value)}
 }
 
 func (f1 FloatConst80) Mul(f2 FloatConst) FloatConst {
-	f2_80, ok := f2.(FloatConst80)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Mul(v.ToFloat80())
+	case FloatConst64:
+		return f1.Mul(v.ToFloat80())
+	case FloatConst80:
+		return FloatConst80{new(big.Float).Mul(f1.Value, v.Value)}
+	default:
+		panic("")
 	}
-	return FloatConst80{new(big.Float).Mul(f1.Value, f2_80.Value)}
 }
 
 func (f1 FloatConst80) Div(f2 FloatConst) FloatConst {
-	f2_80, ok := f2.(FloatConst80)
-	if !ok {
-		panic("Eq: parameter is not FloatConst32")
+	switch v := f2.(type) {
+	case FloatConst32:
+		return f1.Div(v.ToFloat80())
+	case FloatConst64:
+		return f1.Div(v.ToFloat80())
+	case FloatConst80:
+		if f1.IsZero() && v.IsZero() {
+			f := 0.0
+			return FloatConst64{f / f}
+		}
+		return FloatConst80{new(big.Float).Quo(f1.Value, v.Value)}
+	default:
+		panic("")
 	}
-	if f2_80.IsZero() && f1.IsZero() {
-		f := 0.0
-		return FloatConst64{f / f}
-	}
-	return FloatConst80{new(big.Float).Quo(f1.Value, f2_80.Value)}
 }
 
 func (f1 FloatConst80) Neg() FloatConst {

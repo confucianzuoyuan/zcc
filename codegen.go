@@ -114,6 +114,10 @@ func pushTmpStack(kind SlotKind) {
 }
 
 func popTmpStack() *Slot {
+	return popTmpStack2(1)
+}
+
+func popTmpStack2(sz int64) *Slot {
 	tmpStack.Depth--
 	if tmpStack.Depth < 0 {
 		panic("tmpStack.Depth < 0")
@@ -128,21 +132,32 @@ func popTmpStack() *Slot {
 		sl2 := &tmpStack.Data[tmpStack.Depth-1]
 		sl2.GpDepth = int64(math.Max(float64(sl2.GpDepth), float64(sl.GpDepth+int64(boolToInt(sl.Kind == SL_GP)))))
 		sl2.FpDepth = int64(math.Max(float64(sl2.FpDepth), float64(sl.FpDepth+int64(boolToInt(sl.Kind == SL_FP)))))
-		sl2.StDepth = int64(math.Max(float64(sl2.StDepth), float64(sl.StDepth+int64(boolToInt(sl.Kind == SL_ST)))))
+		sl2.StDepth = int64(math.Max(float64(sl2.StDepth), float64(sl.StDepth+int64(boolToInt(sl.Kind == SL_ST))*sz)))
 	}
 
 	if sl.Kind == SL_ST {
 		if DontReuseStack {
-			tmpStack.Bottom += 8
+			tmpStack.Bottom += int(sz * 8)
 			sl.StOffset = -int64(tmpStack.Bottom)
 		} else {
-			bottom := int64(tmpStack.Base) + (sl.StDepth+1)*8
+			bottom := int64(tmpStack.Base) + (sl.StDepth+sz)*8
 			tmpStack.Bottom = int(math.Max(float64(tmpStack.Bottom), float64(bottom)))
 			sl.StOffset = -bottom
 		}
 	}
 
 	return sl
+}
+
+func pushX87() {
+	pushTmpStack(SL_ST)
+}
+
+func popX87() bool {
+	sl := popTmpStack2(2)
+	instructionLine("  fstpt %d(%s)", int(sl.Location), sl.StOffset, cgCtx.LocalVariablePointer)
+	printlnToFile("  fldt %d(%s)", sl.StOffset, cgCtx.LocalVariablePointer)
+	return true
 }
 
 func genMemZero(dofs int, dptr string, sz int) {
@@ -762,6 +777,7 @@ func store2(ty *CType, dofs int, dptr string) {
 
 	if ty.Kind == TY_LDOUBLE {
 		printlnToFile("  fstpt %d(%s)", dofs, dptr)
+		printlnToFile("  fldt %d(%s)", dofs, dptr)
 		return
 	}
 
@@ -1096,24 +1112,24 @@ func loadFloatValue(ty *CType, fval FloatConst) {
 		posZero := FloatConst80{big.NewFloat(0.0)}
 		negZero := FloatConst80{big.NewFloat(-0.0)}
 		if fval.IsPositive() && equalInt8Slices(posZero.ToInt8Slice(), fval.ToInt8Slice()) {
-			printlnToFile("  fldz")
+			printlnToFile("  fninit; fldz")
 			return
 		}
 
 		if !fval.IsPositive() && equalInt8Slices(negZero.ToInt8Slice(), fval.ToInt8Slice()) {
-			printlnToFile("  fldz")
+			printlnToFile("  fninit; fldz")
 			printlnToFile("  fchs")
 			return
 		}
 
 		posOne := FloatConst80{big.NewFloat(1)}
 		if fval.Eq(posOne) {
-			printlnToFile("  fld1")
+			printlnToFile("  fninit; fld1")
 			return
 		}
 
 		if fval.Eq(FloatConst80{big.NewFloat(-1)}) {
-			printlnToFile("  fld1")
+			printlnToFile("  fninit; fld1")
 			printlnToFile("  fchs")
 			return
 		}
@@ -1137,7 +1153,7 @@ func loadFloatValue(ty *CType, fval FloatConst) {
 		printlnToFile("  movw $%d, %%dx", se)
 		printlnToFile("  push %%rdx")
 		printlnToFile("  push %%rax")
-		printlnToFile("  fldt (%%rsp)")
+		printlnToFile("  fninit; fldt (%%rsp)")
 		printlnToFile("  add $16, %%rsp")
 		return
 	}
@@ -1471,7 +1487,7 @@ func load2(ty *CType, sofs int, sptr string) {
 		printlnToFile("  movsd %d(%s), %%xmm0", sofs, sptr)
 		return
 	case TY_LDOUBLE:
-		printlnToFile("  fldt %d(%s)", sofs, sptr)
+		printlnToFile("  fninit; fldt %d(%s)", sofs, sptr)
 		return
 	}
 
@@ -2181,23 +2197,25 @@ func genExpr(node *AstNode) {
 		errorTok(node.Tok, "invalid expression")
 	} else if node.Lhs.Ty.Kind == TY_LDOUBLE {
 		genExpr(node.Lhs)
+		pushX87()
 		genExpr(node.Rhs)
+		popX87()
 
 		switch node.Kind {
 		case ND_ADD:
 			printlnToFile("  faddp")
 			return
 		case ND_SUB:
-			printlnToFile("  fsubrp")
+			printlnToFile("  fsubp")
 			return
 		case ND_MUL:
 			printlnToFile("  fmulp")
 			return
 		case ND_DIV:
-			printlnToFile("  fdivrp")
+			printlnToFile("  fdivp")
 			return
 		case ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE:
-			if node.Kind == ND_GT || node.Kind == ND_GE {
+			if node.Kind == ND_LT || node.Kind == ND_LE {
 				printlnToFile("  fxch %%st(1)")
 			}
 
