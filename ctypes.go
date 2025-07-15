@@ -76,6 +76,16 @@ func (t *CType) String() string {
 		return "ptr to " + t.Base.String()
 	case TY_INT:
 		return "int"
+	case TY_STRUCT:
+		mems := t.Members
+		result := ""
+		for m := mems; m != nil; m = m.Next {
+			result += m.Name.getIdent()
+			result += ":" + m.Ty.String() + ";"
+		}
+		return "struct" + "{" + result + "}"
+	case TY_UNION:
+		return "union"
 	default:
 		return "unknown type"
 	}
@@ -84,20 +94,7 @@ func (t *CType) String() string {
 func (ty *CType) copy() *CType {
 	ret := &CType{}
 	*ret = *ty
-	if ty.Kind == TY_STRUCT {
-		head := Member{}
-		cur := &head
-		for mem := ty.Members; mem != nil; mem = mem.Next {
-			m := &Member{}
-			*m = *mem
-			cur.Next = m
-			cur = m
-		}
-
-		ret.Members = head.Next
-		ret.Origin = ty
-		return ret
-	}
+	ret.Origin = ty
 	return ret
 }
 
@@ -278,10 +275,6 @@ func arrayOf(base *CType, len int64) *CType {
 
 func enumType() *CType {
 	return newType(TY_ENUM, 4, 4)
-}
-
-func structType() *CType {
-	return newType(TY_STRUCT, 0, 1)
 }
 
 func (node *AstNode) isNullPointer() bool {

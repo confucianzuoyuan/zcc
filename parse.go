@@ -1173,8 +1173,14 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 	ty := TyInt
 	counter := 0
 	isAtomic := false
+	for {
+		if attr != nil {
+			attrAligned(tok, &attr.Align)
+		}
+		if !tok.isTypename() {
+			break
+		}
 
-	for tok.isTypename() {
 		// Handle storage class specifiers.
 		if tok.isEqual("typedef") || tok.isEqual("static") || tok.isEqual("extern") || tok.isEqual("inline") || tok.isEqual("_Thread_local") || tok.isEqual("__thread") || tok.isEqual("constexpr") {
 			if attr == nil {
@@ -1224,33 +1230,40 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			}
 			tok = skip(tok.Next, "(")
 
+			var align int64
 			if tok.isTypename() {
-				attr.Align = typeName(&tok, tok).Align
+				align = typeName(&tok, tok).Align
 			} else {
-				attr.Align = constExpr(&tok, tok)
+				align = constExpr(&tok, tok)
 			}
+			attr.Align = int64(math.Max(float64(attr.Align), float64(align)))
 			tok = skip(tok, ")")
 			continue
 		}
 
-		// Handle user-defined types.
 		ty2 := findTypeDef(tok)
-		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") || ty2 != nil {
+		if ty2 != nil {
 			if counter != 0 {
 				break
 			}
+			ty = ty2
+			tok = tok.Next
+			counter += OTHER
+			continue
+		}
+		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") {
+			if counter != 0 {
+				errorTok(tok, "invalid type")
+			}
 
 			if tok.isEqual("struct") {
-				ty = structDecl(&tok, tok.Next)
+				ty = structUnionDecl(&tok, tok.Next, TY_STRUCT)
 			} else if tok.isEqual("union") {
-				ty = unionDecl(&tok, tok.Next)
+				ty = structUnionDecl(&tok, tok.Next, TY_UNION)
 			} else if tok.isEqual("enum") {
 				ty = enumSpecifier(&tok, tok.Next)
-			} else if tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") {
-				ty = typeofSpecifier(&tok, tok.Next)
 			} else {
-				ty = ty2
-				tok = tok.Next
+				ty = typeofSpecifier(&tok, tok.Next)
 			}
 
 			counter += OTHER
@@ -1401,14 +1414,12 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		basety := declspec(&tok, tok, &attr)
 
 		// Anonymous struct member
-		if (basety.Kind == TY_STRUCT || basety.Kind == TY_UNION) && consume(&tok, tok, ";") {
+		if (basety.Kind == TY_STRUCT || basety.Kind == TY_UNION) && tok.isEqual(";") {
 			mem := &Member{}
 			mem.Ty = basety
-			if attr.Align != 0 {
-				mem.Align = attr.Align
-			} else {
-				mem.Align = mem.Ty.Align
-			}
+			// mem->alt_align = attr.align // clang behavior
+			attrAligned(tok, &mem.AltAlign)
+			tok = tok.Next
 			cur.Next = mem
 			cur = cur.Next
 			continue
@@ -1418,14 +1429,8 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 		first := true
 		for ; commaList(&tok, &tok, ";", !first); first = false {
 			mem := &Member{}
-			var name *Token = nil
-			mem.Ty = declarator(&tok, tok, basety, &name)
-			mem.Name = name
-			if attr.Align > 0 {
-				mem.Align = attr.Align
-			} else {
-				mem.Align = mem.Ty.Align
-			}
+			mem.AltAlign = attr.Align
+			mem.Ty = declarator2(&tok, tok, basety, &mem.Name, &mem.AltAlign)
 
 			for t := mem.Ty; t != nil; t = t.Base {
 				if t.Kind == TY_VLA {
@@ -1436,6 +1441,7 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 			if consume(&tok, tok, ":") {
 				mem.IsBitfield = true
 				mem.BitWidth = constExpr(&tok, tok)
+				attrAligned(tok, &mem.AltAlign)
 			}
 
 			cur.Next = mem
@@ -1455,22 +1461,12 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	ty.Members = head.Next
 }
 
-func attributePacked(tok *Token, ty *CType, AllowBAttr bool) {
-	for lst := tok.AttrNext; lst != nil; lst = lst.AttrNext {
-		if lst.isEqual("packed") || lst.isEqual("__packed__") {
-			if !AllowBAttr && lst.Kind == TK_BATTR {
-				continue
-			}
-			ty.IsPacked = true
-			continue
-		}
-	}
-}
-
 // struct-union-decl = attribute? ident? ("{" struct-members)?
-func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
-	ty := structType()
-	attributePacked(tok, ty, true)
+func structUnionDecl(rest **Token, tok *Token, kind CTypeKind) *CType {
+	ty := newType(kind, -1, 1)
+	altAlign := int64(0)
+	attrAligned(tok, &altAlign)
+	attrPacked(tok, ty, true)
 
 	// Read a struct tag.
 	var tag *Token = nil
@@ -1481,14 +1477,12 @@ func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 
 	if tag != nil && !tok.isEqual("{") {
 		*rest = tok
-		*noList = true
 
 		ty2 := findTag(tag)
 		if ty2 != nil {
 			return ty2
 		}
 
-		ty.Size = -1
 		pushTagScope(tag, ty)
 		return ty
 	}
@@ -1497,8 +1491,16 @@ func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 
 	// Construct a struct object.
 	structMembers(&tok, tok, ty)
-	attributePacked(tok, ty, false)
+
+	attrAligned(tok, &altAlign)
+	attrPacked(tok, ty, false)
 	*rest = tok
+
+	if kind == TY_STRUCT {
+		ty = structDecl(ty, altAlign)
+	} else {
+		ty = unionDecl(ty, altAlign)
+	}
 
 	if tag != nil {
 		// If this is a redefinition, overwrite a previous type.
@@ -1515,26 +1517,39 @@ func structUnionDecl(rest **Token, tok *Token, noList *bool) *CType {
 }
 
 // struct-decl = struct-union-decl
-func structDecl(rest **Token, tok *Token) *CType {
-	noList := false
-	ty := structUnionDecl(rest, tok, &noList)
-	ty.Kind = TY_STRUCT
-
-	if noList {
-		return ty
-	}
-
-	// Assign offsets within the struct to members.
+func structDecl(ty *CType, altAlign int64) *CType {
 	bits := int64(0)
 	head := Member{}
 	cur := &head
 
 	for mem := ty.Members; mem != nil; mem = mem.Next {
-		if mem.IsBitfield && mem.BitWidth == 0 {
-			// Zero-width anonymous bitfield has a special meaning.
-			// It affects only alignment.
-			bits = alignTo(bits, mem.Ty.Size*8)
-		} else if mem.IsBitfield {
+		affectAlignment := false
+
+		if !mem.IsBitfield || mem.Name != nil {
+			cur.Next = mem
+			cur = cur.Next
+			affectAlignment = true
+		}
+
+		if !ty.IsPacked {
+			if mem.AltAlign != 0 && (mem.IsBitfield || mem.AltAlign > mem.Ty.Align) {
+				bits = alignTo(bits, mem.AltAlign*8)
+			}
+			if affectAlignment {
+				altAlign = int64(math.Max(float64(altAlign), math.Max(float64(mem.AltAlign), float64(mem.Ty.Align))))
+			}
+		} else if mem.AltAlign != 0 && mem.Ty.Kind != TY_STRUCT && mem.Ty.Kind != TY_UNION {
+			bits = alignTo(bits, mem.AltAlign*8)
+			if affectAlignment {
+				altAlign = int64(math.Max(float64(altAlign), float64(mem.AltAlign)))
+			}
+		}
+
+		if mem.IsBitfield {
+			if mem.BitWidth == 0 {
+				bits = alignTo(bits, mem.Ty.Size*8)
+				continue
+			}
 			sz := mem.Ty.Size
 			if !ty.IsPacked {
 				if bits/(sz*8) != (bits+mem.BitWidth-1)/(sz*8) {
@@ -1545,31 +1560,25 @@ func structDecl(rest **Token, tok *Token) *CType {
 			mem.Offset = alignDown(bits/8, sz)
 			mem.BitOffset = bits % (sz * 8)
 			bits += mem.BitWidth
-		} else {
-			if ty.IsPacked {
-				bits = alignTo(bits, 8)
-			} else {
-				bits = alignTo(bits, mem.Align*8)
-			}
-			mem.Offset = bits / 8
-			bits += mem.Ty.Size * 8
-		}
-
-		if mem.Name == nil && mem.IsBitfield {
 			continue
 		}
 
-		if !ty.IsPacked {
-			ty.Align = int64(math.Max(float64(ty.Align), float64(mem.Align)))
+		if ty.IsPacked {
+			bits = alignTo(bits, 8)
+		} else {
+			bits = alignTo(bits, mem.Ty.Align*8)
 		}
 
-		cur.Next = mem
-		cur = cur.Next
+		mem.Offset = bits / 8
+		bits += mem.Ty.Size * 8
 	}
 
 	cur.Next = nil
 	ty.Members = head.Next
-	if ty.IsPacked {
+	if altAlign != 0 {
+		ty.Align = altAlign
+	}
+	if ty.IsPacked && altAlign == 0 {
 		ty.Size = alignTo(bits, 8) / 8
 	} else {
 		ty.Size = alignTo(bits, ty.Align*8) / 8
@@ -1577,43 +1586,67 @@ func structDecl(rest **Token, tok *Token) *CType {
 	return ty
 }
 
-// union-decl = struct-union-decl
-func unionDecl(rest **Token, tok *Token) *CType {
-	noList := false
-	ty := structUnionDecl(rest, tok, &noList)
-	ty.Kind = TY_UNION
-
-	if noList {
-		return ty
+func attrAligned(tok *Token, align *int64) {
+	for lst := tok.AttrNext; lst != nil; lst = lst.AttrNext {
+		if lst.isEqual("aligned") || lst.isEqual("__aligned__") {
+			var tok2 *Token
+			if consume(&tok2, lst.Next, "(") {
+				align2 := constExpr(&tok2, tok2)
+				*align = int64(math.Max(float64(*align), float64(align2)))
+				continue
+			}
+			*align = int64(math.Max(float64(*align), 16))
+		}
 	}
+}
 
-	// If union, we don't have to assign offsets because they
-	// are already initialized to zero. We need to compute the
-	// alignment and the size though.
+func attrPacked(tok *Token, ty *CType, allowBAttr bool) {
+	for lst := tok.AttrNext; lst != nil; lst = lst.AttrNext {
+		if lst.isEqual("packed") || lst.isEqual("__packed__") {
+			if !allowBAttr && lst.Kind == TK_BATTR {
+				continue
+			}
+			ty.IsPacked = true
+			continue
+		}
+	}
+}
+
+func declarator2(rest **Token, tok *Token, basety *CType, name **Token, align *int64) *CType {
+	attrAligned(tok, align)
+	ty := declarator(&tok, tok, basety, name)
+	attrAligned(tok, align)
+	*rest = tok
+	return ty
+}
+
+// union-decl = struct-union-decl
+func unionDecl(ty *CType, altAlign int64) *CType {
 	head := Member{}
 	cur := &head
 	for mem := ty.Members; mem != nil; mem = mem.Next {
+		if !mem.IsBitfield || mem.Name != nil {
+			cur.Next = mem
+			cur = cur.Next
+			if !ty.IsPacked {
+				altAlign = int64(math.Max(float64(altAlign), math.Max(float64(mem.AltAlign), float64(mem.Ty.Align))))
+			} else if mem.AltAlign != 0 && mem.Ty.Kind != TY_STRUCT && mem.Ty.Kind != TY_UNION {
+				altAlign = int64(math.Max(float64(altAlign), float64(mem.AltAlign)))
+			}
+		}
 		sz := mem.Ty.Size
 		if mem.IsBitfield {
 			sz = alignTo(mem.BitWidth, 8) / 8
 		}
 
 		ty.Size = int64(math.Max(float64(ty.Size), float64(sz)))
-
-		if mem.Name == nil && mem.IsBitfield {
-			continue
-		}
-
-		if !ty.IsPacked {
-			ty.Align = int64(math.Max(float64(ty.Align), float64(mem.Align)))
-		}
-
-		cur.Next = mem
-		cur = cur.Next
 	}
 
 	cur.Next = nil
 	ty.Members = head.Next
+	if altAlign != 0 {
+		ty.Align = altAlign
+	}
 	ty.Size = alignTo(ty.Size, ty.Align)
 	return ty
 }
@@ -1841,7 +1874,11 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 	first := true
 	for ; commaList(rest, &tok, ";", !first); first = false {
 		var name *Token = nil
-		ty := declarator(&tok, tok, basety, &name)
+		altAlign := int64(0)
+		if attr != nil {
+			altAlign = attr.Align
+		}
+		ty := declarator2(&tok, tok, basety, &name, &altAlign)
 		if ty.Kind == TY_FUNC {
 			if name == nil {
 				errorTok(tok, "function name omitted")
@@ -1868,6 +1905,9 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 
 			// static local variable
 			variable := newAnonymousGlobalVariable(ty)
+			if altAlign != 0 {
+				variable.Align = altAlign
+			}
 			pushScope(name.getIdent()).Variable = variable
 
 			if attr.IsConstExpr {
@@ -1891,12 +1931,8 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 			// x = alloca(tmp)`.
 			v := newLocalVar(name.getIdent(), ty)
 			top := newLocalVar("", ty)
-			align := int64(16)
-			if attr != nil && attr.Align != 0 {
-				align = attr.Align
-			}
 
-			chainExpr(&expr, newAlloca(newVarNode(ty.VlaSize, name), v, top, align))
+			chainExpr(&expr, newAlloca(newVarNode(ty.VlaSize, name), v, top, int64(math.Max(float64(altAlign), 16))))
 
 			top.VlaNext = CurrentVLA
 			CurrentVLA = top
@@ -1905,8 +1941,8 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 		}
 
 		variable := newLocalVar(name.getIdent(), ty)
-		if attr != nil && attr.Align > 0 {
-			variable.Align = attr.Align
+		if altAlign != 0 {
+			variable.Align = altAlign
 		}
 
 		if attr != nil && attr.IsConstExpr {
@@ -2427,7 +2463,7 @@ func compoundStmt(rest **Token, tok *Token, kind AstNodeKind) *AstNode {
 			basety := declspec(&tok, tok, &attr)
 
 			if attr.IsTypeDef {
-				expr := parseTypeDef(&tok, tok, basety)
+				expr := parseTypeDef(&tok, tok, basety, &attr)
 				if expr != nil {
 					cur.Next = newUnary(ND_EXPR_STMT, expr, tok)
 					cur = cur.Next
@@ -4061,15 +4097,20 @@ func primary(rest **Token, tok *Token) *AstNode {
 	return nil
 }
 
-func parseTypeDef(rest **Token, tok *Token, basety *CType) *AstNode {
+func parseTypeDef(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNode {
 	first := true
 	var node *AstNode = nil
 
 	for ; commaList(rest, &tok, ";", !first); first = false {
 		var name *Token = nil
-		ty := declarator(&tok, tok, basety, &name)
+		altAlign := attr.Align
+		ty := declarator2(&tok, tok, basety, &name, &altAlign)
 		if name == nil {
 			errorTok(name, "typedef name omitted")
+		}
+		if altAlign != 0 {
+			ty = ty.copy()
+			ty.Align = altAlign
 		}
 		pushScope(name.getIdent()).TypeDef = ty
 		chainExpr(&node, computeVlaSize(ty, tok))
@@ -4144,7 +4185,8 @@ func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 
 	for ; commaList(&tok, &tok, ";", !first); first = false {
 		var name *Token = nil
-		ty := declarator(&tok, tok, basety, &name)
+		altAlign := attr.Align
+		ty := declarator2(&tok, tok, basety, &name, &altAlign)
 		if ty.Kind == TY_FUNC {
 			if tok.isEqual("{") {
 				if !first || scope.Parent != nil {
@@ -4165,8 +4207,8 @@ func globalDeclaration(tok *Token, basety *CType, attr *VarAttr) *Token {
 		variable.IsDefinition = !attr.IsExtern
 		variable.IsStatic = attr.IsStatic
 		variable.IsTls = attr.IsTls
-		if attr.Align > 0 {
-			variable.Align = attr.Align
+		if altAlign > 0 {
+			variable.Align = altAlign
 		}
 
 		if attr.IsConstExpr {
@@ -4236,7 +4278,7 @@ func parse(tok *Token) *Obj {
 
 		// Typedef
 		if attr.IsTypeDef {
-			parseTypeDef(&tok, tok, basety)
+			parseTypeDef(&tok, tok, basety, &attr)
 			continue
 		}
 

@@ -1108,8 +1108,6 @@ func loadFloatValue(ty *CType, fval FloatConst) {
 
 		posOne := FloatConst80{big.NewFloat(1)}
 		if fval.Eq(posOne) {
-			println("fval: ", fval.String())
-			println(posOne.String())
 			printlnToFile("  fld1")
 			return
 		}

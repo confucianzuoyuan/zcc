@@ -597,6 +597,9 @@ func isSupportedAttr(vendor **Token, tok *Token) int {
 	if (tok.isEqual("packed") || tok.isEqual("__packed__")) && (vendor == nil || vendorGNU) {
 		return 1
 	}
+	if (tok.isEqual("aligned") || tok.isEqual("__aligned__")) && (vendor == nil || vendorGNU) {
+		return 1
+	}
 	return 0
 }
 

@@ -252,12 +252,12 @@ func (node *AstNode) String() string {
 
 // Struct member
 type Member struct {
-	Next   *Member
-	Ty     *CType
-	Name   *Token
-	Index  int
-	Align  int64
-	Offset int64 // Offset from the beginning of the struct
+	Next     *Member
+	Ty       *CType
+	Name     *Token
+	Index    int
+	AltAlign int64
+	Offset   int64 // Offset from the beginning of the struct
 
 	// Bitfield
 	IsBitfield bool
