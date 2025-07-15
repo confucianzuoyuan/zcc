@@ -3975,6 +3975,15 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return genericSelection(rest, tok.Next)
 	}
 
+	if tok.isEqual("__builtin_alloca") {
+		node := newNode(ND_ALLOCA, tok)
+		tok = skip(tok.Next, "(")
+		node.Lhs = assign(&tok, tok)
+		*rest = skip(tok, ")")
+		node.Ty = pointerTo(TyVoid)
+		return node
+	}
+
 	if tok.isEqual("__builtin_offsetof") {
 		tok = skip(tok.Next, "(")
 		ty := typeName(&tok, tok)
