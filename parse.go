@@ -117,19 +117,10 @@ const (
 	EV_AGG                   // "constexpr" aggregate
 )
 
-type EvalContextPointer interface {
-	isEvalContextPointer()
-}
-
-type PtrPtrString struct{ Ptr **string }
-type PtrPtrObj struct{ Ptr **Obj }
-
-func (p PtrPtrString) isEvalContextPointer() {}
-func (p PtrPtrObj) isEvalContextPointer()    {}
-
 type EvalContext struct {
-	Kind    EvalKind
-	Pointer EvalContextPointer
+	Kind  EvalKind
+	Var   *Obj
+	Label *string
 }
 
 var CurrentVLA *Obj
@@ -2165,23 +2156,20 @@ func writeGlobalVarData(cur *Relocation, init *Initializer, ty *CType, buf *[]in
 		return cur
 	}
 
-	var label *string = nil
 	ctx := EvalContext{
 		Kind: kind,
 	}
-	if kind == EV_LABEL {
-		ctx.Pointer = PtrPtrString{&label}
-	}
+
 	val := eval2(init.Expr, &ctx)
 
-	if label == nil {
+	if ctx.Label == nil {
 		writeBuf(buf, offset, uint64(val), ty.Size)
 		return cur
 	}
 
 	rel := &Relocation{}
 	rel.Offset = offset
-	rel.Label = label
+	rel.Label = ctx.Label
 	rel.Addend = val
 	cur.Next = rel
 	return cur.Next
@@ -2934,20 +2922,14 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 		case ND_MEMBER:
 			return eval2(node.Lhs, ctx) + node.Member.Offset
 		case ND_LABEL_VAL:
-			if ptr, ok := ctx.Pointer.(PtrPtrString); ok {
-				*ptr.Ptr = &node.UniqueLabel
-				return 0
-			}
-			return evalError(node.Tok, "invalid context pointer for ND_LABEL_VAL")
+			ctx.Label = &node.UniqueLabel
+			return 0
 		case ND_VAR:
 			if node.Variable.IsLocal {
 				return evalError(node.Tok, "not a compile-time constant")
 			}
-			if ptr, ok := ctx.Pointer.(PtrPtrString); ok {
-				*ptr.Ptr = &node.Variable.Name
-				return 0
-			}
-			return evalError(node.Tok, "invalid context pointer for ND_VAR")
+			ctx.Label = &node.Variable.Name
+			return 0
 		}
 		return evalError(node.Tok, "invalid initializer")
 	}
@@ -2960,10 +2942,8 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 			return eval2(node.Lhs, ctx) + node.Member.Offset
 		}
 		if node.Kind == ND_VAR && node.Variable.ConstExprData != nil {
-			if ptr, ok := ctx.Pointer.(PtrPtrObj); ok {
-				*ptr.Ptr = node.Variable
-				return 0
-			}
+			ctx.Var = node.Variable
+			return 0
 		}
 		return evalError(node.Tok, "not a compile-time constant")
 	}
@@ -2995,23 +2975,19 @@ func eval2(node *AstNode, ctx *EvalContext) int64 {
 }
 
 func eval(node *AstNode) int64 {
-	return eval2(node, &EvalContext{})
+	return eval2(node, &EvalContext{Kind: EV_CONST})
 }
 
 func evalConstExprAgg(node *AstNode) []int8 {
-	v := &Obj{}
-	ctx := EvalContext{
-		Kind:    EV_AGG,
-		Pointer: PtrPtrObj{&v},
-	}
+	ctx := EvalContext{Kind: EV_AGG}
 	ofs := eval2(node, &ctx)
 	if evalRecover != nil && *evalRecover {
 		return nil
 	}
-	if ofs < 0 || (v.Ty.Size < (ofs + node.Ty.Size)) {
+	if ofs < 0 || (ctx.Var.Ty.Size < (ofs + node.Ty.Size)) {
 		return Int64ToInt8Slice(evalError(node.Tok, "constexpr access out of bounds"))
 	}
-	return v.ConstExprData[ofs:]
+	return ctx.Var.ConstExprData[ofs:]
 }
 
 func constExpr(rest **Token, tok *Token) int64 {
