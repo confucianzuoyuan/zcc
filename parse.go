@@ -930,7 +930,7 @@ func initializer(rest **Token, tok *Token, ty *CType, newTy **CType) *Initialize
 	initializer2(rest, tok, init)
 
 	if (ty.Kind == TY_STRUCT || ty.Kind == TY_UNION) && ty.IsFlexible {
-		ty := ty.copy()
+		ty := ty.copyStructType()
 
 		mem := ty.Members
 		for mem.Next != nil {
@@ -3959,6 +3959,15 @@ func primary(rest **Token, tok *Token) *AstNode {
 		}
 		if ty.Size < 0 {
 			errorTok(tok, "sizeof applied to incomplete type")
+		}
+		if ty.Kind == TY_STRUCT && ty.IsFlexible {
+			mem := ty.Members
+			for mem.Next != nil {
+				mem = mem.Next
+			}
+			if mem.Ty.Kind == TY_ARRAY {
+				return newULong(ty.Size-mem.Ty.Size, start)
+			}
 		}
 		return newULong(ty.Size, start)
 	}

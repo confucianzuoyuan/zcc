@@ -117,6 +117,22 @@ func (ty *CType) copy() *CType {
 	return ret
 }
 
+func (ty *CType) copyStructType() *CType {
+	ty = ty.copy()
+	head := Member{}
+	cur := &head
+
+	for mem := ty.Members; mem != nil; mem = mem.Next {
+		m := &Member{}
+		*m = *mem
+		cur.Next = m
+		cur = cur.Next
+	}
+
+	ty.Members = head.Next
+	return ty
+}
+
 func vlaOf(base *CType, length *AstNode) *CType {
 	ty := newType(TY_VLA, 8, 8)
 	ty.Base = base
