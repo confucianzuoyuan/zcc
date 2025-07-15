@@ -2003,6 +2003,7 @@ func declaration(rest **Token, tok *Token, basety *CType, attr *VarAttr) *AstNod
 
 			// static local variable
 			variable := newAnonymousGlobalVariable(ty)
+			variable.IsTls = attr.IsTls
 			if altAlign != 0 {
 				variable.Align = altAlign
 			}
