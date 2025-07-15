@@ -929,15 +929,21 @@ func initializer(rest **Token, tok *Token, ty *CType, newTy **CType) *Initialize
 	init := newInitializer(ty, true)
 	initializer2(rest, tok, init)
 
-	if (ty.Kind == TY_STRUCT || ty.Kind == TY_UNION) && ty.IsFlexible {
-		ty := ty.copyStructType()
+	if ty.Kind == TY_STRUCT && ty.IsFlexible {
+		ty = ty.copy()
 
-		mem := ty.Members
-		for mem.Next != nil {
-			mem = mem.Next
+		head := Member{}
+		cur := &head
+		for mem := ty.Members; mem != nil; mem = mem.Next {
+			m := &Member{}
+			*m = *mem
+			cur.Next = m
+			cur = cur.Next
 		}
-		mem.Ty = init.Children[mem.Index].Ty
-		ty.Size += mem.Ty.Size
+
+		cur.Ty = init.Children[cur.Index].Ty
+		ty.Size += cur.Ty.Size
+		ty.Members = head.Next
 
 		*newTy = ty
 		return init
@@ -1535,6 +1541,9 @@ func structMembers(rest **Token, tok *Token, ty *CType) {
 	// called a "flexible array member". It should behave as if
 	// if were a zero-sized array.
 	if cur != &head && cur.Ty.Kind == TY_ARRAY && cur.Ty.ArrayLength < 0 {
+		if ty.Kind != TY_STRUCT {
+			errorTok(tok, "flexible array member not allowed in union")
+		}
 		cur.Ty = arrayOf(cur.Ty.Base, 0)
 		ty.IsFlexible = true
 	}
