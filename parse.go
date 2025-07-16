@@ -1289,7 +1289,7 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 			counter += OTHER
 			continue
 		}
-		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") {
+		if tok.isEqual("struct") || tok.isEqual("union") || tok.isEqual("enum") || tok.isEqual("typeof") || tok.isEqual("__typeof") || tok.isEqual("__typeof__") || tok.isEqual("typeof_unqual") {
 			if counter != 0 {
 				errorTok(tok, "invalid type")
 			}
@@ -1300,6 +1300,8 @@ func declspec(rest **Token, tok *Token, attr *VarAttr) *CType {
 				ty = structUnionDecl(&tok, tok.Next, TY_UNION)
 			} else if tok.isEqual("enum") {
 				ty = enumSpecifier(&tok, tok.Next)
+			} else if tok.isEqual("typeof_unqual") {
+				ty = typeofSpecifier(&tok, tok.Next).unqual()
 			} else {
 				ty = typeofSpecifier(&tok, tok.Next)
 			}
@@ -2204,6 +2206,7 @@ func (tok *Token) isTypename() bool {
 	}
 	if opt_std >= STD_C23 {
 		TypeNames["constexpr"] = struct{}{}
+		TypeNames["typeof_unqual"] = struct{}{}
 	}
 	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 	_, ok := TypeNames[name]
