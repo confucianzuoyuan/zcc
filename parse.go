@@ -2593,12 +2593,13 @@ func resolveGotoLabels() {
 	gotos = nil
 }
 
-func applyCvQualifier(node *AstNode, ty *CType) {
+func applyCvQualifier(node *AstNode, ty2 *CType) {
 	node.addType()
-	if (!node.Ty.IsConst && ty.IsConst) || (!node.Ty.IsVolatile && ty.IsVolatile) {
-		node.Ty = node.Ty.copy()
-		node.Ty.IsConst = node.Ty.IsConst || ty.IsConst
-		node.Ty.IsVolatile = node.Ty.IsVolatile || ty.IsVolatile
+	ty := node.Ty
+	if (!ty.IsConst && ty2.IsConst) || (!ty.IsVolatile && ty2.IsVolatile) {
+		node.Ty = newQualifiedType(ty)
+		node.Ty.IsConst = ty.IsConst || ty2.IsConst
+		node.Ty.IsVolatile = ty.IsVolatile || ty2.IsVolatile
 	}
 }
 
