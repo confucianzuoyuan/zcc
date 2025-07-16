@@ -2214,6 +2214,62 @@ func (tok *Token) isTypename() bool {
 	return findTypeDef(tok) != nil
 }
 
+func atomicOp(binary *AstNode, returnOld bool) *AstNode {
+	// ({
+	//   T *addr = &obj; T old = *addr; T new;
+	//   do {
+	//    new = old op val;
+	//   } while (!atomic_compare_exchange_strong(addr, &old, new));
+	//
+	//   return_old ? old : new;
+	// })
+	tok := binary.Tok
+	head := AstNode{}
+	cur := &head
+
+	addr := newLocalVar("", pointerTo(binary.Lhs.Ty))
+	val := newLocalVar("", binary.Rhs.Ty)
+	old := newLocalVar("", binary.Lhs.Ty)
+	new := newLocalVar("", binary.Lhs.Ty)
+
+	cur.Next = newUnary(ND_EXPR_STMT, newBinary(ND_ASSIGN, newVarNode(addr, tok), newUnary(ND_ADDR, binary.Lhs, tok), tok), tok)
+	cur = cur.Next
+
+	cur.Next = newUnary(ND_EXPR_STMT, newBinary(ND_ASSIGN, newVarNode(val, tok), binary.Rhs, tok), tok)
+	cur = cur.Next
+
+	cur.Next = newUnary(ND_EXPR_STMT, newBinary(ND_ASSIGN, newVarNode(old, tok), newUnary(ND_DEREF, newVarNode(addr, tok), tok), tok), tok)
+	cur = cur.Next
+
+	loop := newNode(ND_DO, tok)
+	loop.BreakLabel = newUniqueName()
+	loop.ContinueLabel = newUniqueName()
+
+	body := newBinary(ND_ASSIGN, newVarNode(new, tok), newBinary(binary.Kind, newVarNode(old, tok), newVarNode(val, tok), tok), tok)
+
+	loop.Then = newNode(ND_BLOCK, tok)
+	loop.Then.Body = newUnary(ND_EXPR_STMT, body, tok)
+
+	cas := newNode(ND_CAS, tok)
+	cas.CasAddr = newVarNode(addr, tok)
+	cas.CasOld = newUnary(ND_ADDR, newVarNode(old, tok), tok)
+	cas.CasNew = newVarNode(new, tok)
+	loop.Cond = newUnary(ND_NOT, cas, tok)
+
+	cur.Next = loop
+	cur = cur.Next
+
+	if returnOld {
+		cur.Next = newUnary(ND_EXPR_STMT, newVarNode(old, tok), tok)
+	} else {
+		cur.Next = newUnary(ND_EXPR_STMT, newVarNode(new, tok), tok)
+	}
+
+	node := newNode(ND_STMT_EXPR, tok)
+	node.Body = head.Next
+	return node
+}
+
 /*
  * stmt = "return" expr? ";"
  *	    | "if" "(" expr ")" stmt ("else" stmt)?
@@ -3006,6 +3062,11 @@ func toAssign(binary *AstNode) *AstNode {
 
 	tok := binary.Tok
 
+	// If A is an atomic type, Convert `A op= B` to atomic_op_fetch(&A, B)
+	if binary.Lhs.Ty.IsAtomic {
+		return atomicOp(binary, false)
+	}
+
 	// Convert `A.x op= C` to `tmp = &A, (*tmp).x = (*tmp).x op C`.
 	if binary.Lhs.isBitField() {
 		v := newLocalVar("", pointerTo(binary.Lhs.Lhs.Ty))
@@ -3017,73 +3078,6 @@ func toAssign(binary *AstNode) *AstNode {
 		expr3.Member = binary.Lhs.Member
 		expr4 := newBinary(ND_ASSIGN, expr2, newBinary(binary.Kind, expr3, binary.Rhs, tok), tok)
 		return newBinary(ND_CHAIN, expr1, expr4, tok)
-	}
-
-	// If A is an atomic type, Convert `A op= B` to
-	//
-	// ({
-	//   T1 *addr = &A; T2 val = (B); T1 old = *addr; T1 new;
-	//   do {
-	//    new = old op val;
-	//   } while (!atomic_compare_exchange_strong(addr, &old, new));
-	//   new;
-	// })
-	if binary.Lhs.Ty.IsAtomic {
-		head := AstNode{}
-		cur := &head
-
-		addr := newLocalVar("", pointerTo(binary.Lhs.Ty))
-		val := newLocalVar("", binary.Rhs.Ty)
-		old := newLocalVar("", binary.Lhs.Ty)
-		new := newLocalVar("", binary.Lhs.Ty)
-
-		cur.Next =
-			newUnary(ND_EXPR_STMT,
-				newBinary(ND_ASSIGN, newVarNode(addr, tok),
-					newUnary(ND_ADDR, binary.Lhs, tok), tok),
-				tok)
-		cur = cur.Next
-
-		cur.Next =
-			newUnary(ND_EXPR_STMT,
-				newBinary(ND_ASSIGN, newVarNode(val, tok), binary.Rhs, tok),
-				tok)
-		cur = cur.Next
-
-		cur.Next =
-			newUnary(ND_EXPR_STMT,
-				newBinary(ND_ASSIGN, newVarNode(old, tok),
-					newUnary(ND_DEREF, newVarNode(addr, tok), tok), tok),
-				tok)
-		cur = cur.Next
-
-		loop := newNode(ND_DO, tok)
-		loop.BreakLabel = newUniqueName()
-		loop.ContinueLabel = newUniqueName()
-
-		body := newBinary(ND_ASSIGN,
-			newVarNode(new, tok),
-			newBinary(binary.Kind, newVarNode(old, tok),
-				newVarNode(val, tok), tok),
-			tok)
-
-		loop.Then = newNode(ND_BLOCK, tok)
-		loop.Then.Body = newUnary(ND_EXPR_STMT, body, tok)
-
-		cas := newNode(ND_CAS, tok)
-		cas.CasAddr = newVarNode(addr, tok)
-		cas.CasOld = newUnary(ND_ADDR, newVarNode(old, tok), tok)
-		cas.CasNew = newVarNode(new, tok)
-		loop.Cond = newUnary(ND_NOT, cas, tok)
-
-		cur.Next = loop
-		cur = cur.Next
-
-		cur.Next = newUnary(ND_EXPR_STMT, newVarNode(new, tok), tok)
-
-		node := newNode(ND_STMT_EXPR, tok)
-		node.Body = head.Next
-		return node
 	}
 
 	// Convert `A op= B` to ``tmp = &A, *tmp = *tmp op B`.
@@ -3982,6 +3976,36 @@ func primary(rest **Token, tok *Token) *AstNode {
 		*rest = skip(tok, ")")
 		node.Ty = pointerTo(TyVoid)
 		return node
+	}
+
+	text := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	if strings.HasPrefix(text, "__builtin_atomic_fetch_") {
+		start := tok
+		tok = skip(tok.Next, "(")
+		obj := newUnary(ND_DEREF, assign(&tok, tok), start)
+		tok = skip(tok, ",")
+		val := assign(&tok, tok)
+		*rest = skip(tok, ")")
+
+		var binary *AstNode
+
+		if strings.HasPrefix(text, "__builtin_atomic_fetch_add") {
+			binary = newAdd(obj, val, start)
+		} else if strings.HasPrefix(text, "__builtin_atomic_fetch_sub") {
+			binary = newSub(obj, val, start)
+		} else if strings.HasPrefix(text, "__builtin_atomic_fetch_and") {
+			binary = newBinary(ND_BITAND, obj, val, start)
+		} else if strings.HasPrefix(text, "__builtin_atomic_fetch_or") {
+			binary = newBinary(ND_BITOR, obj, val, start)
+		} else if strings.HasPrefix(text, "__builtin_atomic_fetch_xor") {
+			binary = newBinary(ND_BITXOR, obj, val, start)
+		} else {
+			errorTok(start, "unsupported atomic fetch op")
+		}
+
+		binary.Lhs.addType()
+		binary.Rhs.addType()
+		return atomicOp(binary, true)
 	}
 
 	if tok.isEqual("__builtin_offsetof") {
