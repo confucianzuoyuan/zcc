@@ -183,6 +183,12 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-pthread" {
+			define("_REENTRANT")
+			inputPaths = append(inputPaths, "-lpthread")
+			continue
+		}
+
 		if args[idx] == "-static" {
 			opt_static = true
 			ldExtraArgs = append(ldExtraArgs, "-static")
