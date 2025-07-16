@@ -581,6 +581,10 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 		return t1.isCompatibleWith(t2.Origin)
 	}
 
+	if (t1.Kind == TY_VLA && t2.Kind == TY_VLA) || (t1.Kind == TY_VLA && t2.Kind == TY_ARRAY) || (t1.Kind == TY_ARRAY && t2.Kind == TY_VLA) {
+		return t1.Base.isCompatibleWith2(t2.Base)
+	}
+
 	if t1.Kind != t2.Kind {
 		return false
 	}
@@ -616,7 +620,7 @@ func (t1 *CType) isCompatibleWith(t2 *CType) bool {
 		if !t1.Base.isCompatibleWith2(t2.Base) {
 			return false
 		}
-		return t1.ArrayLength < 0 && t2.ArrayLength < 0 && t1.ArrayLength == t2.ArrayLength
+		return t1.ArrayLength < 0 || t2.ArrayLength < 0 || t1.ArrayLength == t2.ArrayLength
 	}
 
 	return false
