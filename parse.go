@@ -2364,7 +2364,7 @@ func stmt(rest **Token, tok *Token, chained bool) *AstNode {
 		tok = skip(tok.Next, "(")
 
 		node.TargetVLA = CurrentVLA
-		enterScope()
+		enterTmpScope()
 
 		if tok.isTypename() {
 			basety := declspec(&tok, tok, nil)
