@@ -1871,19 +1871,32 @@ func genExpr(node *AstNode) {
 		genExpr(node.CasOld)
 		push()
 		genExpr(node.CasNew)
-		sz := int(node.CasAddr.Ty.Base.Size)
-		printlnToFile("  mov %s, %s", regAX(sz), regDX(sz))
-		pop("%rax") // old
-		pop("%rcx") // addr
 
-		r0 := reqGP(tmpreg64[:], 0)
-		printlnToFile("  mov %%rax, %s", r0)
-		load(node.CasOld.Ty.Base)
+		old := popInReg(tmpreg64[0])
+		addr := popInReg(tmpreg64[1])
 
-		printlnToFile("  lock cmpxchg %s, (%%rcx)", regDX(sz))
+		ty := node.CasAddr.Ty.Base
+		ax := regAX(int(ty.Size))
+		dx := regDX(int(ty.Size))
+
+		if !ty.isScalar() || ty.Kind == TY_LDOUBLE {
+			errorTok(node.Tok, "unsupported type for atomic CAS")
+		}
+
+		switch ty.Kind {
+		case TY_DOUBLE:
+			printlnToFile("  movq %%xmm0, %s", dx)
+		case TY_FLOAT:
+			printlnToFile("  movd %%xmm0, %s", dx)
+		default:
+			printlnToFile("  mov %s, %s", ax, dx)
+		}
+
+		printlnToFile("  mov (%s), %s", old, ax)
+		printlnToFile("  lock cmpxchg %s, (%s)", dx, addr)
 		printlnToFile("  sete %%cl")
 		printlnToFile("  je 1f")
-		printlnToFile("  mov %s, (%s)", regAX(sz), r0)
+		printlnToFile("  mov %s, (%s)", ax, old)
 		printlnToFile("1:")
 		printlnToFile("  movzbl %%cl, %%eax")
 		return
