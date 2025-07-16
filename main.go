@@ -523,7 +523,7 @@ func getFileType(filename string) FileType {
 	if strings.HasSuffix(filename, ".so") {
 		return FILE_DSO
 	}
-	if strings.HasSuffix(filename, ".o") {
+	if strings.HasSuffix(filename, ".o") || strings.HasSuffix(filename, ".lo") {
 		return FILE_OBJ
 	}
 
