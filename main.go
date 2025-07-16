@@ -159,6 +159,11 @@ func parseArgs(args []string) {
 			continue
 		}
 
+		if args[idx] == "-rdynamic" {
+			inputPaths = append(inputPaths, "-Wl,--export-dynamic")
+			continue
+		}
+
 		if args[idx] == "-Xlinker" {
 			idx++
 			ldExtraArgs = append(ldExtraArgs, args[idx])
