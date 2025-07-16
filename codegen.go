@@ -777,7 +777,7 @@ func store2(ty *CType, dofs int, dptr string) {
 
 	if ty.Kind == TY_LDOUBLE {
 		printlnToFile("  fstpt %d(%s)", dofs, dptr)
-		printlnToFile("  fldt %d(%s)", dofs, dptr)
+		printlnToFile("  fninit; fldt %d(%s)", dofs, dptr)
 		return
 	}
 
