@@ -256,6 +256,10 @@ func (t *CType) isGpType() bool {
 	return t.isInteger() || t.Kind == TY_PTR
 }
 
+func (t *CType) isArray() bool {
+	return t.Kind == TY_ARRAY || t.Kind == TY_VLA
+}
+
 func (ty *CType) vaArgNeedCopy() bool {
 	if ty.Size > 8 && ty.Size <= 16 {
 		return ty.hasFloatNumber1() || ty.hasFloatNumber2()

@@ -1784,6 +1784,7 @@ func structRef(node *AstNode, tok *Token) *AstNode {
 		}
 		node = newUnary(ND_MEMBER, node, tok)
 		node.Member = mem
+		applyCvQualifier(node, ty)
 		if mem.Name != nil {
 			break
 		}
@@ -2590,6 +2591,15 @@ func resolveGotoLabels() {
 
 	labels = nil
 	gotos = nil
+}
+
+func applyCvQualifier(node *AstNode, ty *CType) {
+	node.addType()
+	if (!node.Ty.IsConst && ty.IsConst) || (!node.Ty.IsVolatile && ty.IsVolatile) {
+		node.Ty = node.Ty.copy()
+		node.Ty.IsConst = node.Ty.IsConst || ty.IsConst
+		node.Ty.IsVolatile = node.Ty.IsVolatile || ty.IsVolatile
+	}
 }
 
 // compound-stmt = (typedef | declaration | stmt)* "}"
@@ -3561,7 +3571,12 @@ func unary(rest **Token, tok *Token) *AstNode {
 			return node
 		}
 
-		return newUnary(ND_DEREF, node, tok)
+		ty := node.Ty
+		node = newUnary(ND_DEREF, node, tok)
+		if ty.Kind == TY_ARRAY || ty.Kind == TY_VLA {
+			applyCvQualifier(node, ty)
+		}
+		return node
 	}
 
 	if tok.isEqual("!") {
@@ -3657,7 +3672,14 @@ func postfix(rest **Token, tok *Token) *AstNode {
 			start := tok
 			idx := expr(&tok, tok.Next)
 			tok = skip(tok, "]")
+
+			node.addType()
+			ty := node.Ty
 			node = newUnary(ND_DEREF, newAdd(node, idx, start), start)
+
+			if ty.Kind == TY_ARRAY || ty.Kind == TY_VLA {
+				applyCvQualifier(node, ty)
+			}
 			continue
 		}
 
@@ -3669,7 +3691,13 @@ func postfix(rest **Token, tok *Token) *AstNode {
 
 		if tok.isEqual("->") {
 			// x->y is short for (*x).y
+			node.addType()
+			ty := node.Ty
 			node = structRef(newUnary(ND_DEREF, node, tok), tok.Next)
+
+			if ty.isArray() {
+				applyCvQualifier(node, ty)
+			}
 			tok = tok.Next.Next
 			continue
 		}
