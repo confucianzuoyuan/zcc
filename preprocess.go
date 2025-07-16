@@ -323,6 +323,225 @@ func splitLine(rest **Token, tok *Token) *Token {
 	return head.Next
 }
 
+func directives(cur **Token, start *Token) *Token {
+	tok := start.Next
+
+	if tok.isEqual("include") {
+		isDoubleQuote := false
+		filename := readIncludeFilename(splitLine(&tok, tok.Next), &isDoubleQuote)
+
+		// remove '\x00' in the end
+		if len(filename) > 0 && filename[len(filename)-1] == 0 {
+			filename = filename[:len(filename)-1]
+		}
+
+		if filename[0] != '/' && isDoubleQuote {
+			path := filepath.Dir(start.File.Name) + "/" + filename
+			_, err := os.Stat(path)
+			if err == nil {
+				tok = includeFile(tok, path, start.Next.Next)
+				return tok
+			}
+		}
+
+		path := searchIncludePaths(filename)
+		if path != "" {
+			tok = includeFile(tok, path, start.Next.Next)
+		} else {
+			tok = includeFile(tok, filename, start.Next.Next)
+		}
+		return tok
+	}
+
+	if tok.isEqual("include_next") {
+		ignore := false
+		filename := readIncludeFilename(splitLine(&tok, tok.Next), &ignore)
+		path := searchIncludeNext(filename)
+		if path != "" {
+			tok = includeFile(tok, path, start.Next.Next)
+		} else {
+			tok = includeFile(tok, filename, start.Next.Next)
+		}
+		return tok
+	}
+
+	if tok.isEqual("define") {
+		readMacroDefinition(&tok, tok.Next)
+		return tok
+	}
+
+	if tok.isEqual("undef") {
+		tok = tok.Next
+		if tok.Kind != TK_IDENT {
+			errorTok(tok, "macro name must be an identifier")
+		}
+		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+		undefMacro(name)
+		tok = skipLine(tok.Next)
+
+		return tok
+	}
+
+	if tok.isEqual("if") {
+		val := evalConstExpr(&tok, tok)
+		if val != 0 {
+			pushCondIncl(start, true)
+		} else {
+			pushCondIncl(start, false)
+			tok = skipCondIncl(tok)
+		}
+		return tok
+	}
+
+	if tok.isEqual("ifdef") {
+		defined := findMacro(tok.Next)
+		if defined != nil {
+			pushCondIncl(tok, true)
+		} else {
+			pushCondIncl(tok, false)
+		}
+		tok = skipLine(tok.Next.Next)
+		if defined == nil {
+			tok = skipCondIncl(tok)
+		}
+		return tok
+	}
+
+	if tok.isEqual("ifndef") {
+		defined := findMacro(tok.Next)
+		if defined == nil {
+			pushCondIncl(tok, true)
+		} else {
+			pushCondIncl(tok, false)
+		}
+		tok = skipLine(tok.Next.Next)
+		if defined != nil {
+			tok = skipCondIncl(tok)
+		}
+		return tok
+	}
+
+	if tok.isEqual("elif") {
+		if condIncl == nil || condIncl.Ctx == IN_ELSE {
+			errorTok(start, "stray #elif")
+		}
+
+		condIncl.Ctx = IN_ELIF
+
+		if !condIncl.Included && evalConstExpr(&tok, tok) != 0 {
+			condIncl.Included = true
+		} else {
+			tok = skipCondIncl(tok)
+		}
+
+		return tok
+	}
+
+	if tok.isEqual("else") {
+		if condIncl == nil || condIncl.Ctx == IN_ELSE {
+			errorTok(start, "stray #else")
+		}
+		condIncl.Ctx = IN_ELSE
+		tok = skipLine(tok.Next)
+
+		if condIncl.Included {
+			tok = skipCondIncl(tok)
+		}
+		return tok
+	}
+
+	if tok.isEqual("endif") {
+		if condIncl == nil {
+			errorTok(start, "stray #endif")
+		}
+
+		if tok.GuardFile != "" && tok.GuardFile == condIncl.Tok.GuardFile {
+			nameToken := condIncl.Tok.Next
+			guardName := B2S((*nameToken.File.Contents)[nameToken.Location : nameToken.Location+nameToken.Length])
+			IncludeGuards[tok.GuardFile] = guardName
+		}
+
+		condIncl = condIncl.Next
+		tok = skipLine(tok.Next)
+		return tok
+	}
+
+	if tok.isEqual("line") {
+		readLineMarker(&tok, tok.Next)
+		return tok
+	}
+
+	if tok.Kind == TK_PP_NUM {
+		readLineMarker(&tok, tok)
+		return tok
+	}
+
+	if tok.isEqual("pragma") && tok.Next.isEqual("once") {
+		PragmaOnce[tok.File.Name] = 1
+		tok = skipLine(tok.Next.Next)
+		return tok
+	}
+
+	if tok.isEqual("pragma") && opt_E {
+		tok = start
+		for {
+			(**cur).Next = tok
+			*cur = (**cur).Next
+			tok = tok.Next
+			if tok.AtBeginningOfLine {
+				break
+			}
+		}
+		return tok
+	}
+
+	if tok.isEqual("pragma") {
+		for {
+			tok = tok.Next
+			if tok.AtBeginningOfLine {
+				break
+			}
+		}
+		return tok
+	}
+
+	if tok.isEqual("error") {
+		errorTok(tok, "error")
+	}
+
+	if tok.isEqual("warning") {
+		warnTok(tok, "warning")
+		for {
+			tok = tok.Next
+			if tok.AtBeginningOfLine {
+				break
+			}
+		}
+		return tok
+	}
+
+	if opt_cc1_asm_pp {
+		tok = start
+		for {
+			(**cur).Next = tok
+			*cur = (**cur).Next
+			tok = tok.Next
+			if tok.AtBeginningOfLine {
+				break
+			}
+		}
+		return tok
+	}
+
+	// `#`-only line is legal. It's called a null directive.
+	if tok.AtBeginningOfLine {
+		return tok
+	}
+
+	errorTok(tok, "invalid preprocessor directive")
+	panic("unreachable")
+}
+
 // Read and evaluate a constant expression.
 func evalConstExpr(rest **Token, tok *Token) int64 {
 	start := tok
@@ -835,6 +1054,11 @@ func readMacroArgOne(rest **Token, tok *Token, readRest bool) *MacroArg {
 			}
 		}
 
+		if tok.isHash() && LockedMacros == nil {
+			tok = directives(&cur, tok)
+			continue
+		}
+
 		if level == 0 && tok.isEqual(")") {
 			break
 		}
@@ -1269,234 +1493,22 @@ func preprocess2(tok *Token) *Token {
 			continue
 		}
 
-		if !tok.isHash() || LockedMacros != nil {
-			if opt_g {
-				tok.addLocInfo()
-			}
-			cur.Next = tok
-			cur = cur.Next
-			tok = tok.Next
+		if tok.isHash() && LockedMacros == nil {
+			tok = directives(&cur, tok)
 			continue
 		}
 
-		start := tok
+		if opt_g {
+			tok.addLocInfo()
+		}
+
+		cur.Next = tok
+		cur = cur.Next
 		tok = tok.Next
-
-		if tok.isEqual("include") {
-			isDoubleQuote := false
-			filename := readIncludeFilename(splitLine(&tok, tok.Next), &isDoubleQuote)
-
-			// remove '\x00' in the end
-			if len(filename) > 0 && filename[len(filename)-1] == 0 {
-				filename = filename[:len(filename)-1]
-			}
-
-			if filename[0] != '/' && isDoubleQuote {
-				path := filepath.Dir(start.File.Name) + "/" + filename
-				_, err := os.Stat(path)
-				if err == nil {
-					tok = includeFile(tok, path, start.Next.Next)
-					continue
-				}
-			}
-
-			path := searchIncludePaths(filename)
-			if path != "" {
-				tok = includeFile(tok, path, start.Next.Next)
-			} else {
-				tok = includeFile(tok, filename, start.Next.Next)
-			}
-			continue
-		}
-
-		if tok.isEqual("include_next") {
-			ignore := false
-			filename := readIncludeFilename(splitLine(&tok, tok.Next), &ignore)
-			path := searchIncludeNext(filename)
-			if path != "" {
-				tok = includeFile(tok, path, start.Next.Next)
-			} else {
-				tok = includeFile(tok, filename, start.Next.Next)
-			}
-
-			continue
-		}
-
-		if tok.isEqual("define") {
-			readMacroDefinition(&tok, tok.Next)
-			continue
-		}
-
-		if tok.isEqual("undef") {
-			tok = tok.Next
-			if tok.Kind != TK_IDENT {
-				errorTok(tok, "macro name must be an identifier")
-			}
-			name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
-			undefMacro(name)
-			tok = skipLine(tok.Next)
-
-			continue
-		}
-
-		if tok.isEqual("if") {
-			val := evalConstExpr(&tok, tok)
-			var included bool = true
-			if val == 0 {
-				included = false
-			}
-			pushCondIncl(start, included)
-			if val == 0 {
-				tok = skipCondIncl(tok)
-			}
-			continue
-		}
-
-		if tok.isEqual("ifdef") {
-			defined := findMacro(tok.Next)
-			if defined != nil {
-				pushCondIncl(tok, true)
-			} else {
-				pushCondIncl(tok, false)
-			}
-			tok = skipLine(tok.Next.Next)
-			if defined == nil {
-				tok = skipCondIncl(tok)
-			}
-			continue
-		}
-
-		if tok.isEqual("ifndef") {
-			defined := findMacro(tok.Next)
-			if defined == nil {
-				pushCondIncl(tok, true)
-			} else {
-				pushCondIncl(tok, false)
-			}
-			tok = skipLine(tok.Next.Next)
-			if defined != nil {
-				tok = skipCondIncl(tok)
-			}
-			continue
-		}
-
-		if tok.isEqual("elif") {
-			if condIncl == nil || condIncl.Ctx == IN_ELSE {
-				errorTok(start, "stray #elif")
-			}
-
-			if tok.GuardFile != "" && tok.GuardFile == condIncl.Tok.GuardFile {
-				nameToken := condIncl.Tok.Next
-				guardName := B2S((*nameToken.File.Contents)[nameToken.Location : nameToken.Location+nameToken.Length])
-				IncludeGuards[tok.GuardFile] = guardName
-			}
-
-			condIncl.Ctx = IN_ELIF
-
-			if !condIncl.Included && evalConstExpr(&tok, tok) != 0 {
-				condIncl.Included = true
-			} else {
-				tok = skipCondIncl(tok)
-			}
-
-			continue
-		}
-
-		if tok.isEqual("else") {
-			if condIncl == nil || condIncl.Ctx == IN_ELSE {
-				errorTok(start, "stray #else")
-			}
-			condIncl.Ctx = IN_ELSE
-			tok = skipLine(tok.Next)
-
-			if condIncl.Included {
-				tok = skipCondIncl(tok)
-			}
-			continue
-		}
-
-		if tok.isEqual("endif") {
-			if condIncl == nil {
-				errorTok(start, "stray #endif")
-			}
-			condIncl = condIncl.Next
-			tok = skipLine(tok.Next)
-			continue
-		}
-
-		if tok.isEqual("line") {
-			readLineMarker(&tok, tok.Next)
-			continue
-		}
-
-		if tok.Kind == TK_PP_NUM {
-			readLineMarker(&tok, tok)
-			continue
-		}
-
-		if tok.isEqual("pragma") && tok.Next.isEqual("once") {
-			PragmaOnce[tok.File.Name] = 1
-			tok = skipLine(tok.Next.Next)
-			continue
-		}
-
-		if tok.isEqual("pragma") && opt_E {
-			tok = start
-			for {
-				cur.Next = tok
-				cur = cur.Next
-				tok = tok.Next
-				if tok.AtBeginningOfLine {
-					break
-				}
-			}
-			continue
-		}
-
-		if tok.isEqual("pragma") {
-			tok = tok.Next
-			for !tok.AtBeginningOfLine {
-				tok = tok.Next
-			}
-			continue
-		}
-
-		if tok.isEqual("error") {
-			errorTok(tok, "error")
-		}
-
-		if tok.isEqual("warning") {
-			warnTok(tok, "warning")
-			tok = tok.Next
-			for !tok.AtBeginningOfLine {
-				tok = tok.Next
-			}
-			continue
-		}
-
-		if opt_cc1_asm_pp {
-			tok = start
-			for {
-				cur.Next = tok
-				cur = cur.Next
-				tok = tok.Next
-				if tok.AtBeginningOfLine {
-					break
-				}
-			}
-			continue
-		}
-
-		// `#`-only line is legal. It's called a null directive.
-		if tok.AtBeginningOfLine {
-			continue
-		}
-
-		errorTok(tok, "invalid preprocessor directive")
 	}
 
 	if startM != LockedMacros {
-		panic("startM != LockedMacros")
+		panic("internal error")
 	}
 
 	cur.Next = tok
