@@ -497,10 +497,8 @@ func printDependencies() {
 
 	for i := 0; i < len(files); i++ {
 		name := files[i].Name
-		if opt_MMD {
-			if inStdIncludePath(name) || name == "zcc_builtins" {
-				continue
-			}
+		if (opt_MMD && inStdIncludePath(name)) || name == "zcc_builtins" {
+			continue
 		}
 		fmt.Fprintf(out, " \\\n  %s", name)
 	}
@@ -510,10 +508,8 @@ func printDependencies() {
 	if opt_MP {
 		for i := 1; i < len(files); i++ {
 			name := files[i].Name
-			if opt_MMD {
-				if inStdIncludePath(name) || name == "zcc_builtins" {
-					continue
-				}
+			if (opt_MMD && inStdIncludePath(name)) || name == "zcc_builtins" {
+				continue
 			}
 			fmt.Fprintf(out, "%s:\n\n", quoteMakefile(name))
 		}
