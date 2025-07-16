@@ -3573,7 +3573,7 @@ func unary(rest **Token, tok *Token) *AstNode {
 
 		ty := node.Ty
 		node = newUnary(ND_DEREF, node, tok)
-		if ty.Kind == TY_ARRAY || ty.Kind == TY_VLA {
+		if ty.isArray() {
 			applyCvQualifier(node, ty)
 		}
 		return node
@@ -3677,7 +3677,7 @@ func postfix(rest **Token, tok *Token) *AstNode {
 			ty := node.Ty
 			node = newUnary(ND_DEREF, newAdd(node, idx, start), start)
 
-			if ty.Kind == TY_ARRAY || ty.Kind == TY_VLA {
+			if ty.isArray() {
 				applyCvQualifier(node, ty)
 			}
 			continue
