@@ -118,10 +118,11 @@ func expandArg(arg *MacroArg) *Token {
 		tok = tok.Next
 	}
 
+	cur.Next = tok.newEOF()
+
 	if startM != LockedMacros {
 		panic("startM != LockedMacros")
 	}
-	cur.Next = tok.newEOF()
 	arg.Expanded = head.Next
 	return head.Next
 }
@@ -141,13 +142,16 @@ func newNumberToken(val int, tmpl *Token) *Token {
 	return tokenize(newFile(tmpl.File.Name, tmpl.File.FileNo, &newBuf), nil)
 }
 
-func readConstExpr(rest **Token, tok *Token) *Token {
-	tok = splitLine(rest, tok)
-
+func readConstExpr(tok *Token) *Token {
 	head := Token{}
 	cur := &head
+	startM := LockedMacros
 
-	for tok.Kind != TK_EOF {
+	for ; tok.Kind != TK_EOF; popMacroLock(tok) {
+		if expandMacro(&tok, tok) {
+			continue
+		}
+
 		// "defined(foo)" or "defined foo" becomes "1" if macro "foo"
 		// is defined. Otherwise "0".
 		if tok.isEqual("defined") {
@@ -159,21 +163,23 @@ func readConstExpr(rest **Token, tok *Token) *Token {
 				errorTok(start, "macro name must be an identifier")
 			}
 
-			m := findMacro(tok)
+			toIntToken(start, int64(boolToInt(findMacro(tok) != nil)))
+			cur.Next = start
+			cur = cur.Next
 			tok = tok.Next
 
 			if hasParen {
 				tok = skip(tok, ")")
 			}
 
-			if m != nil {
-				cur.Next = newNumberToken(1, start)
-				cur = cur.Next
-			} else {
-				cur.Next = newNumberToken(0, start)
-				cur = cur.Next
-			}
 			continue
+		}
+
+		// Replace remaining non-macro identifiers with "0" before
+		// evaluating a constant expression. For example, `#if foo` is
+		// equivalent to `#if 0` if foo is not defined.
+		if tok.Kind == TK_IDENT {
+			toIntToken(tok, 0)
 		}
 
 		cur.Next = tok
@@ -182,6 +188,9 @@ func readConstExpr(rest **Token, tok *Token) *Token {
 	}
 
 	cur.Next = tok
+	if startM != LockedMacros {
+		panic("internal error")
+	}
 	return head.Next
 }
 
@@ -384,10 +393,8 @@ func directives(cur **Token, start *Token) *Token {
 
 	if tok.isEqual("if") {
 		val := evalConstExpr(&tok, tok)
-		if val != 0 {
-			pushCondIncl(start, true)
-		} else {
-			pushCondIncl(start, false)
+		pushCondIncl(start, val)
+		if !val {
 			tok = skipCondIncl(tok)
 		}
 		return tok
@@ -428,7 +435,7 @@ func directives(cur **Token, start *Token) *Token {
 
 		condIncl.Ctx = IN_ELIF
 
-		if !condIncl.Included && evalConstExpr(&tok, tok) != 0 {
+		if !condIncl.Included && evalConstExpr(&tok, tok) {
 			condIncl.Included = true
 		} else {
 			tok = skipCondIncl(tok)
@@ -543,36 +550,20 @@ func directives(cur **Token, start *Token) *Token {
 }
 
 // Read and evaluate a constant expression.
-func evalConstExpr(rest **Token, tok *Token) int64 {
-	start := tok
-	expr := readConstExpr(rest, tok.Next)
-	expr = preprocess2(expr)
+func evalConstExpr(rest **Token, start *Token) bool {
+	tok := splitLine(rest, start.Next)
+	tok = readConstExpr(tok)
 
-	if expr.Kind == TK_EOF {
+	if tok.Kind == TK_EOF {
 		errorTok(start, "no expressions")
 	}
 
-	// [https://www.sigbus.info/n1570#6.10.1p4] The standard requires
-	// we replace remaining non-macro identifiers with "0" before
-	// evaluating a constant expression. For example, `#if foo` is
-	// equivalent to `#if 0` if foo is not defined.
-	for t := expr; t.Kind != TK_EOF; t = t.Next {
-		if t.Kind == TK_IDENT {
-			next := t.Next
-			if next.isEqual("(") {
-				errorTok(t, "undefined function-like macro")
-			}
-			*t = *newNumberToken(0, t)
-			t.Next = next
-		}
-	}
+	var end *Token
+	val := constExpr(&end, tok) != 0
 
-	var rest2 *Token
-	val := constExpr(&rest2, expr)
-	if rest2.Kind != TK_EOF {
-		errorTok(rest2, "extra token")
+	if end.Kind != TK_EOF {
+		errorTok(end, "extra token")
 	}
-
 	return val
 }
 
@@ -1480,6 +1471,12 @@ func hasIncludeMacro(start *Token) *Token {
 	return tok2
 }
 
+func toIntToken(tok *Token, val int64) {
+	tok.Kind = TK_NUM
+	tok.Value = val
+	tok.Ty = TyInt
+}
+
 // Visit all tokens in `tok` while evaluating preprocessing
 // macros and directives.
 func preprocess2(tok *Token) *Token {
@@ -1507,11 +1504,12 @@ func preprocess2(tok *Token) *Token {
 		tok = tok.Next
 	}
 
+	cur.Next = tok
+
 	if startM != LockedMacros {
 		panic("internal error")
 	}
 
-	cur.Next = tok
 	return head.Next
 }
 
