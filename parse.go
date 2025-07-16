@@ -3456,9 +3456,9 @@ func newSub(lhs *AstNode, rhs *AstNode, tok *Token) *AstNode {
 
 	// ptr - ptr, which returns how many elements are between the two.
 	if lhs.Ty.Base != nil && rhs.Ty.Base != nil {
-		node := newBinary(ND_SUB, lhs, rhs, tok)
-		node.Ty = TyLong
-		return newBinary(ND_DIV, node, newNum(lhs.Ty.Base.Size, tok), tok)
+		sz := lhs.Ty.Base.Size
+		node := newBinary(ND_SUB, newCast(lhs, TyLLong), newCast(rhs, TyLLong), tok)
+		return newBinary(ND_DIV, node, newNum(sz, tok), tok)
 	}
 
 	errorTok(tok, "invalid operands")
