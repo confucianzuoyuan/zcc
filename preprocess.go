@@ -844,7 +844,7 @@ func hasCAttributeMacro(start *Token) *Token {
 func hasBuiltinMacro(start *Token) *Token {
 	tok := skip(start.Next, "(")
 
-	hasIt := tok.isEqual("__builtin_alloca") || tok.isEqual("__builtin_offsetof") || tok.isEqual("__builtin_types_compatible_p") || tok.isEqual("__builtin_va_start") || tok.isEqual("__builtin_va_copy") || tok.isEqual("__builtin_va_end") || tok.isEqual("__builtin_va_arg") || tok.isEqual("__builtin_constant_p") || tok.isEqual("__builtin_expect")
+	hasIt := tok.isEqual("__builtin_alloca") || tok.isEqual("__builtin_offsetof") || tok.isEqual("__builtin_types_compatible_p") || tok.isEqual("__builtin_va_start") || tok.isEqual("__builtin_va_copy") || tok.isEqual("__builtin_va_end") || tok.isEqual("__builtin_va_arg") || tok.isEqual("__builtin_constant_p") || tok.isEqual("__builtin_expect") || tok.isEqual("__builtin_clz")
 
 	tok = skip(tok.Next, ")")
 	popMacroLockUntil(start, tok)
