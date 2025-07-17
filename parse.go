@@ -4203,6 +4203,13 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return newNum(0, start)
 	}
 
+	if tok.isEqual("__builtin_unreachable") {
+		node := newNode(ND_NULL_EXPR, tok)
+		node.Ty = TyVoid
+		*rest = skip(skip(tok.Next, "("), ")")
+		return node
+	}
+
 	if tok.isEqual("__builtin_va_start") {
 		node := newNode(ND_VA_START, tok)
 		tok = skip(tok.Next, "(")
