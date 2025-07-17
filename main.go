@@ -973,6 +973,7 @@ func main() {
 	ldArgs := []string{}
 	fileCount := 0
 	opt_x := FILE_NONE
+	run_ld := false
 
 	for i := 0; i < len(inputPaths); i++ {
 		if inputPaths[i] == "-x" {
@@ -1023,6 +1024,7 @@ func main() {
 		// Handle .o or .a
 		if filetype == FILE_OBJ || filetype == FILE_AR || filetype == FILE_DSO {
 			ldArgs = append(ldArgs, input)
+			run_ld = true
 			continue
 		}
 
@@ -1040,6 +1042,7 @@ func main() {
 			tmp := createTmpfile()
 			assemble(input, tmp)
 			ldArgs = append(ldArgs, tmp)
+			run_ld = true
 			continue
 		}
 
@@ -1066,6 +1069,7 @@ func main() {
 			run_cc1(args, input, tmp1, "-cc1-asm-pp")
 			assemble(tmp1, tmp2)
 			ldArgs = append(ldArgs, tmp2)
+			run_ld = true
 			continue
 		}
 
@@ -1103,10 +1107,11 @@ func main() {
 		run_cc1(args, input, tmp1, "")
 		assemble(tmp1, tmp2)
 		ldArgs = append(ldArgs, tmp2)
+		run_ld = true
 		continue
 	}
 
-	if len(ldArgs) > 0 {
+	if run_ld {
 		if opt_o != "" {
 			runLinker(ldArgs, opt_o)
 		} else {
