@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"math/bits"
 	"os"
 	"strings"
 )
@@ -4132,18 +4131,6 @@ func primary(rest **Token, tok *Token) *AstNode {
 		node := newNode(ND_NUM, tok)
 		tok = skip(tok.Next, "(")
 		node.Value = int64(boolToInt(expr(&tok, tok).isConstExpr(nil)))
-		node.Ty = TyInt
-		*rest = skip(tok, ")")
-		return node
-	}
-
-	// bug to be fixed
-	if tok.isEqual("__builtin_clz") {
-		node := newNode(ND_NUM, tok)
-		tok = skip(tok.Next, "(")
-		val := int64(0)
-		expr(&tok, tok).isConstExpr(&val)
-		node.Value = int64(bits.LeadingZeros32(uint32(val)))
 		node.Ty = TyInt
 		*rest = skip(tok, ")")
 		return node
