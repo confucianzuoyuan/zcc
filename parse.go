@@ -4137,6 +4137,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
+	// bug to be fixed
 	if tok.isEqual("__builtin_clz") {
 		node := newNode(ND_NUM, tok)
 		tok = skip(tok.Next, "(")
