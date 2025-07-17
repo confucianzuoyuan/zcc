@@ -3124,10 +3124,19 @@ func evalConstExprAgg(node *AstNode) []int8 {
 	if evalRecover != nil && *evalRecover {
 		return nil
 	}
+	if ctx.Var == nil {
+		return Int64ToInt8Slice(evalError(node.Tok, "not a compile-time constant"))
+	}
 	if ofs < 0 || (ctx.Var.Ty.Size < (ofs + node.Ty.Size)) {
 		return Int64ToInt8Slice(evalError(node.Tok, "constexpr access out of bounds"))
 	}
-	return ctx.Var.ConstExprData[ofs:]
+	if ctx.Var.ConstExprData != nil {
+		return ctx.Var.ConstExprData[ofs:]
+	}
+	if ctx.Var.InitData != nil {
+		return ctx.Var.InitData[ofs:]
+	}
+	panic("internal error")
 }
 
 func constExpr(rest **Token, tok *Token) int64 {
