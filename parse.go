@@ -4040,6 +4040,15 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return atomicOp(binary, true)
 	}
 
+	if tok.isEqual("__builtin_constant_p") {
+		node := newNode(ND_NUM, tok)
+		tok = skip(tok.Next, "(")
+		node.Value = int64(boolToInt(expr(&tok, tok).isConstExpr(nil)))
+		node.Ty = TyInt
+		*rest = skip(tok, ")")
+		return node
+	}
+
 	if tok.isEqual("__builtin_offsetof") {
 		tok = skip(tok.Next, "(")
 		ty := typeName(&tok, tok)
