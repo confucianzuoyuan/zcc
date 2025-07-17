@@ -4136,6 +4136,15 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
+	if tok.isEqual("__builtin_expect") {
+		tok = skip(tok.Next, "(")
+		node := assign(&tok, tok)
+		tok = skip(tok, ",")
+		assign(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
 	if tok.isEqual("__builtin_offsetof") {
 		tok = skip(tok.Next, "(")
 		ty := typeName(&tok, tok)
