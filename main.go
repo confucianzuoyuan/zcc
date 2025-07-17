@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -101,6 +102,22 @@ func quoteMakefile(s string) string {
 	}
 
 	return string(buf[:len(buf)-1])
+}
+
+func setCStandard(val int) {
+	if val == 89 || val == 90 {
+		opt_std = STD_C89
+	} else if val == 99 {
+		opt_std = STD_C99
+	} else if val == 11 {
+		opt_std = STD_C11
+	} else if val == 17 || val == 18 {
+		opt_std = STD_C17
+	} else if val == 23 {
+		opt_std = STD_C23
+	} else {
+		panic("unknown c standard")
+	}
 }
 
 func define(str string) {
@@ -387,28 +404,25 @@ func parseArgs(args []string) {
 			continue
 		}
 
-		if strings.HasPrefix(args[idx], "-std=c") {
-			if len(args[idx]) < 8 {
-				fmt.Fprintf(os.Stderr, "unknown c standard")
-				os.Exit(1)
+		if args[idx] == "-ansi" {
+			setCStandard(89)
+			define("__STRICT_ANSI__")
+			continue
+		} else if strings.HasPrefix(args[idx], "-std=c") {
+			v, _ := strconv.Atoi(args[idx][6:])
+			setCStandard(v)
+			continue
+		} else if strings.HasPrefix(args[idx], "--std=c") {
+			v, _ := strconv.Atoi(args[idx][7:])
+			setCStandard(v)
+			continue
+		} else if args[idx] == "--std" {
+			idx++
+			if args[idx][0] != 'c' {
+				panic("unknown c standard")
 			}
-
-			version := args[idx][6:8]
-			if version == "89" || version == "90" {
-				opt_std = STD_C89
-			} else if version == "99" {
-				opt_std = STD_C99
-			} else if version == "11" {
-				opt_std = STD_C11
-			} else if version == "17" || version == "18" {
-				opt_std = STD_C17
-			} else if version == "23" {
-				opt_std = STD_C23
-			} else {
-				fmt.Fprintf(os.Stderr, "unknown c standard")
-				os.Exit(1)
-			}
-
+			v, _ := strconv.Atoi(args[idx][1:])
+			setCStandard(v)
 			continue
 		}
 
