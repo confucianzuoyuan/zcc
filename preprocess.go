@@ -1612,10 +1612,14 @@ func counterMacro(start *Token) *Token {
 
 func initMacros() {
 	// Define predefined macros
+	// Define predefined macros
 	defineMacro("_LP64", "1")
+	defineMacro("__BYTE_ORDER__", "1234")
 	defineMacro("__C99_MACRO_WITH_VA_ARGS", "1")
 	defineMacro("__ELF__", "1")
 	defineMacro("__LP64__", "1")
+	defineMacro("__ORDER_BIG_ENDIAN__", "4321")
+	defineMacro("__ORDER_LITTLE_ENDIAN__", "1234")
 	defineMacro("__SIZEOF_DOUBLE__", "8")
 	defineMacro("__SIZEOF_FLOAT__", "4")
 	defineMacro("__SIZEOF_INT__", "4")
@@ -1629,18 +1633,20 @@ func initMacros() {
 	defineMacro("__SIZE_TYPE__", "unsigned long")
 	defineMacro("__STDC_HOSTED__", "1")
 	defineMacro("__STDC_NO_COMPLEX__", "1")
+	defineMacro("__STDC_UTF_16__", "1")
+	defineMacro("__STDC_UTF_32__", "1")
 	defineMacro("__STDC__", "1")
 	defineMacro("__USER_LABEL_PREFIX__", "")
 	defineMacro("__alignof__", "_Alignof")
 	defineMacro("__amd64", "1")
 	defineMacro("__amd64__", "1")
-	defineMacro("__zcc__", "1")
 	defineMacro("__const__", "const")
 	defineMacro("__gnu_linux__", "1")
 	defineMacro("__inline__", "inline")
 	defineMacro("__linux", "1")
 	defineMacro("__linux__", "1")
 	defineMacro("__signed__", "signed")
+	defineMacro("__zcc__", "1")
 	defineMacro("__unix", "1")
 	defineMacro("__unix__", "1")
 	defineMacro("__volatile__", "volatile")
@@ -1648,11 +1654,6 @@ func initMacros() {
 	defineMacro("__x86_64__", "1")
 	defineMacro("linux", "1")
 	defineMacro("unix", "1")
-	defineMacro("__STDC_UTF_16__", "1")
-	defineMacro("__STDC_UTF_32__", "1")
-	defineMacro("__BYTE_ORDER__", "1234")
-	defineMacro("__ORDER_BIG_ENDIAN__", "4321")
-	defineMacro("__ORDER_LITTLE_ENDIAN__", "1234")
 
 	switch opt_std {
 	case STD_C89:
