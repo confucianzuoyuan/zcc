@@ -193,7 +193,6 @@ func verrorAt(filename string, input *[]int8, line_no int, loc int, msg string) 
 
 	fmt.Fprintf(os.Stderr, "%*s", pos, "") // print pos spaces.
 	fmt.Fprintf(os.Stderr, "^ %s\n", msg)
-	os.Exit(1)
 }
 
 func errorAt(loc int, msg string) {
