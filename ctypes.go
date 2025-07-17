@@ -52,8 +52,9 @@ type CType struct {
 	Scopes     *Scope
 	ReturnType *CType
 	ParamList  *Obj
-	VlaCalc    *AstNode
 	IsVariadic bool
+	PreCalc    *AstNode
+	IsOldStyle bool
 }
 
 func (t *CType) String() string {
@@ -281,7 +282,10 @@ func (ty *CType) arrayToPointer() *CType {
 	return ty
 }
 
-func funcType(returnTy *CType) *CType {
+func funcType(returnTy *CType, tok *Token) *CType {
+	if returnTy.Base != nil && returnTy.Kind != TY_PTR {
+		errorTok(tok, "function return type cannot be array")
+	}
 	// The C spec disallows sizeof(<function type>), but
 	// GCC allows that and the expression is evaluated to 1.
 	ty := newType(TY_FUNC, 1, 1)

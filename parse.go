@@ -1140,6 +1140,75 @@ func pointerQualifiers(rest **Token, tok *Token, ty *CType) {
 	*rest = tok
 }
 
+func funcParamsOldStyle(rest **Token, tok *Token, funcType *CType) *CType {
+	start := tok
+	tok = skipParen(tok)
+
+	enterScope()
+	funcType.Scopes = scope
+	var expr *AstNode = nil
+
+	for tok.isTypename() {
+		basety := declspec(&tok, tok, nil)
+		for {
+			var name *Token = nil
+			ty := declarator(&tok, tok, basety, &name)
+			if name == nil {
+				errorTok(tok, "expected identifier")
+			}
+
+			var promoted *Obj = nil
+			if ty.isInteger() && ty.Size < TyInt.Size {
+				promoted = newLocalVar("", TyInt)
+			} else if ty.Kind == TY_FLOAT {
+				promoted = newLocalVar("", TyDouble)
+			} else if ty.isArray() {
+				ty = pointerTo(ty.Base)
+			} else if ty.Kind == TY_FUNC {
+				ty = pointerTo(ty)
+			}
+
+			v := newLocalVar(name.getIdent(), ty)
+			if promoted != nil {
+				v.ParamPromoted = promoted
+				chainExpr(&expr, newBinary(ND_ASSIGN, newVarNode(v, tok), newVarNode(promoted, tok), tok))
+			}
+			chainExpr(&expr, computeVlaSize(ty, tok))
+			if !commaList(&tok, &tok, ";", true) {
+				break
+			}
+		}
+	}
+	*rest = tok
+
+	head := Obj{}
+	cur := &head
+
+	for tok := start; commaList(&tok, &tok, ")", cur != &head); {
+		sc, ok := funcType.Scopes.Vars[tok.getIdent()]
+
+		var nxt *Obj
+		if !ok {
+			nxt = newLocalVar(tok.getIdent(), TyInt)
+		} else if sc.Variable.ParamPromoted != nil {
+			nxt = sc.Variable.ParamPromoted
+		} else {
+			nxt = sc.Variable
+		}
+
+		cur.ParamNext = nxt
+		cur = cur.ParamNext
+		tok = tok.Next
+	}
+
+	leaveScope()
+	expr.addType()
+	funcType.ParamList = head.ParamNext
+	funcType.IsOldStyle = true
+	funcType.PreCalc = expr
+	return funcType
+}
+
 /*
  * declspec = ("void" | "char" | "short" | "int" | "long" | "_Bool"
  *             | "typedef" | "static" | "extern" | "inline"
@@ -1796,26 +1865,37 @@ func structRef(node *AstNode, tok *Token) *AstNode {
 // func-params = ("void" | param ("," param)* ("," "...")?)? ")"
 // param       = declspec declarator
 func funcParams(rest **Token, tok *Token, ty *CType) *CType {
-	if ty.Base != nil && ty.Kind != TY_PTR {
-		errorTok(tok, "function return type cannot be array")
+	fnTy := funcType(ty, tok)
+
+	if tok.isEqual("...") && consume(rest, tok.Next, ")") {
+		fnTy.IsVariadic = true
+		return fnTy
 	}
 
 	if tok.isEqual("void") && consume(rest, tok.Next, ")") {
-		return funcType(ty)
+		return fnTy
+	}
+
+	if consume(rest, tok, ")") {
+		if opt_std < STD_C23 {
+			fnTy.IsOldStyle = true
+		}
+		return fnTy
+	}
+	if !tok.isTypename() {
+		return funcParamsOldStyle(rest, tok, fnTy)
 	}
 
 	head := Obj{}
 	cur := &head
-	isVariadic := false
-	fnTy := funcType(ty)
-	var vlaCalc *AstNode = nil
+	var expr *AstNode = nil
 
 	enterScope()
 	fnTy.Scopes = scope
 
 	for commaList(rest, &tok, ")", cur != &head) {
 		if tok.isEqual("...") {
-			isVariadic = true
+			fnTy.IsVariadic = true
 			*rest = skip(tok.Next, ")")
 			break
 		}
@@ -1824,7 +1904,7 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 
 		var name *Token = nil
 		ty2 = declarator(&tok, tok, ty2, &name)
-		chainExpr(&vlaCalc, computeVlaSize(ty2, tok))
+		chainExpr(&expr, computeVlaSize(ty2, tok))
 
 		if ty2.Kind == TY_ARRAY || ty2.Kind == TY_VLA {
 			// "array of T" is converted to "pointer to T" only in the parameter
@@ -1849,16 +1929,11 @@ func funcParams(rest **Token, tok *Token, ty *CType) *CType {
 		cur = cur.ParamNext
 	}
 
-	if cur == &head {
-		isVariadic = true
-	}
-
 	leaveScope()
 
-	vlaCalc.addType()
+	expr.addType()
 	fnTy.ParamList = head.ParamNext
-	fnTy.VlaCalc = vlaCalc
-	fnTy.IsVariadic = isVariadic
+	fnTy.PreCalc = expr
 	return fnTy
 }
 
@@ -3735,6 +3810,9 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 		ty = fn.Ty.Base
 	}
 	param := ty.ParamList
+	if ty.IsOldStyle {
+		param = nil
+	}
 
 	head := Obj{}
 	cur := &head
@@ -3752,13 +3830,13 @@ func funcall(rest **Token, tok *Token, fn *AstNode) *AstNode {
 			}
 			param = param.ParamNext
 		} else {
-			if !ty.IsVariadic {
+			if !ty.IsVariadic && !ty.IsOldStyle {
 				errorTok(tok, "too many arguments")
 			}
 
 			if arg.Ty.Kind == TY_FLOAT {
 				arg = newCast(arg, TyDouble)
-			} else if arg.Ty.Kind == TY_ARRAY || arg.Ty.Kind == TY_VLA {
+			} else if arg.Ty.isArray() {
 				arg = newCast(arg, pointerTo(arg.Ty.Base))
 			} else if arg.Ty.Kind == TY_FUNC {
 				arg = newCast(arg, pointerTo(arg.Ty))
@@ -4320,8 +4398,8 @@ func funcDefinition(rest **Token, tok *Token, ty *CType, attr *VarAttr, name *To
 	}
 
 	fn.Body = compoundStmt(rest, tok.Next, ND_BLOCK)
-	if ty.VlaCalc != nil {
-		calc := newUnary(ND_EXPR_STMT, ty.VlaCalc, tok)
+	if ty.PreCalc != nil {
+		calc := newUnary(ND_EXPR_STMT, ty.PreCalc, tok)
 		calc.Next = fn.Body.Body
 		fn.Body.Body = calc
 	}
