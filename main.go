@@ -59,6 +59,7 @@ var opt_cc1 bool
 var opt_hash_hash_hash bool
 var opt_static bool
 var opt_shared bool
+var opt_P bool
 var opt_MF string
 var opt_MT string
 var opt_o string = ""
@@ -226,6 +227,11 @@ func parseArgs(args []string) {
 
 		if strings.HasPrefix(args[idx], "-o") {
 			opt_o = args[idx][2:]
+			continue
+		}
+
+		if args[idx] == "-P" {
+			opt_P = true
 			continue
 		}
 
@@ -809,7 +815,20 @@ func printTokens(tok *Token, path string) {
 	out, _ = openFile(path)
 
 	line := 1
+	var markerFile *File = nil
 	for ; tok != nil && tok.Kind != TK_EOF; tok = tok.Next {
+		orig := tok
+		if tok.Origin != nil {
+			orig = tok.Origin
+		}
+		if !opt_P && markerFile != orig.File {
+			markerFile = orig.File
+			name := orig.File.Name
+			if name == "-" {
+				name = "<stdin>"
+			}
+			fmt.Fprintf(out, "\n# %d \"%s\"\n", orig.LineNo, name)
+		}
 		if line > 1 && tok.AtBeginningOfLine {
 			fmt.Fprintf(out, "\n")
 		}
