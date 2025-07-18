@@ -203,7 +203,7 @@ func enterTmpScope() {
 // Find a variable by name.
 func findVariable(tok *Token) *VarScope {
 	for sc := scope; sc != nil; sc = sc.Parent {
-		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+		name := tok.getText()
 		sc2 := sc.Vars[name]
 		if sc2 != nil {
 			return sc2
@@ -215,7 +215,7 @@ func findVariable(tok *Token) *VarScope {
 
 func findTag(tok *Token) *CType {
 	for sc := scope; sc != nil; sc = sc.Parent {
-		name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+		name := tok.getText()
 		ty := sc.Tags[name]
 		if ty != nil {
 			return ty
@@ -405,7 +405,7 @@ func pushScope(name string) *VarScope {
 }
 
 func pushTagScope(tok *Token, ty *CType) {
-	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	name := tok.getText()
 	if scope.Tags == nil {
 		scope.Tags = make(map[string]*CType)
 	}
@@ -681,25 +681,6 @@ func designation(rest **Token, tok *Token, init *Initializer) {
 	}
 
 	initializer2(rest, tok, init)
-}
-
-func debugToken(tok *Token) {
-	switch tok.Kind {
-	case TK_EOF:
-		println("eof")
-	case TK_IDENT:
-		println("ident")
-	case TK_KEYWORD:
-		println("keyword")
-	case TK_NUM:
-		println("number")
-	case TK_PUNCT:
-		println("punct")
-	case TK_STR:
-		println("string")
-	}
-
-	fmt.Printf("%s\r\n", B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length]))
 }
 
 // array-initializer1 = "{" initializer ("," initializer)* ","? "}"
@@ -1072,13 +1053,6 @@ func newStringLiteral(lit []int8, ty *CType) *Obj {
 	variable := newAnonymousGlobalVariable(ty)
 	variable.InitData = lit
 	return variable
-}
-
-func (tok *Token) getIdent() string {
-	if tok.Kind != TK_IDENT {
-		errorTok(tok, "expected an identifier")
-	}
-	return B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
 }
 
 func findTypeDef(tok *Token) *CType {
@@ -1655,7 +1629,7 @@ func structUnionDecl(rest **Token, tok *Token, kind CTypeKind) *CType {
 		return ty
 	}
 
-	name := B2S((*tag.File.Contents)[tag.Location : tag.Location+tag.Length])
+	name := tag.getText()
 	ty2, ok := scope.Tags[name]
 	if ok {
 		for t := ty2; t != nil; t = t.DeclNext {
@@ -1817,7 +1791,7 @@ func getStructMember(ty *CType, tok *Token) *Member {
 		}
 
 		// Regular struct member
-		if mem.Name != nil && mem.Name.isEqual(B2S((*tok.File.Contents)[tok.Location:tok.Location+tok.Length])) {
+		if mem.Name != nil && mem.Name.isEqual(tok.getText()) {
 			return mem
 		}
 	}
@@ -2284,7 +2258,7 @@ func (tok *Token) isTypename() bool {
 		TypeNames["constexpr"] = struct{}{}
 		TypeNames["typeof_unqual"] = struct{}{}
 	}
-	name := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	name := tok.getText()
 	_, ok := TypeNames[name]
 	if ok {
 		return true
@@ -4097,7 +4071,7 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return node
 	}
 
-	text := B2S((*tok.File.Contents)[tok.Location : tok.Location+tok.Length])
+	text := tok.getText()
 	if strings.HasPrefix(text, "__builtin_atomic_fetch_") {
 		start := tok
 		tok = skip(tok.Next, "(")
