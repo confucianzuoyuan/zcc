@@ -6,61 +6,62 @@ type AstNodeKind uint8
 
 // AST Type
 const (
-	ND_NULL_EXPR AstNodeKind = iota // Do nothing
-	ND_ADD                          // +
-	ND_SUB                          // -
-	ND_MUL                          // *
-	ND_DIV                          // /
-	ND_POS                          // unary +
-	ND_NEG                          // unary -
-	ND_EQ                           // ==
-	ND_NE                           // !=
-	ND_LT                           // <
-	ND_LE                           // <=
-	ND_GT                           // >
-	ND_GE                           // >=
-	ND_ASSIGN                       // =
-	ND_COND                         // Ternary conditional (?:)
-	ND_COMMA                        // ,
-	ND_MEMBER                       // . (struct member access)
-	ND_ADDR                         // unary &
-	ND_DEREF                        // unary *
-	ND_NOT                          // !
-	ND_BITNOT                       // ~
-	ND_MOD                          // %
-	ND_BITAND                       // &
-	ND_BITOR                        // |
-	ND_BITXOR                       // ^
-	ND_SHL                          // <<
-	ND_SHR                          // >>
-	ND_SAR                          // arithmetic >>
-	ND_LOGAND                       // &&
-	ND_LOGOR                        // ||
-	ND_RETURN                       // "return"
-	ND_IF                           // "if"
-	ND_FOR                          // "for" or "while"
-	ND_DO                           // "do"
-	ND_SWITCH                       // "switch"
-	ND_CASE                         // "case"
-	ND_BLOCK                        // { ... }
-	ND_GOTO                         // "goto"
-	ND_GOTO_EXPR                    // "goto" labels-as-values
-	ND_LABEL                        // Labeled statement
-	ND_LABEL_VAL                    // [GNU] Labels-as-values
-	ND_FUNCALL                      // Function call
-	ND_EXPR_STMT                    // Expression statement
-	ND_STMT_EXPR                    // Statement expression
-	ND_VAR                          // Variable
-	ND_NUM                          // Integer
-	ND_CAST                         // Type cast
-	ND_MEMZERO                      // Zero-clear a stack variable
-	ND_ASM                          // "asm"
-	ND_CAS                          // Atomic compare-and-swap
-	ND_EXCH                         // Atomic exchange
-	ND_VA_START                     // "va_start"
-	ND_VA_COPY                      // "va_copy"
-	ND_VA_ARG                       // "va_arg"
-	ND_CHAIN                        // ND_COMMA without array-to-pointer conversion
+	ND_NULL_EXPR    AstNodeKind = iota // Do nothing
+	ND_ADD                             // +
+	ND_SUB                             // -
+	ND_MUL                             // *
+	ND_DIV                             // /
+	ND_POS                             // unary +
+	ND_NEG                             // unary -
+	ND_EQ                              // ==
+	ND_NE                              // !=
+	ND_LT                              // <
+	ND_LE                              // <=
+	ND_GT                              // >
+	ND_GE                              // >=
+	ND_ASSIGN                          // =
+	ND_COND                            // Ternary conditional (?:)
+	ND_COMMA                           // ,
+	ND_MEMBER                          // . (struct member access)
+	ND_ADDR                            // unary &
+	ND_DEREF                           // unary *
+	ND_NOT                             // !
+	ND_BITNOT                          // ~
+	ND_MOD                             // %
+	ND_BITAND                          // &
+	ND_BITOR                           // |
+	ND_BITXOR                          // ^
+	ND_SHL                             // <<
+	ND_SHR                             // >>
+	ND_SAR                             // arithmetic >>
+	ND_LOGAND                          // &&
+	ND_LOGOR                           // ||
+	ND_RETURN                          // "return"
+	ND_IF                              // "if"
+	ND_FOR                             // "for" or "while"
+	ND_DO                              // "do"
+	ND_SWITCH                          // "switch"
+	ND_CASE                            // "case"
+	ND_BLOCK                           // { ... }
+	ND_GOTO                            // "goto"
+	ND_GOTO_EXPR                       // "goto" labels-as-values
+	ND_LABEL                           // Labeled statement
+	ND_LABEL_VAL                       // [GNU] Labels-as-values
+	ND_FUNCALL                         // Function call
+	ND_EXPR_STMT                       // Expression statement
+	ND_STMT_EXPR                       // Statement expression
+	ND_VAR                             // Variable
+	ND_NUM                             // Integer
+	ND_CAST                            // Type cast
+	ND_MEMZERO                         // Zero-clear a stack variable
+	ND_ASM                             // "asm"
+	ND_CAS                             // Atomic compare-and-swap
+	ND_EXCH                            // Atomic exchange
+	ND_LOCK_RELEASE                    // Atomic release
+	ND_VA_START                        // "va_start"
+	ND_VA_COPY                         // "va_copy"
+	ND_VA_ARG                          // "va_arg"
+	ND_CHAIN                           // ND_COMMA without array-to-pointer conversion
 	ND_ALLOCA
 )
 
@@ -168,6 +169,8 @@ func (k AstNodeKind) String() string {
 		return "ND_CAS"
 	case ND_EXCH:
 		return "ND_EXCH"
+	case ND_LOCK_RELEASE:
+		return "ND_LOCK_RELEASE"
 	case ND_VA_START:
 		return "ND_VA_START"
 	case ND_VA_COPY:

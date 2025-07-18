@@ -4231,12 +4231,20 @@ func primary(rest **Token, tok *Token) *AstNode {
 		return newUnary(ND_DEREF, node, tok)
 	}
 
-	if tok.isEqual("__builtin_atomic_exchange") {
+	if tok.isEqual("__builtin_atomic_exchange") || tok.isEqual("__sync_lock_test_and_set") {
 		node := newNode(ND_EXCH, tok)
 		tok = skip(tok.Next, "(")
 		node.Lhs = assign(&tok, tok)
 		tok = skip(tok, ",")
 		node.Rhs = assign(&tok, tok)
+		*rest = skip(tok, ")")
+		return node
+	}
+
+	if tok.isEqual("__sync_lock_release") {
+		node := newNode(ND_LOCK_RELEASE, tok) // 自定义节点类型
+		tok = skip(tok.Next, "(")
+		node.Lhs = assign(&tok, tok) // 解析参数 ptr
 		*rest = skip(tok, ")")
 		return node
 	}

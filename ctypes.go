@@ -555,6 +555,13 @@ func (node *AstNode) addType() {
 		}
 		node.Ty = node.Lhs.Ty.Base
 		return
+	case ND_LOCK_RELEASE:
+		if node.Lhs.Ty.Kind != TY_PTR {
+			errorTok(node.Lhs.Tok, "pointer expected")
+		}
+		// __sync_lock_release 返回 void，无需设置 node.Ty
+		node.Ty = TyVoid
+		return
 	case ND_MEMZERO, ND_VA_START, ND_VA_COPY:
 		node.Ty = TyVoid
 	}

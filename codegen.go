@@ -1845,6 +1845,29 @@ func genExpr(node *AstNode) {
 		sz := int(node.Lhs.Ty.Base.Size)
 		printlnToFile("  xchg %s, (%s)", regAX(sz), reg)
 		return
+	case ND_LOCK_RELEASE:
+		genExpr(node.Lhs)
+		println(node.Lhs.Ty.String())
+		// reg := popInReg("%rcx")
+
+		sz := int(node.Lhs.Ty.Base.Size)
+
+		switch sz {
+		case 1:
+			printlnToFile("  movb $0, (%%rax)")
+		case 2:
+			printlnToFile("  movw $0, (%%rax)")
+		case 4:
+			printlnToFile("  movl $0, (%%rax)")
+		case 8:
+			printlnToFile("  movq $0, (%%rax)")
+		default:
+			panic("unsupported size in lock_release")
+		}
+
+		// 释放语义的内存屏障（根据架构选择）
+		printlnToFile("  mfence")
+		return
 	case ND_ALLOCA:
 		genExpr(node.Lhs)
 		builtin_alloca(node)
