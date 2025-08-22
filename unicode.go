@@ -442,9 +442,14 @@ func charWidth(c uint32) int {
 func displayWidth(src *[]int8, p int, length int) int {
 	start := p
 	w := 0
+	var c uint32
 	for p-start < length {
-		c, _p := decodeUTF8(src, p)
-		p = _p
+		if (*src)[p] == '\t' {
+			w += 8
+			p++
+			continue
+		}
+		c, p = decodeUTF8(src, p)
 		w += charWidth(c)
 	}
 
